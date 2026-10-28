@@ -1,0 +1,26 @@
+# 依赖与构建产物
+node_modules/
+dist/
+.remotion/
+*.tsbuildinfo
+
+# 工程、媒体、渲染结果（不进仓库）
+*.mwproj/
+fixtures/out/
+assets/fonts/*
+!assets/fonts/README.md
+*.mp4
+*.mov
+*.m4a
+*.wav
+*.mp3
+
+# 测试产物
+coverage/
+tests/**/__diff__/
+
+# 环境与系统文件
+.env
+.env.*
+.DS_Store
+*.log
