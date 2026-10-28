@@ -73,7 +73,7 @@ export type ExportRequest = z.input<typeof ExportRequest>;
 
 export type ApiError = {
   ok: false;
-  code: ErrorCode | "USAGE" | "INTERNAL";
+  code: ErrorCode | "INTERNAL";
   message: string;
   issues: Issue[];
 };

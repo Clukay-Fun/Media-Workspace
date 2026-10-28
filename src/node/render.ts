@@ -70,66 +70,81 @@ export type PreparedRender = {
   server: MediaServer;
 };
 
-/** 准备渲染输入：把用到的素材和字体登记到媒体服务，换成 URL */
-export async function prepare(dir: string, project: Project): Promise<PreparedRender> {
+/**
+ * 把用到的素材和字体换成 URL，生成合成组件的参数。
+ * 导出用标准化文件（mez）；网页预览用 540p 代理文件（proxy），没有时退回 mez、原文件。
+ */
+export async function buildProps(
+  dir: string,
+  project: Project,
+  register: (absPath: string) => string,
+  variant: "mez" | "proxy" = "mez",
+): Promise<{ props: MainProps; timeline: ResolvedTimeline }> {
   const timeline = compile(project);
+  const srcs: Record<string, string> = {};
+  const used = new Set<string>([
+    ...timeline.videos.map((v) => v.asset),
+    ...timeline.images.map((i) => i.asset),
+    ...(timeline.outro ? [timeline.outro.asset] : []),
+  ]);
+  for (const id of used) {
+    const a = project.assets[id];
+    if (!a) throw new MwError("REF_MISSING", `素材「${id}」不存在`);
+    const cached = variant === "proxy" ? (a.cache?.proxy ?? a.cache?.mez) : a.cache?.mez;
+    // 已经是标准格式的素材没有 mez，直接用原文件
+    const file = cached ? join(dir, cached) : a.path;
+    const abs = isAbsolute(file) ? file : resolve(dir, file);
+    if (!existsSync(abs)) {
+      throw new MwError("MEDIA", `素材文件不存在：${abs}`, {
+        hint: "用 asset.relink 指向新的位置，或重新导入素材",
+      });
+    }
+    srcs[id] = register(abs);
+  }
+
+  // 字体：只加载实际用到的样式（没写样式的字幕 / 叠加层用内置默认样式）
+  const styles: Record<string, TextStyle> = { ...BUILTIN_STYLES, ...project.styles };
+  const usedStyles = new Set<string>([
+    ...timeline.captions.map((c) => c.style ?? "caption-word-yellow"),
+    ...timeline.overlays.map(
+      (o) => o.style ?? TEMPLATES[o.template]?.meta.defaultStyle ?? "title-bar-yellow",
+    ),
+  ]);
+  const faces = new Map<string, ReturnType<typeof facesFor>[number]>();
+  for (const id of usedStyles) {
+    const st = styles[id];
+    if (st) for (const f of facesFor(st)) faces.set(`${f.id}|${f.weight}`, f);
+  }
+  const fonts = resolveFaces([...faces.values()]).map((f) => ({
+    css: f.css,
+    weight: f.weight,
+    url: register(f.path),
+  }));
+
+  // 模板参数在这里先校验，出错时给出结构化错误，而不是渲染到一半才失败
+  for (const o of timeline.overlays) {
+    const tpl = TEMPLATES[o.template];
+    if (!tpl) throw new MwError("REF_MISSING", `模板「${o.template}」不存在`);
+    const r = tpl.schema.safeParse(o.props);
+    if (!r.success) {
+      throw new MwError("VALIDATION", `叠加层「${o.id}」的模板参数不对`, {
+        issues: r.error.issues.map((i) => ({
+          code: "VALIDATION",
+          path: `${o.id}.props.${i.path.join(".")}`,
+          message: i.message,
+        })),
+      });
+    }
+  }
+  return { props: { timeline, styles: project.styles, srcs, fonts }, timeline };
+}
+
+/** 准备渲染输入：起一个临时媒体服务，把用到的素材和字体换成 URL */
+export async function prepare(dir: string, project: Project): Promise<PreparedRender> {
   const server = await startMediaServer(null);
   try {
-    const srcs: Record<string, string> = {};
-    const used = new Set<string>([
-      ...timeline.videos.map((v) => v.asset),
-      ...timeline.images.map((i) => i.asset),
-      ...(timeline.outro ? [timeline.outro.asset] : []),
-    ]);
-    for (const id of used) {
-      const a = project.assets[id];
-      if (!a) throw new MwError("REF_MISSING", `素材「${id}」不存在`);
-      // 视频用标准化文件（mez）；已经是标准格式的素材没有 mez，直接用原文件
-      const file = a.cache?.mez ? join(dir, a.cache.mez) : a.path;
-      const abs = isAbsolute(file) ? file : resolve(dir, file);
-      if (!existsSync(abs)) {
-        throw new MwError("MEDIA", `素材文件不存在：${abs}`, {
-          hint: "用 asset.relink 指向新的位置，或重新导入素材",
-        });
-      }
-      srcs[id] = server.register(abs);
-    }
-
-    // 字体：只加载实际用到的样式（没写样式的字幕 / 叠加层用内置默认样式）
-    const styles: Record<string, TextStyle> = { ...BUILTIN_STYLES, ...project.styles };
-    const usedStyles = new Set<string>([
-      ...timeline.captions.map((c) => c.style ?? "caption-word-yellow"),
-      ...timeline.overlays.map(
-        (o) => o.style ?? TEMPLATES[o.template]?.meta.defaultStyle ?? "title-bar-yellow",
-      ),
-    ]);
-    const faces = new Map<string, ReturnType<typeof facesFor>[number]>();
-    for (const id of usedStyles) {
-      const st = styles[id];
-      if (st) for (const f of facesFor(st)) faces.set(`${f.id}|${f.weight}`, f);
-    }
-    const fonts = resolveFaces([...faces.values()]).map((f) => ({
-      css: f.css,
-      weight: f.weight,
-      url: server.register(f.path),
-    }));
-
-    // 模板参数在这里先校验，出错时给出结构化错误，而不是渲染到一半才失败
-    for (const o of timeline.overlays) {
-      const tpl = TEMPLATES[o.template];
-      if (!tpl) throw new MwError("REF_MISSING", `模板「${o.template}」不存在`);
-      const r = tpl.schema.safeParse(o.props);
-      if (!r.success) {
-        throw new MwError("VALIDATION", `叠加层「${o.id}」的模板参数不对`, {
-          issues: r.error.issues.map((i) => ({
-            code: "VALIDATION",
-            path: `${o.id}.props.${i.path.join(".")}`,
-            message: i.message,
-          })),
-        });
-      }
-    }
-    return { props: { timeline, styles: project.styles, srcs, fonts }, timeline, server };
+    const { props, timeline } = await buildProps(dir, project, (abs) => server.register(abs));
+    return { props, timeline, server };
   } catch (e) {
     await server.close();
     throw e;

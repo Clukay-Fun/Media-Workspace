@@ -19,6 +19,19 @@ pnpm fonts:check            # 普惠体放进 assets/fonts/alibaba-puhuiti-3/；
 ./bin/mw.mjs models --fetch # 下载识音模型（约 230MB，只需一次）；之后 mw align <工程> 让逐字动画跟着语音走
 ```
 
+### 工作台和 AI 接入（阶段 B，开发中）
+
+```bash
+./bin/mw.mjs serve <工程>   # 本地工作台，默认 http://127.0.0.1:5170（网页需要先 pnpm web:build）
+./bin/mw.mjs mcp            # MCP stdio 服务
+```
+
+在 Claude Code 里接入 MCP（Codex 等其他 AI 应用同理，命令是 `<仓库路径>/bin/mw.mjs mcp`）：
+
+```bash
+claude mcp add media-workspace -- node <仓库路径>/bin/mw.mjs mcp
+```
+
 工程默认放在 `~/MediaWorkspace/projects/`，可以用 `MW_HOME` 修改；识音模型放在 `~/MediaWorkspace/models/`。
 
 ## 授权说明

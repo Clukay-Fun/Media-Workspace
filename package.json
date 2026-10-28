@@ -24,6 +24,8 @@
     "fonts:check": "tsx scripts/check-fonts.ts"
   },
   "dependencies": {
+    "@hono/node-server": "2.1.5",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "@remotion/bundler": "4.0.539",
     "@remotion/captions": "4.0.539",
     "@remotion/cli": "4.0.539",
@@ -34,6 +36,7 @@
     "@remotion/renderer": "4.0.539",
     "@remotion/transitions": "4.0.539",
     "cac": "7.1.0",
+    "hono": "4.13.14",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "remotion": "4.0.539",

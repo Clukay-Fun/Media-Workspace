@@ -11,11 +11,12 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import { EditorState } from "../core/api";
+import { EditorState, type HistoryEntry } from "../core/api";
 import { MwError } from "../core/errors";
 import { migrate } from "../core/migrations";
 import { type ApplyOptions, applyOps } from "../core/ops";
 import { Project } from "../core/schema";
+import { changedIds, type UndoState, undoState } from "../core/undo";
 import { validate, zodIssues } from "../core/validate";
 import { PROJECT_FORMAT_VERSION } from "../core/version";
 import { projectFiles } from "./paths";
@@ -35,7 +36,7 @@ export type LogEntry = {
   actor: string;
   revision: number;
   baseRevision: number;
-  kind: "init" | "apply" | "revert";
+  kind: "init" | "apply" | "revert" | "undo" | "redo";
   ops?: unknown[];
   revertTo?: number;
   changed: string[];
@@ -164,7 +165,14 @@ export async function applyToProject(dir: string, req: ApplyRequest): Promise<Ap
  */
 export async function revertProject(
   dir: string,
-  req: { to: number; baseRevision?: number; source: Source; actor: string },
+  req: {
+    to: number;
+    baseRevision?: number;
+    source: Source;
+    actor: string;
+    /** 撤销 / 重做也是回退，只是在日志里标出来，用于推算撤销栈 */
+    kind?: "revert" | "undo" | "redo";
+  },
 ): Promise<ApplyResponse> {
   return withLock(dir, async () => {
     const current = await loadProject(dir);
@@ -176,7 +184,8 @@ export async function revertProject(
     for (const t of current.tracks) {
       if (!t.locked) continue;
       const old = target.tracks.find((x) => x.id === t.id);
-      if (JSON.stringify(old) !== JSON.stringify(t)) {
+      // 和 ops 一样，锁定的轨道仍然可以改锁定 / 隐藏 / 静音开关（这样「锁定」本身也能撤销）
+      if (!old || JSON.stringify(content(old)) !== JSON.stringify(content(t))) {
         throw new MwError("TRACK_LOCKED", `回退会改动已锁定的轨道「${t.name ?? t.id}」`, {
           hint: "先解锁这条轨道再回退",
         });
@@ -185,24 +194,68 @@ export async function revertProject(
     const v = validate({ ...target, revision: current.revision + 1 });
     if (!v.ok)
       throw new MwError("VALIDATION", `第 ${req.to} 版在当前环境下不合法`, { issues: v.errors });
+    const changed = changedIds(current, v.project);
     await commit(dir, current, v.project, {
       at: new Date().toISOString(),
       source: req.source,
       actor: req.actor,
       revision: v.project.revision,
       baseRevision: current.revision,
-      kind: "revert",
+      kind: req.kind ?? "revert",
       revertTo: req.to,
-      changed: [],
+      changed,
     });
     return {
       ok: true,
       revision: v.project.revision,
-      changed: [],
+      changed,
       warnings: v.warnings,
       dryRun: false,
     };
   });
+}
+
+const content = ({ locked: _l, hidden: _h, muted: _m, ...rest }: Project["tracks"][number]) => rest;
+
+/** 撤销 / 重做：按日志推算出要回到哪一版，再作为一次回退写入 */
+export async function undoProject(
+  dir: string,
+  req: { direction: "undo" | "redo"; baseRevision: number; source: Source; actor: string },
+): Promise<ApplyResponse> {
+  const state = undoState(await readLog(dir));
+  const target = req.direction === "undo" ? state.undo : state.redo;
+  if (!target) {
+    throw new MwError(
+      "INVALID_OP",
+      req.direction === "undo" ? "没有可以撤销的修改" : "没有可以重做的修改",
+    );
+  }
+  return revertProject(dir, {
+    to: target.revision,
+    baseRevision: req.baseRevision,
+    source: req.source,
+    actor: req.actor,
+    kind: req.direction,
+  });
+}
+
+/** 历史列表和当前的撤销 / 重做状态（界面、MCP 用） */
+export async function historyState(dir: string): Promise<{
+  entries: HistoryEntry[];
+  undo: UndoState["undo"];
+  redo: UndoState["redo"];
+}> {
+  const log = await readLog(dir);
+  const entries = log.map((e) => ({
+    revision: e.revision,
+    at: e.at,
+    actor: e.actor,
+    source: e.source,
+    kind: e.kind,
+    changed: e.changed,
+    ops: (e.ops ?? []).map((o) => String((o as { op?: unknown })?.op ?? "?")),
+  }));
+  return { entries, ...undoState(log) };
 }
 
 export async function readLog(dir: string): Promise<LogEntry[]> {

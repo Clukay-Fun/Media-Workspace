@@ -6,11 +6,13 @@ import { MwError } from "../core/errors";
 import { projectFiles } from "./paths";
 import {
   applyToProject,
+  historyState,
   initProject,
   listHistory,
   loadProject,
   readLog,
   revertProject,
+  undoProject,
   withLock,
 } from "./store";
 
@@ -136,6 +138,51 @@ describe("store", () => {
       ),
     ]);
     expect(order).toEqual(["a-start", "a-end", "b"]);
+  });
+
+  it("撤销 / 重做：回到上一版内容，作为新的一版写入，并报告改动的条目", async () => {
+    await applyToProject(dir, req([asset], 0));
+    const r2 = await applyToProject(dir, req([addClip], 1));
+    const clipId = r2.changed[0] as string;
+    const u = { source: "ui", actor: "user" } as const;
+    const undone = await undoProject(dir, { direction: "undo", baseRevision: 2, ...u });
+    expect(undone.revision).toBe(3);
+    expect(undone.changed).toContain(clipId);
+    expect((await loadProject(dir)).tracks[0]?.items).toEqual([]);
+    expect((await historyState(dir)).redo).toEqual({ revision: 2 });
+    const redone = await undoProject(dir, { direction: "redo", baseRevision: 3, ...u });
+    expect(redone.revision).toBe(4);
+    expect((await loadProject(dir)).tracks[0]?.items).toHaveLength(1);
+    const h = await historyState(dir);
+    expect(h.entries.map((e) => e.kind)).toEqual(["init", "apply", "apply", "undo", "redo"]);
+    expect(h.entries[2]?.ops).toEqual(["item.add"]);
+    expect(h.redo).toBeNull();
+    // 撤销到头之后再撤销报错，工程不变
+    await undoProject(dir, { direction: "undo", baseRevision: 4, ...u });
+    await undoProject(dir, { direction: "undo", baseRevision: 5, ...u });
+    expect(await code(undoProject(dir, { direction: "undo", baseRevision: 6, ...u }))).toBe(
+      "INVALID_OP",
+    );
+  });
+
+  it("撤销同样遵守 revision 检查和轨道锁定", async () => {
+    await applyToProject(dir, req([asset], 0));
+    await applyToProject(dir, req([addClip], 1));
+    const u = { source: "ui", actor: "user" } as const;
+    expect(await code(undoProject(dir, { direction: "undo", baseRevision: 1, ...u }))).toBe(
+      "CONFLICT",
+    );
+    await applyToProject(dir, req([{ op: "track.update", id: "main", set: { locked: true } }], 2));
+    // 撤销「锁定」本身是可以的
+    await undoProject(dir, { direction: "undo", baseRevision: 3, ...u });
+    expect((await loadProject(dir)).tracks[0]?.locked).toBe(false);
+    // 锁定后，撤销会改动轨道内容的修改被拒绝
+    await applyToProject(dir, req([{ op: "track.update", id: "main", set: { locked: true } }], 4));
+    await undoProject(dir, { direction: "undo", baseRevision: 5, ...u });
+    await applyToProject(dir, req([{ op: "track.update", id: "main", set: { locked: true } }], 6));
+    expect(await code(revertProject(dir, { to: 1, source: "ui", actor: "user" }))).toBe(
+      "TRACK_LOCKED",
+    );
   });
 
   it("工程不存在时报 NOT_FOUND", async () => {

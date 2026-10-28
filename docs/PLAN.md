@@ -327,6 +327,9 @@ AI 应用（Codex、Claude Code 等）通过 CLI 或本地 MCP 提交操作；
 | `mw cover <proj>` | 导出封面 |
 | `mw history <proj>` / `mw revert <proj> --to <rev>` | 查看历史 / 回退 |
 | `mw align <proj> [--captions s1,s2] [--dry-run]` | 识音，给字幕写入逐字时间（作为一次 `caption.update` 提交）；对得不好的句子列在 `check` 里 |
+| `mw undo <proj> --base <rev>` / `mw redo <proj> --base <rev>` | 撤销 / 重做（作为一次回退写入，人和 AI 的修改在同一个撤销栈里） |
+| `mw serve <proj> [--port 5170]` | 启动本地工作台（REST + SSE + 网页，只监听 127.0.0.1），接口约定在 `src/core/api.ts` |
+| `mw mcp` | MCP stdio 服务，工具和上面的命令一一对应（`docs/decisions/0006`） |
 | `mw models [--fetch]` | 查看 / 下载本地模型（识音模型放在 `~/MediaWorkspace/models/`，用 `MW_MODELS_DIR` 修改） |
 | `mw guide` | 输出给 AI 的编排规则、样式结构和模板目录 |
 

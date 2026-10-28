@@ -14,7 +14,8 @@ export type ErrorCode =
   | "SRT_PARSE"
   | "MEDIA"
   | "RENDER"
-  | "FONT_MISSING";
+  | "FONT_MISSING"
+  | "USAGE";
 
 export type Issue = {
   code: string;
