@@ -11,6 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
+import { EditorState } from "../core/api";
 import { MwError } from "../core/errors";
 import { migrate } from "../core/migrations";
 import { type ApplyOptions, applyOps } from "../core/ops";
@@ -40,17 +41,7 @@ export type LogEntry = {
   changed: string[];
 };
 
-export const DEFAULT_EDITOR = {
-  rulers: true,
-  guides: {
-    hidden: false,
-    locked: false,
-    items: [] as { id: string; axis: "h" | "v"; pos: number }[],
-  },
-  snap: { enabled: true, thresholdPx: 8 },
-  showSafeArea: "all",
-  timeline: { pxPerSecond: 80, scrollMs: 0 },
-};
+export const DEFAULT_EDITOR: EditorState = EditorState.parse({});
 
 /** 新工程：磁吸主轨 + 字幕轨 + 叠加层轨（标题、卡片），和剪映新建草稿的结构接近 */
 export function emptyProject(): Project {
@@ -243,13 +234,16 @@ async function readHistory(dir: string, revision: number): Promise<Project> {
 }
 
 /** editor.json：编辑器状态，不经过 revision 和 ops（D22），但同样原子写入 */
-export async function loadEditor(dir: string): Promise<typeof DEFAULT_EDITOR> {
+export async function loadEditor(dir: string): Promise<EditorState> {
   const raw = await readFile(projectFiles(dir).editor, "utf8").catch(() => null);
-  return raw ? { ...DEFAULT_EDITOR, ...JSON.parse(raw) } : structuredClone(DEFAULT_EDITOR);
+  if (!raw) return structuredClone(DEFAULT_EDITOR);
+  // 编辑器状态坏了不影响工程：解析不了就用默认值
+  const r = EditorState.safeParse(JSON.parse(raw));
+  return r.success ? r.data : structuredClone(DEFAULT_EDITOR);
 }
 
-export async function saveEditor(dir: string, editor: typeof DEFAULT_EDITOR): Promise<void> {
-  await atomicWrite(projectFiles(dir).editor, json(editor));
+export async function saveEditor(dir: string, editor: EditorState): Promise<void> {
+  await atomicWrite(projectFiles(dir).editor, json(EditorState.parse(editor)));
 }
 
 function checkRevision(current: Project, base: number): void {

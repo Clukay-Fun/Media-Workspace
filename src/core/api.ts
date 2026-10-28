@@ -1,0 +1,171 @@
+import { z } from "zod";
+import type { ResolvedTimeline } from "./compile";
+import type { ErrorCode, Issue } from "./errors";
+import { Ops } from "./ops";
+import type { Project } from "./schema";
+import type { TextStyle } from "./text-style";
+
+// 本地服务和网页工作台之间的接口约定（阶段 B）。
+// 服务端（src/server）按这里实现，网页（src/web）按这里调用；两边都只从这里取类型，不各写一份。
+
+export const API_PORT = 5170;
+
+/** 编辑器状态（editor.json，D22）：不影响渲染，不经过 revision */
+export const EditorState = z.strictObject({
+  rulers: z.boolean().default(true),
+  guides: z
+    .strictObject({
+      hidden: z.boolean().default(false),
+      locked: z.boolean().default(false),
+      items: z
+        .array(z.strictObject({ id: z.string().min(1), axis: z.enum(["h", "v"]), pos: z.number() }))
+        .default([]),
+    })
+    .default({ hidden: false, locked: false, items: [] }),
+  snap: z
+    .strictObject({
+      enabled: z.boolean().default(true),
+      thresholdPx: z.number().positive().default(8),
+    })
+    .default({ enabled: true, thresholdPx: 8 }),
+  showSafeArea: z.string().default("all"),
+  timeline: z
+    .strictObject({
+      pxPerSecond: z.number().positive().default(80),
+      scrollMs: z.number().nonnegative().default(0),
+    })
+    .default({ pxPerSecond: 80, scrollMs: 0 }),
+});
+export type EditorState = z.infer<typeof EditorState>;
+
+/** 预览用的合成组件参数：直接传给 <Player component={Main} inputProps={…}>，和导出用的是同一份结构 */
+export type PreviewProps = {
+  timeline: ResolvedTimeline;
+  styles: Record<string, TextStyle>;
+  /** 素材 ID → 媒体 URL（预览给代理文件，导出给标准化文件） */
+  srcs: Record<string, string>;
+  fonts: { css: string; weight: number; url: string }[];
+};
+
+// ---- 请求 ----
+
+export const OpsRequest = z.strictObject({
+  ops: Ops,
+  baseRevision: z.number().int().nonnegative(),
+  actor: z.string().min(1).default("user"),
+  dryRun: z.boolean().default(false),
+});
+export type OpsRequest = z.input<typeof OpsRequest>;
+
+export const UndoRequest = z.strictObject({
+  baseRevision: z.number().int().nonnegative(),
+  actor: z.string().min(1).default("user"),
+});
+export type UndoRequest = z.input<typeof UndoRequest>;
+
+export const ExportRequest = z.strictObject({
+  /** 输出文件；不写时放在工程的 renders/ 下 */
+  out: z.string().min(1).optional(),
+});
+export type ExportRequest = z.input<typeof ExportRequest>;
+
+// ---- 返回 ----
+
+export type ApiError = {
+  ok: false;
+  code: ErrorCode | "USAGE" | "INTERNAL";
+  message: string;
+  issues: Issue[];
+};
+
+export type CompileWarningDto = { code: string; path: string; message: string };
+
+export type ProjectResponse = { ok: true; project: Project };
+export type PreviewResponse = { ok: true; props: PreviewProps };
+export type EditorResponse = { ok: true; editor: EditorState };
+export type OpsResponse = {
+  ok: true;
+  revision: number;
+  changed: string[];
+  warnings: CompileWarningDto[];
+  dryRun: boolean;
+};
+
+export type HistoryEntry = {
+  revision: number;
+  at: string;
+  actor: string;
+  source: "cli" | "mcp" | "ui";
+  kind: "init" | "apply" | "revert" | "undo" | "redo";
+  /** 这一版改了哪些条目 */
+  changed: string[];
+  /** 操作摘要，例如 ["item.update", "caption.split"] */
+  ops: string[];
+};
+export type HistoryResponse = {
+  ok: true;
+  entries: HistoryEntry[];
+  /** 现在能不能撤销 / 重做，以及会回到哪一版 */
+  undo: { revision: number } | null;
+  redo: { revision: number } | null;
+};
+
+export type ExportStarted = { ok: true; jobId: string };
+
+/** 波形：每 msPerPeak 毫秒一个 0–1 的峰值（素材源时间） */
+export type PeaksResponse = { ok: true; msPerPeak: number; peaks: number[] };
+
+// ---- 推送（GET /api/events，SSE） ----
+
+export type ServerEvent =
+  | {
+      type: "project";
+      revision: number;
+      changed: string[];
+      actor: string;
+      source: "cli" | "mcp" | "ui";
+      kind: HistoryEntry["kind"];
+    }
+  | {
+      type: "export";
+      jobId: string;
+      progress: number;
+      done: boolean;
+      file?: string;
+      error?: { code: string; message: string };
+    };
+
+// ---- 路由 ----
+
+export const ROUTES = {
+  project: "/api/project",
+  preview: "/api/preview",
+  editor: "/api/editor",
+  ops: "/api/ops",
+  history: "/api/history",
+  undo: "/api/undo",
+  redo: "/api/redo",
+  peaks: (assetId: string) => `/api/media/${encodeURIComponent(assetId)}/peaks`,
+  export: "/api/export",
+  events: "/api/events",
+} as const;
+
+/** 错误码 → HTTP 状态 */
+export function httpStatus(code: ApiError["code"]): 400 | 404 | 409 | 422 | 423 | 500 {
+  switch (code) {
+    case "CONFLICT":
+      return 409;
+    case "TRACK_LOCKED":
+      return 423;
+    case "NOT_FOUND":
+      return 404;
+    case "USAGE":
+      return 400;
+    case "MEDIA":
+    case "RENDER":
+    case "INTERNAL":
+      return 500;
+    default:
+      return 422;
+  }
+}

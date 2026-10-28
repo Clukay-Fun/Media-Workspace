@@ -6,6 +6,7 @@ import { slide } from "@remotion/transitions/slide";
 import type React from "react";
 import { AbsoluteFill, Img, Sequence, useCurrentFrame } from "remotion";
 import { elementState, transformAt } from "../core/animate";
+import type { PreviewProps } from "../core/api";
 import type {
   FullTransform,
   ResolvedCaption,
@@ -22,13 +23,8 @@ import { TextBlock } from "./TextBlock";
 
 // 预览和导出共用的合成组件（PLAN 9）：输入是 compile 的结果，不再做任何毫秒 → 帧换算。
 
-export type MainProps = {
-  timeline: ResolvedTimeline;
-  styles: Record<string, TextStyle>;
-  /** 素材 ID → 媒体服务上的 URL（导出用标准化文件，预览可以用代理文件） */
-  srcs: Record<string, string>;
-  fonts: { css: string; weight: number; url: string }[];
-};
+/** 结构定义在 core/api（PreviewProps），网页预览和导出共用 */
+export type MainProps = PreviewProps;
 
 const loaded = new Set<string>();
 function useFonts(fonts: MainProps["fonts"]) {
