@@ -60,15 +60,15 @@ export const TextStyle = z.strictObject({
   }),
   fill: Color,
   stroke: z
-    .object({ color: Color, width: z.number().nonnegative().max(40) })
+    .strictObject({ color: Color, width: z.number().nonnegative().max(40) })
     .nullable()
     .default(null),
   shadow: z
-    .object({ color: Color, blur: z.number().nonnegative(), x: z.number(), y: z.number() })
+    .strictObject({ color: Color, blur: z.number().nonnegative(), x: z.number(), y: z.number() })
     .nullable()
     .default(null),
   box: z
-    .object({
+    .strictObject({
       color: Color,
       radius: z.number().nonnegative().default(0),
       padding: z.tuple([z.number().nonnegative(), z.number().nonnegative()]).default([0, 0]),
@@ -84,7 +84,12 @@ export const TextStyle = z.strictObject({
     align: z.enum(["left", "center", "right"]).default("center"),
   }),
   highlight: z
-    .object({
+    .strictObject({
+      /**
+       * keyword = 只亮字幕里标出的关键词；current = 只亮正在出现的那个字 / 词（样片 1029 的效果）；
+       * trail = 出现过的都留亮。三种方式下，标出的关键词都会高亮
+       */
+      mode: z.enum(["keyword", "current", "trail"]).default("keyword"),
       fill: Color,
       stroke: z
         .strictObject({ color: Color, width: z.number().nonnegative() })
@@ -104,11 +109,20 @@ export const TextStyle = z.strictObject({
     })
     .default({ leadMs: 0, tailMs: 0, handoff: "cut" }),
   animation: z
-    .object({
+    .strictObject({
       in: Anim.nullable().default(null),
       unit: z.enum(["char", "word", "line"]).default("line"),
-      /** spread = 在字幕时长内均分（不代表真实发音时间）；数字 = 每个单位固定间隔的毫秒数 */
-      stagger: z.union([z.literal("spread"), z.number().int().nonnegative()]).default("spread"),
+      /**
+       * 逐字 / 逐词出现的节奏（没有真实发音时间，都是估算）：
+       * spread = 在字幕时长内均分；{ eachMs } = 每个单位固定间隔；{ totalMs } = 在这段时间内全部出现（剪映入场动画的做法）
+       */
+      stagger: z
+        .union([
+          z.literal("spread"),
+          z.strictObject({ eachMs: z.number().int().nonnegative() }),
+          z.strictObject({ totalMs: z.number().int().nonnegative() }),
+        ])
+        .default("spread"),
       out: Anim.nullable().default(null),
       loop: Anim.nullable().default(null),
     })

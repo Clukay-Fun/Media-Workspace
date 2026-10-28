@@ -39,7 +39,7 @@ export const Asset = z.strictObject({
   probe: Probe.optional(),
   /** 相对工程目录的缓存文件 */
   cache: z
-    .object({
+    .strictObject({
       mez: z.string().optional(),
       proxy: z.string().optional(),
       peaks: z.string().optional(),
