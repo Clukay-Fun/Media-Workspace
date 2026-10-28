@@ -5,7 +5,7 @@
 - 开发计划：[docs/PLAN.md](docs/PLAN.md)
 - 开发规范：[AGENTS.md](AGENTS.md)
 
-> 状态：阶段 A 自测通过，等待验收（`dev` 分支）。验收记录见 [docs/decisions/0004](docs/decisions/0004-phase-a-acceptance.md)。
+> 状态：阶段 A 已验收（2026-10-28，`dev` 分支，暂未合并到 `main`）。验收记录见 [docs/decisions/0004](docs/decisions/0004-phase-a-acceptance.md)。
 
 ## 本地使用（阶段 A：CLI）
 
