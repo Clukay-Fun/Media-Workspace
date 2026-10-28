@@ -10,7 +10,7 @@ import {
   type Transform,
   type Transition,
 } from "./schema";
-import type { Easing } from "./text-style";
+import type { Anim, Easing } from "./text-style";
 import { clipTimelineMs, msToFrame } from "./time";
 
 // compile(project) → ResolvedTimeline：唯一的毫秒 → 帧换算入口（D7）。
@@ -26,7 +26,14 @@ export type ResolvedTransition = {
   durationInFrames: number;
 };
 
-type Flags = { trackId: string; hidden: boolean; muted: boolean; locked: boolean };
+type Flags = {
+  trackId: string;
+  /** 叠放顺序：轨道在 tracks 里的位置，越靠后越在上层 */
+  z: number;
+  hidden: boolean;
+  muted: boolean;
+  locked: boolean;
+};
 
 export type ResolvedVideo = Flags & {
   id: string;
@@ -42,8 +49,8 @@ export type ResolvedVideo = Flags & {
   transform: FullTransform;
   keyframes: ResolvedKeyframe[];
   transitionIn: ResolvedTransition | null;
-  animIn: MainClip["animIn"] | null;
-  animOut: MainClip["animOut"] | null;
+  animIn: Anim | null;
+  animOut: Anim | null;
 };
 
 export type ResolvedImage = Flags & {
@@ -53,8 +60,8 @@ export type ResolvedImage = Flags & {
   durationInFrames: number;
   transform: FullTransform;
   keyframes: ResolvedKeyframe[];
-  animIn: MainClip["animIn"] | null;
-  animOut: MainClip["animOut"] | null;
+  animIn: Anim | null;
+  animOut: Anim | null;
 };
 
 export type ResolvedCaption = Flags & {
@@ -68,6 +75,8 @@ export type ResolvedCaption = Flags & {
   style: string | null;
   /** 只露出了一部分（头或尾被裁掉） */
   partial: boolean;
+  /** 提前出现的帧数（TextStyle.timing.leadMs）；逐字动画从 from + leadFrames 开始 */
+  leadFrames: number;
 };
 
 export type ResolvedOverlay = Flags & {
@@ -232,6 +241,10 @@ export function compile(project: Project): ResolvedTimeline {
       kind: "video",
       main: true,
       trackId: mainTrack?.id ?? "main",
+      z: Math.max(
+        0,
+        project.tracks.findIndex((t) => t === mainTrack),
+      ),
       hidden: mainTrack?.hidden ?? false,
       muted: mainTrack?.muted ?? false,
       locked: mainTrack?.locked ?? false,
@@ -257,6 +270,7 @@ export function compile(project: Project): ResolvedTimeline {
   const captionStart = new Map<string, number>();
   project.tracks.forEach((track, ti) => {
     if (track.kind !== "caption") return;
+    const trackCaptions: ResolvedCaption[] = [];
     track.items.forEach((cap: Caption, ci) => {
       const ranges = mapSourceRange(segments, cap.asset, cap.startMs, cap.endMs);
       const pieces: ResolvedCaption[] = [];
@@ -284,6 +298,7 @@ export function compile(project: Project): ResolvedTimeline {
           id: cap.id,
           part: pieces.length,
           trackId: track.id,
+          z: ti,
           hidden: track.hidden,
           muted: track.muted,
           locked: track.locked,
@@ -293,6 +308,7 @@ export function compile(project: Project): ResolvedTimeline {
           highlights: cap.highlights,
           style: cap.style ?? track.style ?? null,
           partial: partial(r.srcStartMs, r.srcEndMs),
+          leadFrames: 0,
         });
       }
       if (pieces.length === 0) {
@@ -304,8 +320,9 @@ export function compile(project: Project): ResolvedTimeline {
         return;
       }
       captionStart.set(cap.id, pieces[0]?.from ?? 0);
-      captions.push(...pieces);
+      trackCaptions.push(...pieces);
     });
+    captions.push(...applyCaptionTiming(trackCaptions, project, fps, mainEndFrame));
   });
 
   // 3. 普通轨道：按锚点定位
@@ -340,6 +357,7 @@ export function compile(project: Project): ResolvedTimeline {
   project.tracks.forEach((track, ti) => {
     const flags = {
       trackId: track.id,
+      z: ti,
       hidden: track.hidden,
       muted: track.muted,
       locked: track.locked,
@@ -463,6 +481,35 @@ export function compile(project: Project): ResolvedTimeline {
     outro,
     warnings,
   };
+}
+
+/**
+ * 字幕样式里的显示时间（TextStyle.timing）：提前出现、延后消失；
+ * handoff 为 cut 时，后一句出现的那一帧前一句就消失，两句不会同时在画面上。
+ * 只改显示范围，不影响锚点（锚点用字幕原本的开始位置）。
+ */
+function applyCaptionTiming(
+  pieces: ResolvedCaption[],
+  project: Project,
+  fps: number,
+  mainEndFrame: number,
+): ResolvedCaption[] {
+  const sorted = pieces.toSorted((a, b) => a.from - b.from);
+  const out = sorted.map((c) => {
+    const timing = c.style ? project.styles[c.style]?.timing : undefined;
+    if (!timing) return { ...c, leadFrames: 0 };
+    const lead = Math.min(c.from, msToFrame(timing.leadMs, fps));
+    const end = Math.min(mainEndFrame, c.from + c.durationInFrames + msToFrame(timing.tailMs, fps));
+    return { ...c, from: c.from - lead, durationInFrames: end - (c.from - lead), leadFrames: lead };
+  });
+  out.forEach((c, i) => {
+    const next = out[i + 1];
+    const handoff = c.style ? project.styles[c.style]?.timing.handoff : "cut";
+    if (next && handoff !== "overlap" && c.from + c.durationInFrames > next.from) {
+      c.durationInFrames = Math.max(1, next.from - c.from);
+    }
+  });
+  return out;
 }
 
 function stripUndefined<T extends object>(o: T): Partial<T> {
