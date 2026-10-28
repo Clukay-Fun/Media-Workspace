@@ -7,6 +7,7 @@ import { BUILTIN_STYLES } from "../core/presets";
 import { runMcpStdio } from "../mcp/server";
 import {
   alignProject,
+  commentsInfo,
   coverProject,
   exportProject,
   facesProject,
@@ -22,6 +23,7 @@ import { ASR_MODEL, asrModelDir, fetchAsrModel, hasAsrModel } from "../node/asr"
 import { resolveProjectDir } from "../node/paths";
 import {
   applyToProject,
+  commentOnProject,
   emptyProject,
   historyState,
   initProject,
@@ -29,6 +31,7 @@ import {
   loadEditor,
   revertProject,
   saveEditor,
+  setCommentOnProject,
   undoProject,
 } from "../node/store";
 import { startServer } from "../server/index";
@@ -378,6 +381,54 @@ cli
       }
       if (o.add || o.clear) await saveEditor(dir, ed);
       out(ed.guides);
+    }),
+  );
+
+cli
+  .command("comments <proj>", "审片批注：默认只列还没处理的")
+  .option("--all", "包括已处理的")
+  .action(
+    act(async (proj: string, o: { all?: boolean }) => {
+      out(await commentsInfo(resolveProjectDir(proj), { all: o.all }));
+    }),
+  );
+
+cli
+  .command("comment <proj> <text>", "写一条批注")
+  .option("--at <ms>", "时间线毫秒")
+  .option("--target <id>", "指向的条目 ID")
+  .option("--actor <name>", "操作者", { default: "user" })
+  .action(
+    act(async (proj: string, text: string, o: { at?: number; target?: string; actor: string }) => {
+      out(
+        await commentOnProject(
+          resolveProjectDir(proj),
+          {
+            text: String(text),
+            ...(o.at !== undefined ? { atMs: Number(o.at) } : {}),
+            ...(o.target ? { target: String(o.target) } : {}),
+          },
+          { author: o.actor, source: "cli" },
+        ),
+      );
+    }),
+  );
+
+cli
+  .command("resolve <proj> <id>", "把批注标记为已处理")
+  .option("--note <text>", "改了什么，或者为什么不改")
+  .option("--reopen", "重新打开")
+  .option("--actor <name>", "操作者", { default: "user" })
+  .action(
+    act(async (proj: string, id: string, o: { note?: string; reopen?: boolean; actor: string }) => {
+      out(
+        await setCommentOnProject(resolveProjectDir(proj), {
+          id: String(id),
+          status: o.reopen ? "open" : "resolved",
+          note: o.note,
+          author: o.actor,
+        }),
+      );
     }),
   );
 

@@ -57,6 +57,20 @@ describe("planDrag", () => {
     expect(r.ops).toEqual([{ op: "item.update", id: "i1", set: { at: { ms: 800 } } }]);
   });
 
+  it("跟随字幕的元素：移动只改 offsetMs，保留按字锚定", () => {
+    const p = apply(project(), [
+      { op: "item.update", id: "i1", set: { at: { caption: "s1", char: 2, offsetMs: 100 } } },
+    ]);
+    const r = planDrag(p, { id: "i1", mode: "move", deltaMs: -250, snap: false });
+    expect(r.ops).toEqual([
+      { op: "item.update", id: "i1", set: { at: { caption: "s1", char: 2, offsetMs: -150 } } },
+    ]);
+    // 提交后的位置和预览一致：第 3 个字在源 4600 → 时间线 2600，加 100 再减 250
+    const tl = compile(apply(p, r.ops));
+    expect(tl.images[0]?.from).toBe(Math.round((2450 * 30) / 1000));
+    expect(r.preview.startMs).toBeCloseTo(2450, 0);
+  });
+
   it("拖开头时结尾不动，拖结尾时开头不动", () => {
     const a = planDrag(project(), { id: "i1", mode: "trimStart", deltaMs: 200, snap: false });
     expect(a.preview).toEqual({ startMs: 700, endMs: 1500 });

@@ -27,6 +27,7 @@ export function projectFiles(dir: string) {
   return {
     project: join(dir, "project.json"),
     editor: join(dir, "editor.json"),
+    review: join(dir, "review.json"),
     history: join(dir, "history"),
     logs: join(dir, "logs"),
     opsLog: join(dir, "logs", "ops.jsonl"),

@@ -19,7 +19,7 @@ import { detectFaces, readFaces } from "./faces";
 import { importMedia } from "./media";
 import { projectFiles } from "./paths";
 import { exportVideo, renderStills } from "./render";
-import { applyToProject, loadEditor, loadProject, type Source } from "./store";
+import { applyToProject, loadEditor, loadProject, loadReview, type Source } from "./store";
 
 // CLI、MCP、本地服务共用的操作（AGENTS.md 第 2 节：三个外壳只做参数解析和输出格式）。
 
@@ -311,6 +311,18 @@ export async function coverProject(
   return { ok: true as const, revision: p.revision, file, frame };
 }
 
+/** 审片批注：默认只列还没处理的 */
+export async function commentsInfo(dir: string, o: { all?: boolean } = {}) {
+  const [p, r] = await Promise.all([loadProject(dir), loadReview(dir)]);
+  const comments = o.all ? r.comments : r.comments.filter((c) => c.status === "open");
+  return {
+    ok: true as const,
+    revision: p.revision,
+    open: r.comments.filter((c) => c.status === "open").length,
+    comments,
+  };
+}
+
 /** 给 AI 的说明：规则、操作和样式的 JSON Schema、模板、动画预设 */
 export function guideInfo() {
   return {
@@ -324,6 +336,7 @@ export function guideInfo() {
       "导入字幕后可以跑 align，让逐字动画跟着语音走；改了字幕文字后需要重新 align",
       "加标题、卡片之前先列方案（哪句话 → 加什么画面 → 用哪个模板 → 什么时间），给用户确认后再 apply",
       "需要在说到某个词时出现的元素，用 at: { caption: <字幕ID>, char: <第几个字> } 锚定，而不是估算毫秒",
+      "开始工作前先看 comments：人在审片台上留的批注（带时间点和条目 ID），逐条处理后用 resolve 标记并写明改了什么；不打算改的也 resolve，在 note 里说明原因",
       "提交后跑 lint：字太小、出安全区、字幕放不下、互相遮挡、挡脸；导入新视频时看一眼 subtitleCheck，原片已有字幕会重影",
     ],
     ops: z.toJSONSchema(Op, { io: "input" }),

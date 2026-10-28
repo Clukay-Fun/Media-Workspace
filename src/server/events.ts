@@ -66,10 +66,19 @@ export async function watchProject(
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => void check(), 20);
   });
+  // 批注写在 review.json（原子写入 = 临时文件改名），只看文件名，合并 20ms 内的多次变化
+  let reviewTimer: NodeJS.Timeout | null = null;
+  const reviewWatcher: FSWatcher = watch(dir, (_, name) => {
+    if (name !== "review.json") return;
+    if (reviewTimer) clearTimeout(reviewTimer);
+    reviewTimer = setTimeout(() => bus.emit({ type: "review" }), 20);
+  });
   return {
     close: () => {
       if (timer) clearTimeout(timer);
+      if (reviewTimer) clearTimeout(reviewTimer);
       watcher.close();
+      reviewWatcher.close();
     },
     check,
   };

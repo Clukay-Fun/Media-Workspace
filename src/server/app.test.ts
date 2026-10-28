@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ServerEvent } from "../core/api";
-import { applyToProject, initProject } from "../node/store";
+import { applyToProject, commentOnProject, initProject } from "../node/store";
 import { createApp } from "./app";
 import { createBus, watchProject } from "./events";
 import { createExportJobs } from "./export-jobs";
@@ -126,6 +126,28 @@ describe("本地服务接口", () => {
     });
   });
 
+  it("批注：写入、标记已处理、删除，不增加 revision", async () => {
+    const { req } = setup();
+    await req("/api/ops", { body: { ops: [asset, addClip], baseRevision: 0 } });
+    const c = await (
+      await req("/api/comments", { body: { text: "这段太长", atMs: 1200, target: "c1" } })
+    ).json();
+    expect(c.comment).toMatchObject({ id: "k1", author: "user", source: "ui", revision: 1 });
+    const missing = await req("/api/comments", { body: { text: "x", target: "nope" } });
+    expect(missing.status).toBe(404);
+    await req("/api/comments/k1", {
+      body: { status: "resolved", note: "剪掉 2 秒", actor: "claude" },
+    });
+    const r = await (await req("/api/comments")).json();
+    expect(r.review.comments[0]).toMatchObject({
+      status: "resolved",
+      resolution: { by: "claude" },
+    });
+    expect((await req("/api/comments/k1", { method: "DELETE" })).status).toBe(200);
+    expect((await (await req("/api/comments")).json()).review.comments).toEqual([]);
+    expect((await (await req("/api/project")).json()).project.revision).toBe(1);
+  });
+
   it("只接受本机的 Host（防 DNS 重绑定）", async () => {
     const { req } = setup();
     expect((await req("/api/project", { host: "evil.example.com" })).status).toBe(403);
@@ -176,6 +198,22 @@ describe("推送", () => {
       ]);
       // 1 秒内送达（验收第 2 项）
       expect(Date.now() - t0).toBeLessThan(1000);
+    } finally {
+      w.close();
+    }
+  });
+
+  it("别的进程（这里是 MCP）写批注后推送 review 事件", async () => {
+    const bus = createBus();
+    const events: ServerEvent[] = [];
+    bus.subscribe((e) => events.push(e));
+    const w = await watchProject(dir, bus);
+    try {
+      await commentOnProject(dir, { text: "看一下" }, { author: "claude", source: "mcp" });
+      const t0 = Date.now();
+      while (events.length < 1 && Date.now() - t0 < 2000)
+        await new Promise((r) => setTimeout(r, 20));
+      expect(events).toEqual([{ type: "review" }]);
     } finally {
       w.close();
     }
