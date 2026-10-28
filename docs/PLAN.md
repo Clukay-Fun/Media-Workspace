@@ -53,7 +53,7 @@ AI 应用（Codex、Claude Code 等）通过 CLI 或本地 MCP 提交操作；
 | 文件 | 参数 | 结论 |
 |---|---|---|
 | `剪辑前.mov` | HEVC Main10（10-bit）、1080×1920、**bt709（SDR）**、约 30fps、33.9 秒、AAC 48k 立体声 | 不是 HDR；10-bit HEVC 仍然要转成 8-bit H.264 标准化文件 |
-| `剪辑后.mp4` | H.264、1080×1920、恒定 30fps、28.7 秒 | 剪掉了大约 5.2 秒（停顿和口误） |
+| `剪辑后.mp4` | H.264、1080×1920、恒定 30fps、28.7 秒 | 原片从 2.607 秒开始、**整体 1.1 倍速**，中间没有剪切，最后接片尾（见 `docs/decisions/0001`） |
 | `*.srt` | 16 条，0.3–27.1 秒 | **对应成片时间**，不对应原片 |
 | `封面.jpg` | 1080×1920 | 人物画面 + 中间一条半透明深色横条 + 两行黄色大字标题 |
 
@@ -82,7 +82,7 @@ AI 应用（Codex、Claude Code 等）通过 CLI 或本地 MCP 提交操作；
 | F19 | 撤销 / 重做 | 基于 revision 历史 | `⌘Z` / `⇧⌘Z` | — | B |
 | F11 | 字幕快剪 | 字幕绑定素材源时间（第 5.3 节）；需要对应原片的 SRT | 文稿视图：删除、合并、拆分、去停顿 | — | C |
 | F13 | 字幕模板 | 保存的 `TextStyle` | 模板库、另存为模板 | — | C |
-| F6 | 变速 | 片段的 `speed`（0.25–4，固定倍速） | 属性面板 | `playbackRate`，音频保持音调 | D |
+| F6 | 变速 | 片段的 `speed`（0.25–4，固定倍速） | 属性面板 | `playbackRate` + `preservePitch` | A（数据和渲染，样片需要）/ D（界面） |
 | F7 | 转场 | 片段的 `transitionIn` | 在两段之间添加 | `@remotion/transitions` | D |
 | F8 | 图片 + 动效 | 图片片段 + 入场 / 出场 / 循环动画预设 + 关键帧 | 素材区拖入 | Remotion `<Img>` | D |
 | F15 | 画中画 | 第二条视频轨道上的片段 + `transform` | 预览画面上直接拖动和缩放 | 嵌套的视频组件 | D |
@@ -323,7 +323,9 @@ stdout 默认输出 JSON，日志写到 stderr。
 ## 9. 渲染
 
 - 预览（Player）和导出（`renderMedia`）用同一个 `composition/Main`，输入都是 `ResolvedTimeline`。
-- 视频组件优先用 `@remotion/media` 的 `<Video>`（阶段 A 第一天验证，有问题就退回 `OffthreadVideo`）；变速用 `playbackRate`。
+- 视频组件用 `@remotion/media` 的 `<Video>`（已验证，见 `docs/decisions/0002`）；变速用 `playbackRate`，**必须显式打开 `preservePitch`**（默认关闭）。
+- 帧映射规则：输出第 n 帧 = 源素材第 `trimBefore + floor(n × 倍速)` 帧，`core/compile` 必须和它一致。
+- 媒体通过本地 HTTP 服务（支持 Range 和 CORS）提供给渲染器和预览，不使用 `publicDir`。
 - 转场用 `@remotion/transitions`（`slide`、`wipe`、`fade`），方向和时长可以配置。
 - 字体用 `@remotion/fonts` 显式加载；缺失时报错 `FONT_MISSING`。阶段 B 评估在预览里使用子集字体。
 - 输出参数：H.264、yuv420p、bt709、AAC 48k 192kbps、CRF 18；并发数默认取 CPU 核数的一半；阶段 A 评估 VideoToolbox 硬件编码。
@@ -362,15 +364,15 @@ stdout 默认输出 JSON，日志写到 stderr。
 
 1. 顶部固定标题条：样式接近，整条视频一直显示。
 2. 中部字幕：逐字出现，关键词高亮，时间和画面对应。
-3. 剪辑点和成片一致（用 `cut.*` 或 `clip.split` 完成）。
+3. 起点和倍速和成片一致：裁掉开头 2.607 秒，1.1 倍速，声音保持原来的音调。
 4. 推近效果的效果接近。
 5. 音频在切点处没有爆音。
 6. 截图（`preview`）和导出视频的对应帧一致；黄金帧测试通过。
 7. 冲突、校验失败、渲染失败、锁定轨道四种情况下，`project.json` 都不会被损坏；可以回退。
 8. 成片最后接上你自己的片尾素材，衔接处没有黑帧、爆音。
 
-> 准备工作：你的 SRT 对应的是成片时间。为了得到「剪辑前到剪辑后」的剪辑点，我会写一个一次性脚本，
-> 用音频互相关把成片对齐回原片，算出剪辑点，同时得到一份对应原片的 SRT，作为测试数据（不进仓库）。
+> 准备工作（已完成，2026-10-28）：`scripts/align-edit.ts` 推算出样片的剪辑方式（`docs/decisions/0001`）；
+> `spikes/a0-2/` 验证了视频组件的帧准确性和音画同步（`docs/decisions/0002`）。
 
 ### 阶段 B：工作台编辑基础
 

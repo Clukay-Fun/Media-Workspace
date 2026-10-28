@@ -86,7 +86,9 @@ function formatSrt(cues: Cue[]): string {
     const p = (n: number, w = 2) => String(Math.floor(n)).padStart(w, "0");
     return `${p(ms / 3600000)}:${p((ms / 60000) % 60)}:${p((ms / 1000) % 60)},${p(ms % 1000, 3)}`;
   };
-  return cues.map((c, i) => `${i + 1}\n${fmt(c.startMs)} --> ${fmt(c.endMs)}\n${c.text}\n`).join("\n");
+  return cues
+    .map((c, i) => `${i + 1}\n${fmt(c.startMs)} --> ${fmt(c.endMs)}\n${c.text}\n`)
+    .join("\n");
 }
 
 function main() {
