@@ -6,7 +6,9 @@ import {
   enterState,
   highlightMask,
   IDLE,
+  markerProgress,
   splitUnits,
+  sweepProgress,
   unitStarts,
 } from "../core/animate";
 import { cssFontStack } from "../core/fonts";
@@ -56,6 +58,17 @@ export const TextBlock: React.FC<TextBlockProps> = ({
   );
   const mask = highlightMask(text, highlights);
   const hl = style.highlight;
+  const revealEndMs = totalMs - (leadFrames * 1000) / fps;
+  const sweep =
+    hl?.mode === "sweep"
+      ? sweepProgress(text, units, starts, revealMs, revealEndMs, charStartMs)
+      : null;
+  const marker = hl?.marker
+    ? markerProgress(mask, units, starts, revealMs, hl.marker.drawMs)
+    : null;
+  /** 一个 span 覆盖的字的平均进度（英文整词放一个 span） */
+  const avg = (arr: number[], from: number, to: number) =>
+    to > from ? arr.slice(from, to).reduce((a, b) => a + b, 0) / (to - from) : 0;
 
   // 当前正在出现的单位：最后一个已经开始出现、且不是标点的单位
   let current = -1;
@@ -113,43 +126,76 @@ export const TextBlock: React.FC<TextBlockProps> = ({
   const shadow = style.shadow
     ? `drop-shadow(${style.shadow.x}px ${style.shadow.y}px ${style.shadow.blur / 2}px ${style.shadow.color})`
     : undefined;
-  const layer = (kind: "stroke" | "fill") => (
+  const layer = (kind: "marker" | "stroke" | "fill") => (
     <div
       style={{
-        ...(kind === "stroke"
-          ? {
-              position: "absolute",
-              inset: 0,
-              WebkitTextStroke: `${strokeW * 2}px ${style.stroke?.color}`,
-              color: style.stroke?.color,
-              filter: shadow,
-            }
-          : { position: "relative", filter: strokeW > 0 ? undefined : shadow }),
+        ...(kind === "marker"
+          ? { position: "absolute", inset: 0, color: "transparent" }
+          : kind === "stroke"
+            ? {
+                position: "absolute",
+                inset: 0,
+                WebkitTextStroke: `${strokeW * 2}px ${style.stroke?.color}`,
+                color: style.stroke?.color,
+                filter: shadow,
+              }
+            : { position: "relative", filter: strokeW > 0 ? undefined : shadow }),
       }}
     >
       {pieces.map(({ u, state, lit }, i) => {
         const s = combine(state, { ...whole, opacity: 1 });
         const color =
-          kind === "stroke"
-            ? lit && hl?.stroke
-              ? hl.stroke.color
-              : style.stroke?.color
-            : lit
-              ? hl?.fill
-              : style.fill;
+          kind === "marker"
+            ? "transparent"
+            : kind === "stroke"
+              ? lit && hl?.stroke
+                ? hl.stroke.color
+                : style.stroke?.color
+              : lit
+                ? hl?.fill
+                : style.fill;
         const scale = s.scale * (lit && hl ? hl.scale : 1);
-        const span = (content: string, key: string) => (
+        const paint = (from: number, to: number): React.CSSProperties => {
+          if (kind === "marker" && marker && hl?.marker) {
+            const p = avg(marker, from, to);
+            if (p <= 0) return {};
+            // 色块从字形的底部往上画（行框底部还留有约 (行高-1)/2 个字号的空白），高度按字号算
+            const bottom = ((font.lineHeight - 1) / 2 / font.lineHeight) * 100 + 4;
+            const top = Math.min(100, bottom + (hl.marker.height / font.lineHeight) * 100);
+            const c = hl.marker.color;
+            return {
+              backgroundImage: `linear-gradient(to top, transparent ${bottom}%, ${c} ${bottom}%, ${c} ${top}%, transparent ${top}%)`,
+              backgroundSize: `${p * 100}% 100%`,
+              backgroundRepeat: "no-repeat",
+            };
+          }
+          if (kind === "fill" && sweep && hl && !lit) {
+            const p = avg(sweep, from, to);
+            if (p >= 1) return { color: hl.fill };
+            if (p <= 0) return {};
+            // 卡拉 OK：已经念过的部分换成高亮色，用渐变裁切到文字上
+            return {
+              color: "transparent",
+              backgroundImage: `linear-gradient(90deg, ${hl.fill} ${p * 100}%, ${style.fill} ${p * 100}%)`,
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+            };
+          }
+          return {};
+        };
+        const span = (content: string, key: string, from: number, to: number) => (
           <span
             key={key}
             style={{
               display: "inline-block",
               whiteSpace: "pre",
               color,
+              ...paint(from, to),
               opacity: s.opacity,
               transform: `translate(${s.dx}px, ${s.dy}px) scale(${scale}) rotate(${s.rotation}deg)`,
               filter: s.blur > 0 ? `blur(${s.blur}px)` : undefined,
               textShadow:
-                kind === "fill" && s.glow > 0
+                kind === "fill" && s.glow > 0 && !sweep
                   ? `0 0 ${24 * s.glow}px ${hl?.fill ?? style.fill}`
                   : undefined,
             }}
@@ -162,7 +208,9 @@ export const TextBlock: React.FC<TextBlockProps> = ({
         return (
           <span key={`${u.start}`}>
             {u.breakBefore ? <br /> : null}
-            {chars.map((c, j) => span(c, `${i}-${j}`))}
+            {chars.length > 1 || HAN.test(u.text)
+              ? chars.map((c, j) => span(c, `${i}-${j}`, u.start + j, u.start + j + 1))
+              : chars.map((c, j) => span(c, `${i}-${j}`, u.start, u.end))}
           </span>
         );
       })}
@@ -183,6 +231,7 @@ export const TextBlock: React.FC<TextBlockProps> = ({
         }}
       >
         <div style={{ position: "relative" }}>
+          {marker ? layer("marker") : null}
           {strokeW > 0 ? layer("stroke") : null}
           {layer("fill")}
         </div>

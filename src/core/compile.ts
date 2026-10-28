@@ -273,6 +273,8 @@ export function compile(project: Project): ResolvedTimeline {
   // 2. 字幕：按素材源时间映射到主轨，被剪掉的部分不显示（D19）
   const captions: ResolvedCaption[] = [];
   const captionStart = new Map<string, number>();
+  /** 每句字幕每个字开始念的时间线毫秒（被剪掉的字为 null），给按字锚定用 */
+  const captionChars = new Map<string, (number | null)[]>();
   project.tracks.forEach((track, ti) => {
     if (track.kind !== "caption") return;
     const trackCaptions: ResolvedCaption[] = [];
@@ -344,6 +346,21 @@ export function compile(project: Project): ResolvedTimeline {
         return;
       }
       captionStart.set(cap.id, pieces[0]?.from ?? 0);
+      const len = [...cap.text].length;
+      captionChars.set(
+        cap.id,
+        Array.from({ length: len }, (_, k) => {
+          // 没有逐字时间时按字数估算
+          const src =
+            cap.charStartMs?.[k] ??
+            cap.startMs + ((cap.endMs - cap.startMs) * k) / Math.max(1, len);
+          const r = ranges.find((x) => src >= x.srcStartMs && src < x.srcEndMs);
+          if (!r) return null;
+          return (
+            r.startMs + ((src - r.srcStartMs) * (r.endMs - r.startMs)) / (r.srcEndMs - r.srcStartMs)
+          );
+        }),
+      );
       trackCaptions.push(...pieces);
     });
     captions.push(...applyCaptionTiming(trackCaptions, project, fps, mainEndFrame));
@@ -361,6 +378,18 @@ export function compile(project: Project): ResolvedTimeline {
           message: `锚点字幕 ${at.caption} 不存在或已被剪掉，这个元素不会显示`,
         });
         return null;
+      }
+      if (at.char !== undefined) {
+        const ms = captionChars.get(at.caption)?.[at.char];
+        if (ms === undefined || ms === null) {
+          warnings.push({
+            code: "ANCHOR_CUT",
+            path,
+            message: `锚点字幕 ${at.caption} 的第 ${at.char + 1} 个字已被剪掉或不存在，这个元素不会显示`,
+          });
+          return null;
+        }
+        return Math.max(0, f(ms + at.offsetMs));
       }
       return Math.max(0, start + f(at.offsetMs));
     }

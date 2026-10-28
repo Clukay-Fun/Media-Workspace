@@ -5,6 +5,7 @@ import { extname, join, relative } from "node:path";
 import { promisify } from "node:util";
 import { MwError } from "../core/errors";
 import type { Asset } from "../core/schema";
+import { detectFaces } from "./faces";
 import { projectFiles } from "./paths";
 import { atomicWrite } from "./store";
 
@@ -150,7 +151,13 @@ export async function fingerprint(file: string): Promise<string> {
   }
 }
 
-export type ImportedAsset = { asset: Asset; probe: MediaProbe; created: string[] };
+export type ImportedAsset = {
+  asset: Asset;
+  probe: MediaProbe;
+  created: string[];
+  /** 烧录字幕检查图：三帧画面的下半部分拼在一起，让人或 AI 看一眼原片是不是已经带字幕 */
+  subtitleCheck?: string;
+};
 
 export type ImportOptions = {
   fps?: number;
@@ -158,6 +165,8 @@ export type ImportOptions = {
   proxy?: boolean;
   peaks?: boolean;
   onLog?: (line: string) => void;
+  /** 检测人脸（质检挡脸用，只在 macOS 上可用），默认开 */
+  faces?: boolean;
 };
 
 /** 导入一个素材：返回可以直接放进 asset.add 的 Asset 对象（缓存路径相对工程目录） */
@@ -198,6 +207,18 @@ export async function importMedia(
       }
       cache.proxy = rel(proxy);
     }
+    if (probe.kind === "video" && opts.faces !== false) {
+      const faces = join(media, `${fp}.faces.json`);
+      if (!(await exists(faces))) {
+        opts.onLog?.(`检测人脸：${file}`);
+        const track = await detectFaces(cache.proxy ? join(dir, cache.proxy) : file, media);
+        if (track) {
+          await atomicWrite(faces, JSON.stringify(track));
+          created.push(faces);
+        }
+      }
+      if (await exists(faces)) cache.faces = rel(faces);
+    }
     if (probe.hasAudio && opts.peaks !== false) {
       const peaks = join(media, `${fp}.peaks.json`);
       if (!(await exists(peaks))) {
@@ -220,7 +241,24 @@ export async function importMedia(
     },
     ...(Object.keys(cache).length > 0 ? { cache } : {}),
   };
-  return { asset, probe, created };
+  let subtitleCheck: string | undefined;
+  if (probe.kind === "video") {
+    subtitleCheck = join(media, `${fp}.subcheck.jpg`);
+    if (!(await exists(subtitleCheck))) {
+      const d = probe.durationMs / 1000;
+      // 三个时间点各取一帧的下半部分（字幕通常在这里），横向拼成一张
+      await ffmpegTo(subtitleCheck, [
+        ...[0.25, 0.5, 0.75].flatMap((t) => ["-ss", String(d * t), "-i", file]),
+        "-filter_complex",
+        "[0:v]crop=iw:ih/2:0:ih/2,scale=360:-2[a];[1:v]crop=iw:ih/2:0:ih/2,scale=360:-2[b];" +
+          "[2:v]crop=iw:ih/2:0:ih/2,scale=360:-2[c];[a][b][c]hstack=3",
+        "-frames:v",
+        "1",
+      ]);
+      created.push(subtitleCheck);
+    }
+  }
+  return { asset, probe, created, ...(subtitleCheck ? { subtitleCheck } : {}) };
 }
 
 const COLOR = ["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"];

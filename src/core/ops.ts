@@ -41,6 +41,12 @@ export const Op = z.discriminatedUnion("op", [
     fingerprint: z.string().optional(),
   }),
   z.strictObject({ op: z.literal("asset.remove"), id: Id }),
+  /** 更新素材的缓存文件（例如补做人脸检测）；字段写 null 表示删掉 */
+  z.strictObject({
+    op: z.literal("asset.cache"),
+    id: Id,
+    set: z.partialRecord(z.enum(["mez", "proxy", "peaks", "faces"]), z.string().min(1).nullable()),
+  }),
   // 轨道
   z.strictObject({ op: z.literal("track.add"), track: AnyObj, index: z.number().int().optional() }),
   z.strictObject({ op: z.literal("track.update"), id: Id, set: Patch }),
@@ -330,6 +336,18 @@ function run(ctx: Ctx, op: Op): void {
       if (!a) throw new MwError("NOT_FOUND", `素材「${op.id}」不存在`);
       a.path = op.path;
       if (op.fingerprint !== undefined) a.fingerprint = op.fingerprint;
+      ctx.changed.add(op.id);
+      return;
+    }
+    case "asset.cache": {
+      const a = p.assets[op.id];
+      if (!a) throw new MwError("NOT_FOUND", `素材「${op.id}」不存在`);
+      const cache: Record<string, string> = { ...a.cache };
+      for (const [k, v] of Object.entries(op.set)) {
+        if (v === null) delete cache[k];
+        else cache[k] = v;
+      }
+      a.cache = cache;
       ctx.changed.add(op.id);
       return;
     }

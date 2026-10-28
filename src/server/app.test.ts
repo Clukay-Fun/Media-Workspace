@@ -115,6 +115,17 @@ describe("本地服务接口", () => {
     expect(r.props.timeline).toMatchObject({ width: 1080, height: 1920, fps: 30 });
   });
 
+  it("质检结果", async () => {
+    const { req } = setup();
+    await req("/api/ops", { body: { ops: [asset], baseRevision: 0 } });
+    expect(await (await req("/api/lint")).json()).toEqual({
+      ok: true,
+      revision: 1,
+      issues: [],
+      noFaceData: ["a1"],
+    });
+  });
+
   it("只接受本机的 Host（防 DNS 重绑定）", async () => {
     const { req } = setup();
     expect((await req("/api/project", { host: "evil.example.com" })).status).toBe(403);

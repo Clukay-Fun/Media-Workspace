@@ -9,6 +9,8 @@ type Raw = Record<string, unknown>;
 const STEPS: Record<number, (p: Raw) => Raw> = {
   // 1 → 2：字幕新增可选的 charStartMs（docs/decisions/0005），旧数据不用改
   1: (p) => ({ ...p, version: 2 }),
+  // 2 → 3：锚点可以指定字幕的第几个字、素材缓存新增 faces（docs/decisions/0007），都是可选字段
+  2: (p) => ({ ...p, version: 3 }),
 };
 
 export function migrate(data: unknown): unknown {

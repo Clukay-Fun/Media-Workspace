@@ -6,9 +6,11 @@ import {
   alignProject,
   coverProject,
   exportProject,
+  facesProject,
   guideInfo,
   importAsset,
   inspectProject,
+  lintDir,
   previewProject,
   templateOpts,
   templatesInfo,
@@ -106,6 +108,25 @@ export function createMcpServer(): McpServer {
   );
 
   server.registerTool(
+    "lint",
+    {
+      description:
+        "质检（提交后自查用）：字太小、文字出安全区、字幕放不下、元素互相遮挡、挡脸。每条带 atMs，可以直接 preview 查看",
+      inputSchema: { project },
+    },
+    ({ project: p }) => call(() => lintDir(dirOf(p))),
+  );
+
+  server.registerTool(
+    "faces",
+    {
+      description: "给还没有人脸数据的视频素材补做人脸检测（macOS），之后 lint 才能检查挡脸",
+      inputSchema: { project, actor },
+    },
+    ({ project: p, actor: a }) => call(() => facesProject(dirOf(p), { source: "mcp", actor: a })),
+  );
+
+  server.registerTool(
     "import",
     {
       description:
@@ -119,7 +140,16 @@ export function createMcpServer(): McpServer {
       },
     },
     ({ project: p, file, id, baseRevision, actor: a }) =>
-      call(() => importAsset(dirOf(p), file, { id, baseRevision, source: "mcp", actor: a })),
+      call(async () => {
+        const r = await importAsset(dirOf(p), file, { id, baseRevision, source: "mcp", actor: a });
+        const content: Content[] = [{ type: "text", text: JSON.stringify(r, null, 2) }];
+        // 烧录字幕检查图直接给 AI 看
+        if (r.subtitleCheck) {
+          const data = (await readFile(r.subtitleCheck)).toString("base64");
+          content.push({ type: "image", data, mimeType: "image/jpeg" });
+        }
+        return { content } satisfies Result;
+      }),
   );
 
   server.registerTool(

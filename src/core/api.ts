@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ResolvedTimeline } from "./compile";
 import type { ErrorCode, Issue } from "./errors";
+import type { LintIssue } from "./lint";
 import { Ops } from "./ops";
 import type { Project } from "./schema";
 import type { TextStyle } from "./text-style";
@@ -112,6 +113,15 @@ export type HistoryResponse = {
 
 export type ExportStarted = { ok: true; jobId: string };
 
+/** 质检结果（GET /api/lint）：界面可以在时间线上标出 atMs 的位置 */
+export type LintResponse = {
+  ok: true;
+  revision: number;
+  issues: LintIssue[];
+  /** 没有人脸数据的视频素材（挡脸检查没覆盖到） */
+  noFaceData: string[];
+};
+
 /** 波形：每 msPerPeak 毫秒一个 0–1 的峰值（素材源时间） */
 export type PeaksResponse = { ok: true; msPerPeak: number; peaks: number[] };
 
@@ -147,6 +157,7 @@ export const ROUTES = {
   redo: "/api/redo",
   peaks: (assetId: string) => `/api/media/${encodeURIComponent(assetId)}/peaks`,
   export: "/api/export",
+  lint: "/api/lint",
   events: "/api/events",
 } as const;
 

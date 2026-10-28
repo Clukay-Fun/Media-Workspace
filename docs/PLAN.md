@@ -1,4 +1,4 @@
-# Media Workspace 开发计划（v0.6）
+# Media Workspace 开发计划（v0.7）
 
 > 状态：已批准（2026-10-28），阶段 A 在 `dev` 分支上进行。
 > 最后更新：2026-10-28
@@ -10,6 +10,8 @@
 >   字幕显示时间（提前 / 延后 / 衔接）、高亮方式、强调类动画和情绪标注、拖动规则、MG 卡片分类、AI 自查流程。
 > - v0.6：用户看了复刻成片，要求逐字动画跟着语音走——加入**本地识音对齐**（`mw align`，D27，`docs/decisions/0005`）。
 >   只用来拿每个字的时间，字幕文字仍以 SRT 为准；工程格式升到 v2（字幕新增 `charStartMs`）。
+> - v0.7：借鉴同类项目的做法（`docs/decisions/0007`）：叠加层按字锚定（工程格式 v3）、卡拉 OK 扫色和荧光笔高亮、
+>   质检 `mw lint`、人脸检测 `mw faces`、导入时检查烧录字幕、先列方案再动手。增量渲染暂不做。
 
 ## 0. 一句话定义
 
@@ -206,6 +208,7 @@ AI 应用（Codex、Claude Code 等）通过 CLI 或本地 MCP 提交操作；
 - **主轨**：片段首尾相连。片段在时间线上的长度 = `(outMs - inMs) / speed`；有转场时，和前一个片段重叠 `durationMs`（和剪映一样，转场会让总时长变短）。
 - **普通轨道**：每个条目用 `at` 锚定开始位置：
   1. `{ "caption": "s5", "offsetMs"?: 0 }`：跟随某句字幕（推荐，AI 默认用这种）。
+     加 `"char": 3` 表示念到这句第 4 个字时出现（v3，`docs/decisions/0007`）。
   2. `{ "clip": "c2", "offsetMs": 300 }`：跟随主轨上的某个片段。
   3. `{ "ms": 9000 }`：成片的绝对时间（人在时间线上拖动后默认是这种）。
 - **字幕**：记录的是 `asset + 源时间`。主轨上任何一个片段只要露出了这段源时间，就在对应位置显示；变速时按倍速换算；被剪掉的部分就不显示。
@@ -330,6 +333,8 @@ AI 应用（Codex、Claude Code 等）通过 CLI 或本地 MCP 提交操作；
 | `mw undo <proj> --base <rev>` / `mw redo <proj> --base <rev>` | 撤销 / 重做（作为一次回退写入，人和 AI 的修改在同一个撤销栈里） |
 | `mw serve <proj> [--port 5170]` | 启动本地工作台（REST + SSE + 网页，只监听 127.0.0.1），接口约定在 `src/core/api.ts` |
 | `mw mcp` | MCP stdio 服务，工具和上面的命令一一对应（`docs/decisions/0006`） |
+| `mw lint <proj>` | 质检：字太小、出安全区、字幕放不下、互相遮挡、挡脸（都是警告，带 `atMs`） |
+| `mw faces <proj>` | 给还没有人脸数据的视频素材补做人脸检测（macOS Vision；导入视频时会自动做） |
 | `mw models [--fetch]` | 查看 / 下载本地模型（识音模型放在 `~/MediaWorkspace/models/`，用 `MW_MODELS_DIR` 修改） |
 | `mw guide` | 输出给 AI 的编排规则、样式结构和模板目录 |
 
@@ -447,6 +452,12 @@ stdout 默认输出 JSON，日志写到 stderr。
 AI 能自己完成 `inspect → apply → validate → preview --sheet → export`，结果在工作台里可以继续手动调整。
 
 > AI 从阶段 A 开始就能通过 CLI 使用全部已完成的能力，阶段 E 只是补齐编排规则和 MG 模板。
+
+### 待评估（不排进阶段）
+
+- **增量渲染**：只重渲改动过的片段再拼接。叠加层、字幕和转场会跨越剪辑点，分段边界不好定；阶段 D 有转场之后再评估（`docs/decisions/0007`）。
+- **备选渲染引擎 HyperFrames**（Apache-2.0）：`ResolvedTimeline` 是渲染层的边界，Remotion 的授权或速度出问题时再评估。
+- **MG 卡片分类**参考 Barty-Bart motion-graphics（MIT，只参考分类），和阶段 E 第一批模板一起做。
 
 ## 12. 风险
 

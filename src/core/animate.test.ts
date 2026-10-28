@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { ease, highlightMask, splitUnits, transformAt, unitStarts } from "./animate";
+import {
+  ease,
+  highlightMask,
+  markerProgress,
+  splitUnits,
+  sweepProgress,
+  transformAt,
+  unitStarts,
+} from "./animate";
 
 describe("splitUnits", () => {
   it("中文按词拆分，标点不单独占节拍", () => {
@@ -77,5 +85,35 @@ describe("unitStarts：识音得到的逐字时间", () => {
     expect(unitStarts(units, "spread", 1000, 120, [0, 150, 150, 600, 820])).toEqual([
       0, 150, 150, 600, 820,
     ]);
+  });
+});
+
+describe("卡拉 OK 扫色和荧光笔", () => {
+  it("扫色：每个字从开始念扫到下一个字开始，标点不扫", () => {
+    const text = "你好，世界";
+    const units = splitUnits(text, "char");
+    const starts = [0, 200, 200, 400, 600];
+    expect(sweepProgress(text, units, starts, 100, 800)).toEqual([0.5, 0, 0, 0, 0]);
+    expect(sweepProgress(text, units, starts, 500, 800)).toEqual([1, 1, 0, 0.5, 0]);
+    expect(sweepProgress(text, units, starts, 800, 800)).toEqual([1, 1, 0, 1, 1]);
+  });
+
+  it("扫色：一个词多个字时平分这个词的时长", () => {
+    const text = "今天好";
+    const units = [
+      { text: "今天", start: 0, end: 2, breakBefore: false, silent: false },
+      { text: "好", start: 2, end: 3, breakBefore: false, silent: false },
+    ];
+    expect(sweepProgress(text, units, [0, 400], 300, 600)).toEqual([1, 0.5, 0]);
+  });
+
+  it("荧光笔：连续的关键词字从左往右依次画完", () => {
+    const text = "海外身份";
+    const units = splitUnits(text, "char");
+    const mask = highlightMask(text, [{ text: "身份" }]);
+    const starts = [0, 100, 200, 300];
+    expect(markerProgress(mask, units, starts, 200, 300)).toEqual([0, 0, 0, 0]);
+    expect(markerProgress(mask, units, starts, 275, 300)).toEqual([0, 0, 0.5, 0]);
+    expect(markerProgress(mask, units, starts, 500, 300)).toEqual([0, 0, 1, 1]);
   });
 });

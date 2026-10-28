@@ -136,14 +136,24 @@ export function validate(input: unknown, opts: ValidateOptions = {}): ValidateRe
   if (p.cover?.title && !ids.has(p.cover.title))
     err("REF_MISSING", "cover.title", `封面标题引用的叠加层「${p.cover.title}」不存在`);
 
+  const captionText = new Map(
+    p.tracks.flatMap((t) =>
+      t.kind === "caption" ? t.items.map((c) => [c.id, c.text] as const) : [],
+    ),
+  );
   // 锚点引用的对象必须存在；存在但被剪掉只是警告（由 compile 给出）
   p.tracks.forEach((t, ti) => {
     if (t.kind === "caption" || (t.kind === "video" && t.main)) return;
     t.items.forEach((item, ii) => {
-      const at = (item as { at?: { caption?: string; clip?: string } }).at;
+      const at = (item as { at?: { caption?: string; clip?: string; char?: number } }).at;
       const ref = at?.caption ?? at?.clip;
-      if (ref !== undefined && !ids.has(ref))
-        err("REF_MISSING", `tracks[${ti}].items[${ii}].at`, `锚点「${ref}」不存在`);
+      const path = `tracks[${ti}].items[${ii}].at`;
+      if (ref !== undefined && !ids.has(ref)) err("REF_MISSING", path, `锚点「${ref}」不存在`);
+      if (at?.caption !== undefined && at.char !== undefined) {
+        const cap = captionText.get(at.caption);
+        if (cap !== undefined && at.char >= [...cap].length)
+          err("TIME_RANGE", `${path}.char`, `字幕「${at.caption}」只有 ${[...cap].length} 个字`);
+      }
     });
   });
 

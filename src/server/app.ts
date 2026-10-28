@@ -15,7 +15,7 @@ import {
 } from "../core/api";
 import { MwError } from "../core/errors";
 import { zodIssues } from "../core/validate";
-import { templateOpts } from "../node/actions";
+import { lintDir, templateOpts } from "../node/actions";
 import { buildProps } from "../node/render";
 import {
   applyToProject,
@@ -92,6 +92,8 @@ export function createApp(ctx: AppContext): Hono {
     });
     return c.json(r);
   });
+
+  app.get(ROUTES.lint, async (c) => c.json(await lintDir(ctx.dir)));
 
   app.get(ROUTES.history, async (c) => c.json({ ok: true, ...(await historyState(ctx.dir)) }));
 
