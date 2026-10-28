@@ -406,7 +406,7 @@ stdout 默认输出 JSON，日志写到 stderr。
 8. 成片最后接上你自己的片尾素材，衔接处没有黑帧、爆音。
 
 > 准备工作（已完成，2026-10-28）：`scripts/align-edit.ts` 推算出样片的剪辑方式（`docs/decisions/0001`）；
-> `spikes/a0-2/` 验证了视频组件的帧准确性和音画同步（`docs/decisions/0002`）。
+> A0-2 验证了视频组件的帧准确性和音画同步（`docs/decisions/0002`，验证代码在提交 df1e29b 的 `spikes/a0-2/`，之后已删除）。
 
 ### 阶段 B：工作台编辑基础
 

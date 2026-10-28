@@ -2,7 +2,7 @@
 
 - 日期：2026-10-28
 - 状态：已采用
-- 验证代码：`spikes/a0-2/`（`render.ts` 渲染，`verify.ts` 校验）
+- 验证代码：`spikes/a0-2/`（`render.ts` 渲染，`verify.ts` 校验）。验证完成后已从仓库删除，需要时看提交 df1e29b
 
 ## 验证内容
 

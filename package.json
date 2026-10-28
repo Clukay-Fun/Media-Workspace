@@ -16,9 +16,9 @@
     "mw": "tsx src/cli/index.ts",
     "check": "biome check . && tsc --noEmit",
     "format": "biome check --write .",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "test": "vitest run --project unit",
+    "test:watch": "vitest --project unit",
+    "test:e2e": "vitest run --project e2e",
     "studio": "remotion studio src/composition/index.ts",
     "fonts:fetch-test": "tsx scripts/fetch-test-fonts.ts",
     "fonts:check": "tsx scripts/check-fonts.ts"
