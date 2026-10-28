@@ -96,7 +96,9 @@ describe("planDrag", () => {
 
   it("字幕按源时间平移，逐字时间跟着移动", () => {
     const r = planDrag(project(), { id: "s1", mode: "move", deltaMs: 300, snap: false });
-    const op = r.ops[0] as { set: { startMs: number; endMs: number; charStartMs: number[] } };
+    const op = r.ops[0] as unknown as {
+      set: { startMs: number; endMs: number; charStartMs: number[] };
+    };
     expect(op.set.startMs - 4200).toBeCloseTo(300, -1);
     expect(op.set.endMs - op.set.startMs).toBe(800);
     expect(op.set.charStartMs[0]).toBe(op.set.startMs);
