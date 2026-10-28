@@ -5,7 +5,20 @@
 - 开发计划：[docs/PLAN.md](docs/PLAN.md)
 - 开发规范：[AGENTS.md](AGENTS.md)
 
-> 状态：阶段 A 开发中（`dev` 分支）。
+> 状态：阶段 A 自测通过，等待验收（`dev` 分支）。验收记录见 [docs/decisions/0004](docs/decisions/0004-phase-a-acceptance.md)。
+
+## 本地使用（阶段 A：CLI）
+
+需要 Node 24、pnpm 10、ffmpeg。
+
+```bash
+pnpm install
+pnpm fonts:check            # 普惠体放进 assets/fonts/alibaba-puhuiti-3/；测试字体用 pnpm fonts:fetch-test 下载
+./bin/mw.mjs --help         # 或者 pnpm link --global 之后直接用 mw
+./bin/mw.mjs guide          # 给 AI 看的操作和样式说明
+```
+
+工程默认放在 `~/MediaWorkspace/projects/`，可以用 `MW_HOME` 修改。
 
 ## 授权说明
 

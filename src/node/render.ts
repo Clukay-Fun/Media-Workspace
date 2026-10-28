@@ -11,6 +11,7 @@ import { MwError } from "../core/errors";
 import { facesFor } from "../core/fonts";
 import { BUILTIN_STYLES } from "../core/presets";
 import type { Project } from "../core/schema";
+import type { TextStyle } from "../core/text-style";
 import { TEMPLATES } from "../templates";
 import { resolveFaces } from "./fonts";
 import { type MediaServer, startMediaServer } from "./media-server";
@@ -94,11 +95,19 @@ export async function prepare(dir: string, project: Project): Promise<PreparedRe
       srcs[id] = server.register(abs);
     }
 
-    // 字体：工程里的样式 + 模板默认样式 + 字幕默认样式
-    const styles = { ...BUILTIN_STYLES, ...project.styles };
+    // 字体：只加载实际用到的样式（没写样式的字幕 / 叠加层用内置默认样式）
+    const styles: Record<string, TextStyle> = { ...BUILTIN_STYLES, ...project.styles };
+    const usedStyles = new Set<string>([
+      ...timeline.captions.map((c) => c.style ?? "caption-word-yellow"),
+      ...timeline.overlays.map(
+        (o) => o.style ?? TEMPLATES[o.template]?.meta.defaultStyle ?? "title-bar-yellow",
+      ),
+    ]);
     const faces = new Map<string, ReturnType<typeof facesFor>[number]>();
-    for (const s of Object.values(styles))
-      for (const f of facesFor(s)) faces.set(`${f.id}|${f.weight}`, f);
+    for (const id of usedStyles) {
+      const st = styles[id];
+      if (st) for (const f of facesFor(st)) faces.set(`${f.id}|${f.weight}`, f);
+    }
     const fonts = resolveFaces([...faces.values()]).map((f) => ({
       css: f.css,
       weight: f.weight,
