@@ -9,9 +9,11 @@ import {
   alignProject,
   coverProject,
   exportProject,
+  facesProject,
   guideInfo,
   importAsset,
   inspectProject,
+  lintDir,
   previewProject,
   templatesInfo,
   validateDir,
@@ -194,6 +196,23 @@ cli
         out(r);
       },
     ),
+  );
+
+cli.command("lint <proj>", "质检：字太小、出安全区、字幕放不下、互相遮挡、挡脸（警告）").action(
+  act(async (proj: string) => {
+    out(await lintDir(resolveProjectDir(proj)));
+  }),
+);
+
+cli
+  .command("faces <proj>", "给还没有人脸数据的视频素材补做人脸检测（macOS）")
+  .option("--actor <name>", "操作者", { default: "user" })
+  .action(
+    act(async (proj: string, o: { actor: string }) => {
+      out(
+        await facesProject(resolveProjectDir(proj), { source: "cli", actor: o.actor, onLog: log }),
+      );
+    }),
   );
 
 cli

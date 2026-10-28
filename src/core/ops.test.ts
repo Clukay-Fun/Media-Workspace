@@ -6,7 +6,7 @@ import { type MainClip, Project } from "./schema";
 
 const project = (locked = false) =>
   Project.parse({
-    version: 2,
+    version: 3,
     revision: 3,
     canvas: {},
     assets: { a1: { kind: "video", path: "/raw.mov", probe: { durationMs: 20_000 } } },
@@ -250,6 +250,19 @@ describe("样式", () => {
     expect(s?.font).toMatchObject({ family: "alibaba-puhuiti-3", size: 72, weight: 700 });
     expect(fail(() => applyOps(r.project, [{ op: "style.remove", id: "cap-center" }])).code).toBe(
       "IN_USE",
+    );
+  });
+});
+
+describe("asset.cache", () => {
+  it("只改写到的缓存字段，null 删除", () => {
+    const r = applyOps(project(), [
+      { op: "asset.cache", id: "a1", set: { faces: "cache/media/x.faces.json", proxy: "p.mp4" } },
+      { op: "asset.cache", id: "a1", set: { proxy: null } },
+    ]);
+    expect(r.project.assets.a1?.cache).toEqual({ faces: "cache/media/x.faces.json" });
+    expect(fail(() => applyOps(project(), [{ op: "asset.cache", id: "nope", set: {} }])).code).toBe(
+      "NOT_FOUND",
     );
   });
 });

@@ -298,3 +298,70 @@ export function highlightMask(
   }
   return mask;
 }
+
+/**
+ * 卡拉 OK 扫色的进度：每个字（码点下标）0–1。一个字从它开始念扫到下一个字开始念；
+ * 一个单位里有多个字、又没有逐字时间时，平分这个单位的时长。
+ */
+export function sweepProgress(
+  text: string,
+  units: TextUnit[],
+  starts: number[],
+  revealMs: number,
+  endMs: number,
+  charStartMs?: number[] | null,
+): number[] {
+  const n = [...text].length;
+  const begin: number[] = new Array(n).fill(Number.POSITIVE_INFINITY);
+  units.forEach((u, i) => {
+    if (u.silent) return;
+    const s = starts[i] ?? 0;
+    const next = starts.slice(i + 1).find((x) => x > s) ?? endMs;
+    const len = u.end - u.start;
+    for (let k = 0; k < len; k++) {
+      begin[u.start + k] = charStartMs?.[u.start + k] ?? s + ((next - s) * k) / len;
+    }
+  });
+  // 字的结束 = 后面第一个更晚开始的字；标点不扫
+  return begin.map((b, k) => {
+    if (!Number.isFinite(b)) return 0;
+    const end = begin.slice(k + 1).find((x) => Number.isFinite(x) && x > b) ?? endMs;
+    if (revealMs <= b) return 0;
+    return Math.min(1, (revealMs - b) / Math.max(1, end - b));
+  });
+}
+
+/**
+ * 荧光笔的进度：每个字 0–1。连续的关键词字算一段，从这段第一个字出现开始，
+ * 在 drawMs 内从左往右依次画完。
+ */
+export function markerProgress(
+  mask: boolean[],
+  units: TextUnit[],
+  starts: number[],
+  revealMs: number,
+  drawMs: number,
+): number[] {
+  const unitStart: number[] = [];
+  units.forEach((u, i) => {
+    for (let k = u.start; k < u.end; k++) unitStart[k] = starts[i] ?? 0;
+  });
+  const out = mask.map(() => 0);
+  let k = 0;
+  while (k < mask.length) {
+    if (!mask[k]) {
+      k++;
+      continue;
+    }
+    let e = k;
+    while (e < mask.length && mask[e]) e++;
+    const t0 = unitStart[k] ?? 0;
+    const len = e - k;
+    for (let j = k; j < e; j++) {
+      const a = t0 + (drawMs * (j - k)) / len;
+      out[j] = Math.min(1, Math.max(0, ((revealMs - a) * len) / drawMs));
+    }
+    k = e;
+  }
+  return out;
+}

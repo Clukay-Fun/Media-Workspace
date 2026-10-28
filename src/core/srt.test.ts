@@ -33,7 +33,7 @@ describe("parseSrt", () => {
 
 describe("cuesToCaptions", () => {
   const project = Project.parse({
-    version: 2,
+    version: 3,
     revision: 0,
     canvas: {},
     assets: { a1: { kind: "video", path: "/raw.mov" } },

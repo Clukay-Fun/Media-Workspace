@@ -1,10 +1,11 @@
 import { execFile } from "node:child_process";
-import { mkdir, readFile, rm, symlink } from "node:fs/promises";
-import { basename, dirname, join, resolve } from "node:path";
+import { mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 import { compile, type ResolvedTimeline } from "../core/compile";
 import { MwError } from "../core/errors";
+import { lintProject } from "../core/lint";
 import { Op } from "../core/ops";
 import { BUILTIN_STYLES } from "../core/presets";
 import { SAFE_AREAS, type SafeAreaName, safeAreaFor } from "../core/safe-area";
@@ -14,6 +15,7 @@ import { validate } from "../core/validate";
 import { PROJECT_FORMAT_VERSION } from "../core/version";
 import { TEMPLATE_NAMES, TEMPLATES } from "../templates";
 import { alignCaptions } from "./asr";
+import { detectFaces, readFaces } from "./faces";
 import { importMedia } from "./media";
 import { projectFiles } from "./paths";
 import { exportVideo, renderStills } from "./render";
@@ -45,7 +47,76 @@ export async function importAsset(
     actor: o.actor,
     ...templateOpts,
   });
-  return { ...res, asset: res.changed[0], probe: r.probe, created: r.created };
+  return {
+    ...res,
+    asset: res.changed[0],
+    probe: r.probe,
+    created: r.created,
+    ...(r.subtitleCheck
+      ? {
+          subtitleCheck: r.subtitleCheck,
+          checkHint: "看一眼 subtitleCheck 图片：原片如果已经烧录了字幕，新字幕会和它重影",
+        }
+      : {}),
+  };
+}
+
+/** 质检（docs/decisions/0007）：字号、安全区、字幕行数、遮挡、挡脸。都是警告，不阻止导出 */
+export async function lintDir(dir: string) {
+  const p = await loadProject(dir);
+  const faces: Record<string, NonNullable<Awaited<ReturnType<typeof readFaces>>>> = {};
+  for (const [id, a] of Object.entries(p.assets)) {
+    const f = a.cache?.faces ? await readFaces(join(dir, a.cache.faces)) : null;
+    if (f) faces[id] = f;
+  }
+  const issues = lintProject(p, {
+    styles: { ...BUILTIN_STYLES, ...p.styles },
+    faces,
+    overlayBounds: (o, style) => {
+      const tpl = TEMPLATES[o.template];
+      const props = tpl?.schema.safeParse(o.props);
+      if (!tpl?.bounds || !props?.success) return { text: [], shapes: [] };
+      return tpl.bounds(props.data, style, p.canvas.width, p.canvas.height);
+    },
+  });
+  const videos = Object.entries(p.assets).filter(([, a]) => a.kind === "video");
+  return {
+    ok: true as const,
+    revision: p.revision,
+    issues,
+    // 没有人脸数据的视频素材：挡脸检查没有覆盖到
+    noFaceData: videos.filter(([id]) => !faces[id]).map(([id]) => id),
+  };
+}
+
+/** 给还没有人脸数据的视频素材补做检测（只在 macOS 上可用） */
+export async function facesProject(dir: string, o: Actor & { onLog?: (s: string) => void }) {
+  const p = await loadProject(dir);
+  const media = projectFiles(dir).media;
+  const ops: Op[] = [];
+  const skipped: string[] = [];
+  for (const [id, a] of Object.entries(p.assets)) {
+    if (a.kind !== "video" || a.cache?.faces) continue;
+    o.onLog?.(`检测人脸：${id}`);
+    const track = await detectFaces(a.cache?.proxy ? join(dir, a.cache.proxy) : a.path, media);
+    if (!track) {
+      skipped.push(id);
+      continue;
+    }
+    const file = join(media, `${a.fingerprint ?? id}.faces.json`);
+    await mkdir(media, { recursive: true });
+    await writeFile(file, JSON.stringify(track));
+    ops.push({ op: "asset.cache", id, set: { faces: relative(dir, file) } });
+  }
+  if (ops.length === 0) return { ok: true as const, revision: p.revision, detected: [], skipped };
+  const r = await applyToProject(dir, {
+    ops,
+    baseRevision: p.revision,
+    source: o.source,
+    actor: o.actor,
+    ...templateOpts,
+  });
+  return { ...r, detected: ops.map((x) => (x as { id: string }).id), skipped };
 }
 
 /** 识音对齐，作为一次 caption.update 提交；匹配率低的句子列在 check 里让人检查 */
@@ -251,6 +322,9 @@ export function guideInfo() {
       "提交后用 validate、preview（sheet）自查，只修一轮；修的时候不要改动已经确定的时长",
       "字段名拼错会返回 UNKNOWN_FIELD，不会被悄悄忽略",
       "导入字幕后可以跑 align，让逐字动画跟着语音走；改了字幕文字后需要重新 align",
+      "加标题、卡片之前先列方案（哪句话 → 加什么画面 → 用哪个模板 → 什么时间），给用户确认后再 apply",
+      "需要在说到某个词时出现的元素，用 at: { caption: <字幕ID>, char: <第几个字> } 锚定，而不是估算毫秒",
+      "提交后跑 lint：字太小、出安全区、字幕放不下、互相遮挡、挡脸；导入新视频时看一眼 subtitleCheck，原片已有字幕会重影",
     ],
     ops: z.toJSONSchema(Op, { io: "input" }),
     textStyle: z.toJSONSchema(TextStyle, { io: "input" }),

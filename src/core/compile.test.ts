@@ -4,7 +4,7 @@ import { Project } from "./schema";
 import { sourceFrameAt } from "./time";
 
 const base = {
-  version: 2,
+  version: 3,
   revision: 0,
   canvas: {},
   assets: {
@@ -168,6 +168,53 @@ describe("compile：分割、剪切、转场", () => {
     expect(tl.captions[0]?.charStartMs).toEqual([0, 300, 500, 500]);
     // 第二段源 2000–2500 在时间线 1000–1250（2 倍速）：前三个字在这一段之前 → 0，「四」在 2200 → 1100
     expect(tl.captions[1]?.charStartMs).toEqual([0, 0, 0, 100]);
+  });
+
+  it("按字锚定：念到第几个字时出现；没有逐字时间时按字数估算", () => {
+    const tl = compile(
+      make({
+        tracks: [
+          { id: "main", kind: "video", main: true, items: [clip("c1", 0, 3000)] },
+          {
+            id: "cap",
+            kind: "caption",
+            items: [
+              {
+                ...caption("s1", 1000, 2000),
+                text: "一二三四",
+                charStartMs: [1000, 1100, 1700, 1800],
+              },
+              { ...caption("s2", 2000, 3000), text: "甲乙丙丁" },
+            ],
+          },
+          {
+            id: "o",
+            kind: "overlay",
+            items: [
+              {
+                id: "o1",
+                template: "title-bar",
+                at: { caption: "s1", char: 2 },
+                durationMs: 500,
+                props: { lines: ["x"] },
+              },
+              {
+                id: "o2",
+                template: "title-bar",
+                at: { caption: "s2", char: 2, offsetMs: 100 },
+                durationMs: 500,
+                props: { lines: ["x"] },
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    // 「三」在 1700ms → 第 51 帧；s2 第 3 个字估算在 2500ms，再加 100ms → 第 78 帧
+    expect(tl.overlays.map((o) => [o.id, o.from])).toEqual([
+      ["o1", 51],
+      ["o2", 78],
+    ]);
   });
 
   it("转场让后一个片段提前开始，总时长变短", () => {

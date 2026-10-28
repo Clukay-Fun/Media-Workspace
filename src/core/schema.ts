@@ -43,6 +43,8 @@ export const Asset = z.strictObject({
       mez: z.string().optional(),
       proxy: z.string().optional(),
       peaks: z.string().optional(),
+      /** 人脸位置（按时间采样，v3）：质检时检查标题、卡片有没有挡脸 */
+      faces: z.string().optional(),
     })
     .optional(),
 });
@@ -71,7 +73,12 @@ export const Transition = z.strictObject({
 });
 
 export const Anchor = z.union([
-  z.strictObject({ caption: Id, offsetMs: z.number().int().default(0) }),
+  z.strictObject({
+    caption: Id,
+    /** 念到这句的第几个字（码点下标，从 0 开始）时出现；不写 = 这句开始时（v3，docs/decisions/0007） */
+    char: z.number().int().nonnegative().optional(),
+    offsetMs: z.number().int().default(0),
+  }),
   z.strictObject({ clip: Id, offsetMs: z.number().int().default(0) }),
   z.strictObject({ ms: Ms }),
 ]);

@@ -87,9 +87,10 @@ export const TextStyle = z.strictObject({
     .strictObject({
       /**
        * keyword = 只亮字幕里标出的关键词；current = 只亮正在出现的那个字 / 词（样片 1029 的效果）；
-       * trail = 出现过的都留亮。三种方式下，标出的关键词都会高亮
+       * trail = 出现过的都留亮；sweep = 卡拉 OK 式，颜色跟着念的进度从左往右扫过每个字。
+       * 几种方式下，标出的关键词都会高亮
        */
-      mode: z.enum(["keyword", "current", "trail"]).default("keyword"),
+      mode: z.enum(["keyword", "current", "trail", "sweep"]).default("keyword"),
       fill: Color,
       stroke: z
         .strictObject({ color: Color, width: z.number().nonnegative() })
@@ -97,6 +98,17 @@ export const TextStyle = z.strictObject({
         .default(null),
       scale: z.number().positive().max(3).default(1),
       anim: AnimPresetName.default("none"),
+      /** 荧光笔：关键词出现时，在字的下半部分从左往右画一道色块 */
+      marker: z
+        .strictObject({
+          color: Color,
+          /** 色块高度占字号的比例，从字的底部往上量 */
+          height: z.number().positive().max(1.5).default(0.45),
+          /** 画完一个关键词用的时间 */
+          drawMs: z.number().int().positive().max(3000).default(300),
+        })
+        .nullable()
+        .default(null),
     })
     .nullable()
     .default(null),
