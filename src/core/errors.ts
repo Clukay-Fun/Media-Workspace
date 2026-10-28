@@ -11,7 +11,10 @@ export type ErrorCode =
   | "TRACK_LOCKED"
   | "IN_USE"
   | "CONFLICT"
-  | "SRT_PARSE";
+  | "SRT_PARSE"
+  | "MEDIA"
+  | "RENDER"
+  | "FONT_MISSING";
 
 export type Issue = {
   code: string;
