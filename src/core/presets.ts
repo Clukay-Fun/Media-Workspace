@@ -5,7 +5,7 @@ import { TextStyle } from "./text-style";
 // 标题条 y 96–355，黄字黑描边。
 
 export const BUILTIN_STYLES = {
-  /** 白字黑描边，逐词出现约 0.6 秒，正在出现的词变黄 */
+  /** 白字黑描边，逐词出现（按字数分配整句时长，大致跟着念的速度），正在出现的词变黄 */
   "caption-word-yellow": TextStyle.parse({
     font: {
       family: "alibaba-puhuiti-3",
@@ -22,7 +22,7 @@ export const BUILTIN_STYLES = {
     animation: {
       in: { preset: "fade", durationMs: 120, easing: "ease-out" },
       unit: "word",
-      stagger: { totalMs: 600 },
+      stagger: "spread",
     },
   }),
   /** 顶部标题：粗黄字、黑描边、阴影。底色横条由 title-bar 模板画 */

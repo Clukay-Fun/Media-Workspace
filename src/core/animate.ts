@@ -233,22 +233,34 @@ export function splitUnits(
   return units;
 }
 
-/** 每个单位开始出现的时间（毫秒，相对字幕开始）。标点跟着前一个单位 */
+/**
+ * 每个单位开始出现的时间（毫秒，相对字幕开始）。标点跟着前一个单位，不占时间。
+ * spread：没有逐字的发音时间，按字数分配整句的时长——中文基本一个字一个音节，
+ * SRT 每句的起止又是跟着语音的，所以这样大致能跟上念的速度（长词出现得慢一点）。
+ */
 export function unitStarts(
   units: TextUnit[],
   stagger: "spread" | { eachMs: number } | { totalMs: number },
   durationMs: number,
   inMs: number,
 ): number[] {
-  const beats = units.filter((u) => !u.silent).length;
+  const voiced = units.filter((u) => !u.silent);
+  if (stagger === "spread") {
+    const weight = (u: TextUnit) => (u.silent ? 0 : [...u.text].length);
+    const total = voiced.reduce((n, u) => n + weight(u), 0);
+    const span = Math.max(0, durationMs - inMs);
+    let before = 0;
+    let prev = 0;
+    return units.map((u) => {
+      // 标点和前一个词同时出现
+      const at = u.silent ? prev : total > 0 ? (before / total) * span : 0;
+      before += weight(u);
+      prev = at;
+      return at;
+    });
+  }
   const step =
-    beats <= 1
-      ? 0
-      : stagger === "spread"
-        ? Math.max(0, durationMs - inMs) / beats
-        : "eachMs" in stagger
-          ? stagger.eachMs
-          : stagger.totalMs / beats;
+    voiced.length <= 1 ? 0 : "eachMs" in stagger ? stagger.eachMs : stagger.totalMs / voiced.length;
   let beat = -1;
   return units.map((u) => {
     if (!u.silent || beat < 0) beat += 1;

@@ -29,8 +29,12 @@ describe("unitStarts", () => {
   it("totalMs：在给定时间内全部出现，标点跟着前一个词", () => {
     expect(unitStarts(u, { totalMs: 500 }, 1600, 100)).toEqual([0, 100, 200, 200, 300, 400]);
   });
-  it("spread：在字幕时长内均分", () => {
+  it("spread：按字数分配字幕时长，标点不占时间", () => {
     expect(unitStarts(u, "spread", 1100, 100)).toEqual([0, 200, 400, 400, 600, 800]);
+    // 「移民财产转移的条件」：的 只有一个字，占的时间是两字词的一半
+    const v = splitUnits("移民财产转移的条件", "word");
+    expect(v.map((x) => x.text)).toEqual(["移民", "财产", "转移", "的", "条件"]);
+    expect(unitStarts(v, "spread", 900, 0)).toEqual([0, 200, 400, 600, 700]);
   });
 });
 
