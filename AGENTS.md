@@ -18,6 +18,7 @@
 | 测试 | Vitest，测试文件和源码放在一起：`foo.ts` 对应 `foo.test.ts` |
 | 外部工具 | ffmpeg / ffprobe。代码里通过 `MW_FFMPEG`、`MW_FFPROBE` 环境变量查找，默认从 PATH 里找。处理 HDR 素材需要带 zimg / libplacebo 的版本（如 Homebrew 的 `ffmpeg-full`），见 PLAN.md 第 7 节 |
 | 字体 | 产品默认用阿里巴巴普惠体 3.0，放在 `assets/fonts/alibaba-puhuiti-3/`，**不进仓库**。测试和 CI 一律用开源的 Noto Sans SC（`pnpm fonts:fetch-test` 下载），不能让测试依赖普惠体 |
+| 识音模型 | SenseVoice（sherpa-onnx 格式），`mw models --fetch` 下载到 `~/MediaWorkspace/models/`（`MW_MODELS_DIR`），**不进仓库**。单元测试不能依赖模型；需要模型的 e2e 测试在没有模型时跳过 |
 | 本地数据 | 工程默认放在 `~/MediaWorkspace/projects/`，用 `MW_HOME` 修改。测试只能使用临时目录，不能读写用户的真实工程 |
 
 初始锁定的主要依赖版本（2026-10-28 核对，阶段 A 初始化时写进 package.json）：
@@ -55,7 +56,7 @@ docs/           计划、格式说明、决策记录（docs/decisions/NNNN-标�
 5. **不能把 schema 和类型写两份**：类型一律从 Zod schema 推导（`z.infer`），JSON Schema 一律用 `z.toJSONSchema` 生成。
 6. 修改工程格式时必须同时：增加 `version`、在 `core/migrations/` 里写迁移、补充测试，并在 `docs/decisions/` 里记录原因。
 7. 渲染、媒体处理出错时，要返回带 `code` 的结构化错误（见 PLAN.md 5.3 节），不能只抛出一段字符串。
-8. 不要引入 PLAN.md 里列为非目标的功能和依赖（Whisper、数据库、时间线库、Electron 等）。
+8. 不要引入 PLAN.md 里列为非目标的功能和依赖（数据库、时间线库、Electron 等）。识音只用 `node/asr` 里的 sherpa-onnx（D27），不要另外引入 Whisper、Python 或在线识别服务。
 
 ## 4. 代码风格
 

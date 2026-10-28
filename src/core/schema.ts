@@ -137,6 +137,11 @@ export const Caption = z.strictObject({
   text: z.string(),
   highlights: z.array(Highlight).default([]),
   style: Id.optional(),
+  /**
+   * 每个字开始念的源时间（毫秒），和 text 的字（码点）一一对应（v2，docs/decisions/0005）。
+   * 由 mw align 识音得到；没有时按字数分配整句时长
+   */
+  charStartMs: z.array(Ms).optional(),
 });
 
 export const Overlay = z.strictObject({

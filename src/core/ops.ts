@@ -392,6 +392,16 @@ function run(ctx: Ctx, op: Op): void {
       const { track, item } = ctx.find(op.id);
       ctx.unlocked(track);
       if ("id" in op.set) throw new MwError("INVALID_OP", "不能修改 id");
+      // 改了字幕文字、字数变了，原来的逐字时间对不上了，去掉（之后可以重新 mw align）
+      const text = op.set.text;
+      if (
+        typeof text === "string" &&
+        !("charStartMs" in op.set) &&
+        Array.isArray(item.charStartMs) &&
+        item.charStartMs.length !== [...text].length
+      ) {
+        delete item.charStartMs;
+      }
       Object.assign(item, op.set);
       ctx.changed.add(op.id);
       return;
@@ -654,6 +664,10 @@ function mergeCaptions(ctx: Ctx, ids: string[]): void {
     text: sorted.map((c) => c.text).join(""),
     highlights: sorted.flatMap((c) => c.highlights.map(({ nth: _n, ...h }) => h)),
   };
+  // 逐字时间：每句都有才能拼起来，否则去掉
+  delete merged.charStartMs;
+  if (sorted.every((c) => c.charStartMs))
+    merged.charStartMs = sorted.flatMap((c) => c.charStartMs ?? []);
   track.items = track.items.filter((c) => !ids.includes(c.id) || c.id === head.id);
   track.items[track.items.findIndex((c) => c.id === head.id)] = merged;
   ctx.changed.add(head.id);
@@ -665,7 +679,11 @@ function splitCaption(ctx: Ctx, id: string, at: number, atMs?: number): void {
   const chars = [...cap.text];
   if (at >= chars.length)
     throw new MwError("INVALID_OP", `第 ${at} 个字已经是句末，不能在这里断开`);
-  const splitMs = atMs ?? Math.round(cap.startMs + ((cap.endMs - cap.startMs) * at) / chars.length);
+  // 有逐字时间时，默认在后半句第一个字开始念的时候断开
+  const splitMs =
+    atMs ??
+    cap.charStartMs?.[at] ??
+    Math.round(cap.startMs + ((cap.endMs - cap.startMs) * at) / chars.length);
   if (splitMs <= cap.startMs || splitMs >= cap.endMs)
     throw new MwError("TIME_RANGE", "断开的时间点必须在这句字幕的时间范围内");
   const a = chars.slice(0, at).join("");
@@ -680,6 +698,7 @@ function splitCaption(ctx: Ctx, id: string, at: number, atMs?: number): void {
       endMs: splitMs,
       text: a,
       highlights: cap.highlights.filter((h) => a.includes(h.text)),
+      ...(cap.charStartMs ? { charStartMs: cap.charStartMs.slice(0, at) } : {}),
     },
     {
       ...cap,
@@ -687,6 +706,7 @@ function splitCaption(ctx: Ctx, id: string, at: number, atMs?: number): void {
       startMs: splitMs,
       text: b,
       highlights: cap.highlights.filter((h) => b.includes(h.text)),
+      ...(cap.charStartMs ? { charStartMs: cap.charStartMs.slice(at) } : {}),
     },
   );
   ctx.changed.add(id);

@@ -90,6 +90,12 @@ export function validate(input: unknown, opts: ValidateOptions = {}): ValidateRe
         const a = asset(c.asset, `${path}.asset`, ["video", "audio"]);
         range(c.startMs, c.endMs, a?.probe?.durationMs, path);
         style(c.style, `${path}.style`);
+        if (c.charStartMs && c.charStartMs.length !== [...c.text].length)
+          err(
+            "VALIDATION",
+            `${path}.charStartMs`,
+            `逐字时间有 ${c.charStartMs.length} 个，字幕有 ${[...c.text].length} 个字，数量要一致`,
+          );
         return;
       }
       if (t.kind === "overlay") {

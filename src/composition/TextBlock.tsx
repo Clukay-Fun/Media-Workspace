@@ -25,6 +25,8 @@ export type TextBlockProps = {
   fps: number;
   /** 提前出现的帧数：逐字动画从这里开始 */
   leadFrames?: number;
+  /** 识音得到的每个字开始出现的时间（毫秒，相对逐字动画开始） */
+  charStartMs?: number[] | null;
 };
 
 const HAN = /\p{Script=Han}/u;
@@ -37,6 +39,7 @@ export const TextBlock: React.FC<TextBlockProps> = ({
   durationInFrames,
   fps,
   leadFrames = 0,
+  charStartMs = null,
 }) => {
   const ms = (frame * 1000) / fps;
   const totalMs = (durationInFrames * 1000) / fps;
@@ -44,7 +47,13 @@ export const TextBlock: React.FC<TextBlockProps> = ({
   const { font, layout, animation } = style;
   const units = splitUnits(text, animation.unit);
   const inMs = animation.in?.durationMs ?? 0;
-  const starts = unitStarts(units, animation.stagger, totalMs - (leadFrames * 1000) / fps, inMs);
+  const starts = unitStarts(
+    units,
+    animation.stagger,
+    totalMs - (leadFrames * 1000) / fps,
+    inMs,
+    charStartMs,
+  );
   const mask = highlightMask(text, highlights);
   const hl = style.highlight;
 

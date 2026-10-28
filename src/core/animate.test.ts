@@ -70,3 +70,12 @@ describe("transformAt", () => {
     }
   });
 });
+
+describe("unitStarts：识音得到的逐字时间", () => {
+  it("每个词从它第一个字开始念的时候出现，标点跟前一个词", () => {
+    const units = splitUnits("你好，世界", "char");
+    expect(unitStarts(units, "spread", 1000, 120, [0, 150, 150, 600, 820])).toEqual([
+      0, 150, 150, 600, 820,
+    ]);
+  });
+});

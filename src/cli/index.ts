@@ -13,6 +13,7 @@ import { AnimPresetName, TextStyle } from "../core/text-style";
 import { msToFrame } from "../core/time";
 import { validate } from "../core/validate";
 import { PROJECT_FORMAT_VERSION } from "../core/version";
+import { ASR_MODEL, alignCaptions, asrModelDir, fetchAsrModel, hasAsrModel } from "../node/asr";
 import { importMedia } from "../node/media";
 import { projectFiles, resolveProjectDir } from "../node/paths";
 import { exportVideo, renderStills } from "../node/render";
@@ -226,6 +227,49 @@ cli
         out(r);
       },
     ),
+  );
+
+cli
+  .command("align <proj>", "识音：给字幕加上每个字开始念的时间，逐字动画跟着语音走")
+  .option("--captions <ids>", "只处理这些字幕（逗号分隔），默认全部")
+  .option("--base <rev>", "基于哪个 revision（默认当前）")
+  .option("--actor <name>", "操作者", { default: "user" })
+  .option("--dry-run", "只识音和检查，不写入")
+  .action(
+    act(
+      async (
+        proj: string,
+        o: { captions?: string; base?: number; actor: string; dryRun?: boolean },
+      ) => {
+        const dir = resolveProjectDir(proj);
+        const p = await loadProject(dir);
+        const ids = o.captions ? String(o.captions).split(",").filter(Boolean) : undefined;
+        const { ops, report } = await alignCaptions(dir, p, { ids, onLog: log });
+        const r = await applyToProject(dir, {
+          ops,
+          baseRevision: o.base === undefined ? p.revision : Number(o.base),
+          source: "cli",
+          actor: o.actor,
+          dryRun: Boolean(o.dryRun),
+          ...templates,
+        });
+        // 对得不好的句子单独列出来，方便人工检查（多半是字幕和实际念的不一致）
+        out({ ...r, aligned: report.length, check: report.filter((x) => x.match < 0.8) });
+      },
+    ),
+  );
+
+cli
+  .command("models", "查看或下载本地模型（识音）")
+  .option("--fetch", "下载缺少的模型")
+  .action(
+    act(async (o: { fetch?: boolean }) => {
+      if (o.fetch) await fetchAsrModel(log);
+      out({
+        ok: true,
+        asr: { name: ASR_MODEL.name, dir: asrModelDir(), installed: hasAsrModel() },
+      });
+    }),
   );
 
 cli

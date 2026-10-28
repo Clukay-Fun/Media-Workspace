@@ -237,13 +237,23 @@ export function splitUnits(
  * 每个单位开始出现的时间（毫秒，相对字幕开始）。标点跟着前一个单位，不占时间。
  * spread：没有逐字的发音时间，按字数分配整句的时长——中文基本一个字一个音节，
  * SRT 每句的起止又是跟着语音的，所以这样大致能跟上念的速度（长词出现得慢一点）。
+ * 有识音得到的逐字时间（charStartMs，按码点下标）时，每个单位从它第一个字开始念的时候出现，
+ * 这时 stagger 不起作用。
  */
 export function unitStarts(
   units: TextUnit[],
   stagger: "spread" | { eachMs: number } | { totalMs: number },
   durationMs: number,
   inMs: number,
+  charStartMs?: number[] | null,
 ): number[] {
+  if (charStartMs) {
+    let prev = 0;
+    return units.map((u) => {
+      if (!u.silent) prev = Math.max(prev, charStartMs[u.start] ?? prev);
+      return prev;
+    });
+  }
   const voiced = units.filter((u) => !u.silent);
   if (stagger === "spread") {
     const weight = (u: TextUnit) => (u.silent ? 0 : [...u.text].length);

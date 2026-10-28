@@ -148,6 +148,7 @@ const CaptionLayer: React.FC<{ c: ResolvedCaption; style: TextStyle; fps: number
         durationInFrames={c.durationInFrames}
         fps={fps}
         leadFrames={c.leadFrames}
+        charStartMs={c.charStartMs}
       />
     </AbsoluteFill>
   );

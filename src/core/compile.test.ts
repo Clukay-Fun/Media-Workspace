@@ -4,7 +4,7 @@ import { Project } from "./schema";
 import { sourceFrameAt } from "./time";
 
 const base = {
-  version: 1,
+  version: 2,
   revision: 0,
   canvas: {},
   assets: {
@@ -138,6 +138,36 @@ describe("compile：分割、剪切、转场", () => {
     ]);
     expect(tl.captions.every((c) => c.partial)).toBe(true);
     expect(tl.warnings.map((w) => w.code)).toEqual(["CAPTION_CUT"]);
+  });
+
+  it("逐字时间映射到时间线：倍速换算，剪掉的字按前后处理", () => {
+    const tl = compile(
+      make({
+        tracks: [
+          {
+            id: "main",
+            kind: "video",
+            main: true,
+            items: [clip("c1", 0, 1000), { ...clip("c2", 2000, 3000), speed: 2 }],
+          },
+          {
+            id: "cap",
+            kind: "caption",
+            items: [
+              {
+                ...caption("s1", 500, 2500),
+                text: "一二三四",
+                charStartMs: [500, 800, 1500, 2200],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    // 第一段 500–1000ms（时间线 500–1000）：「三」被剪掉、在这一段之后 → 段末；「四」同理
+    expect(tl.captions[0]?.charStartMs).toEqual([0, 300, 500, 500]);
+    // 第二段源 2000–2500 在时间线 1000–1250（2 倍速）：前三个字在这一段之前 → 0，「四」在 2200 → 1100
+    expect(tl.captions[1]?.charStartMs).toEqual([0, 0, 0, 100]);
   });
 
   it("转场让后一个片段提前开始，总时长变短", () => {

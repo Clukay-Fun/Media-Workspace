@@ -11,7 +11,7 @@ import {
   type Transition,
 } from "./schema";
 import type { Anim, Easing } from "./text-style";
-import { clipTimelineMs, msToFrame } from "./time";
+import { clipTimelineMs, frameToMs, msToFrame } from "./time";
 
 // compile(project) → ResolvedTimeline：唯一的毫秒 → 帧换算入口（D7）。
 // 预览、导出、校验、时间线界面、吸附都只读它的结果。纯函数，不做 I/O。
@@ -77,6 +77,11 @@ export type ResolvedCaption = Flags & {
   partial: boolean;
   /** 提前出现的帧数（TextStyle.timing.leadMs）；逐字动画从 from + leadFrames 开始 */
   leadFrames: number;
+  /**
+   * 每个字开始出现的时间（毫秒，相对 from + leadFrames），由 Caption.charStartMs 映射到时间线；
+   * 被剪掉的字：在这一段之前的算一开始就出现，之后的算到段末。没有逐字时间时为 null
+   */
+  charStartMs: number[] | null;
 };
 
 export type ResolvedOverlay = Flags & {
@@ -274,6 +279,7 @@ export function compile(project: Project): ResolvedTimeline {
     track.items.forEach((cap: Caption, ci) => {
       const ranges = mapSourceRange(segments, cap.asset, cap.startMs, cap.endMs);
       const pieces: ResolvedCaption[] = [];
+      const pieceRanges: SourceRange[][] = [];
       let prevSrcEnd = Number.NaN;
       let pieceSrcStart = Number.NaN;
       // 头或尾被剪掉才算 partial；只是被分割到两个片段里不算
@@ -289,11 +295,13 @@ export function compile(project: Project): ResolvedTimeline {
           prev && prev.from + prev.durationInFrames === from && prevSrcEnd === r.srcStartMs;
         prevSrcEnd = r.srcEndMs;
         if (prev && contiguous) {
+          pieceRanges.at(-1)?.push(r);
           prev.durationInFrames = to - prev.from;
           prev.partial = partial(pieceSrcStart, r.srcEndMs);
           continue;
         }
         pieceSrcStart = r.srcStartMs;
+        pieceRanges.push([r]);
         pieces.push({
           id: cap.id,
           part: pieces.length,
@@ -309,6 +317,22 @@ export function compile(project: Project): ResolvedTimeline {
           style: cap.style ?? track.style ?? null,
           partial: partial(r.srcStartMs, r.srcEndMs),
           leadFrames: 0,
+          charStartMs: null,
+        });
+      }
+      if (cap.charStartMs) {
+        pieces.forEach((p, pi) => {
+          const rs = pieceRanges[pi] ?? [];
+          const fromMs = frameToMs(p.from, fps);
+          const endMs = frameToMs(p.from + p.durationInFrames, fps);
+          p.charStartMs = (cap.charStartMs ?? []).map((src) => {
+            const r = rs.find((x) => src >= x.srcStartMs && src < x.srcEndMs);
+            if (r) {
+              const k = (r.endMs - r.startMs) / (r.srcEndMs - r.srcStartMs);
+              return Math.round(r.startMs + (src - r.srcStartMs) * k - fromMs);
+            }
+            return src < (rs[0]?.srcStartMs ?? 0) ? 0 : Math.round(endMs - fromMs);
+          });
         });
       }
       if (pieces.length === 0) {

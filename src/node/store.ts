@@ -12,6 +12,7 @@ import {
 } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { MwError } from "../core/errors";
+import { migrate } from "../core/migrations";
 import { type ApplyOptions, applyOps } from "../core/ops";
 import { Project } from "../core/schema";
 import { validate, zodIssues } from "../core/validate";
@@ -106,7 +107,7 @@ export async function loadProject(dir: string): Promise<Project> {
   } catch {
     throw new MwError("VALIDATION", "project.json 不是合法的 JSON", { path: f.project });
   }
-  const parsed = Project.safeParse(data);
+  const parsed = Project.safeParse(migrate(data));
   if (!parsed.success) {
     throw new MwError("VALIDATION", "project.json 不符合工程格式", {
       issues: zodIssues(parsed.error),
@@ -238,7 +239,7 @@ async function readHistory(dir: string, revision: number): Promise<Project> {
       hint: "用 mw history 查看可以回退的版本",
     });
   }
-  return JSON.parse(raw) as Project;
+  return Project.parse(migrate(JSON.parse(raw)));
 }
 
 /** editor.json：编辑器状态，不经过 revision 和 ops（D22），但同样原子写入 */

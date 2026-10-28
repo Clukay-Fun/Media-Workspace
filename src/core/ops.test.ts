@@ -6,7 +6,7 @@ import { type MainClip, Project } from "./schema";
 
 const project = (locked = false) =>
   Project.parse({
-    version: 1,
+    version: 2,
     revision: 3,
     canvas: {},
     assets: { a1: { kind: "video", path: "/raw.mov", probe: { durationMs: 20_000 } } },
@@ -164,6 +164,31 @@ describe("字幕编辑", () => {
       expect.objectContaining({ id: "s1", startMs: 1000, endMs: 3000, text: "第一句话第二句" }),
       expect.objectContaining({ id: "s3" }),
     ]);
+  });
+
+  it("逐字时间：拆分时跟着字走、默认在后半句第一个字处断开；合并时拼接；改字数时去掉", () => {
+    const p = project();
+    const cap = p.tracks[1]?.items as { charStartMs?: number[] }[];
+    (cap[0] as { charStartMs?: number[] }).charStartMs = [1000, 1200, 1500, 1700];
+    (cap[1] as { charStartMs?: number[] }).charStartMs = [2100, 2400, 2700];
+    const split = applyOps(p, [{ op: "caption.split", id: "s1", at: 2 }]).project;
+    expect(split.tracks[1]?.items.slice(0, 2)).toEqual([
+      expect.objectContaining({ endMs: 1500, text: "第一", charStartMs: [1000, 1200] }),
+      expect.objectContaining({ startMs: 1500, text: "句话", charStartMs: [1500, 1700] }),
+    ]);
+    const merged = applyOps(p, [{ op: "caption.merge", ids: ["s1", "s2"] }]).project;
+    expect(merged.tracks[1]?.items[0]).toMatchObject({
+      charStartMs: [1000, 1200, 1500, 1700, 2100, 2400, 2700],
+    });
+    const noTiming = applyOps(p, [{ op: "caption.merge", ids: ["s2", "s3"] }]).project;
+    expect(noTiming.tracks[1]?.items[1]).not.toHaveProperty("charStartMs");
+    const sameLen = applyOps(p, [{ op: "caption.update", id: "s1", set: { text: "第一句子" } }]);
+    expect(sameLen.project.tracks[1]?.items[0]).toHaveProperty("charStartMs");
+    const longer = applyOps(p, [{ op: "caption.update", id: "s1", set: { text: "第一句话呀" } }]);
+    expect(longer.project.tracks[1]?.items[0]).not.toHaveProperty("charStartMs");
+    expect(() =>
+      applyOps(p, [{ op: "caption.update", id: "s2", set: { charStartMs: [1, 2] } }]),
+    ).toThrow(MwError);
   });
 
   it("caption.split 按字数比例分时间，高亮跟着文字走", () => {
