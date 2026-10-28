@@ -3,6 +3,7 @@ import type { ResolvedTimeline } from "./compile";
 import type { ErrorCode, Issue } from "./errors";
 import type { LintIssue } from "./lint";
 import { Ops } from "./ops";
+import { type Comment, NewComment, type Review } from "./review";
 import type { Project } from "./schema";
 import type { TextStyle } from "./text-style";
 
@@ -70,6 +71,18 @@ export const ExportRequest = z.strictObject({
 });
 export type ExportRequest = z.input<typeof ExportRequest>;
 
+/** 写批注（POST /api/comments） */
+export const CommentRequest = NewComment.extend({ actor: z.string().min(1).default("user") });
+export type CommentRequest = z.input<typeof CommentRequest>;
+
+/** 标记已处理 / 重新打开（POST /api/comments/:id） */
+export const CommentStatusRequest = z.strictObject({
+  status: z.enum(["open", "resolved"]),
+  note: z.string().optional(),
+  actor: z.string().min(1).default("user"),
+});
+export type CommentStatusRequest = z.input<typeof CommentStatusRequest>;
+
 // ---- 返回 ----
 
 export type ApiError = {
@@ -122,6 +135,10 @@ export type LintResponse = {
   noFaceData: string[];
 };
 
+/** 批注列表（GET /api/comments）：全部批注，界面自己按状态筛选 */
+export type ReviewResponse = { ok: true; review: Review };
+export type CommentResponse = { ok: true; comment: Comment };
+
 /** 波形：每 msPerPeak 毫秒一个 0–1 的峰值（素材源时间） */
 export type PeaksResponse = { ok: true; msPerPeak: number; peaks: number[] };
 
@@ -143,7 +160,9 @@ export type ServerEvent =
       done: boolean;
       file?: string;
       error?: { code: string; message: string };
-    };
+    }
+  /** 批注有变化（任何来源），重新拉 GET /api/comments */
+  | { type: "review" };
 
 // ---- 路由 ----
 
@@ -158,6 +177,8 @@ export const ROUTES = {
   peaks: (assetId: string) => `/api/media/${encodeURIComponent(assetId)}/peaks`,
   export: "/api/export",
   lint: "/api/lint",
+  comments: "/api/comments",
+  comment: (id: string) => `/api/comments/${encodeURIComponent(id)}`,
   events: "/api/events",
 } as const;
 

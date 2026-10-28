@@ -5,6 +5,8 @@ import { streamSSE } from "hono/streaming";
 import { ZodError, type z } from "zod";
 import {
   type ApiError,
+  CommentRequest,
+  CommentStatusRequest,
   EditorState,
   ExportRequest,
   httpStatus,
@@ -19,10 +21,14 @@ import { lintDir, templateOpts } from "../node/actions";
 import { buildProps } from "../node/render";
 import {
   applyToProject,
+  commentOnProject,
   historyState,
   loadEditor,
   loadProject,
+  loadReview,
+  removeCommentFromProject,
   saveEditor,
+  setCommentOnProject,
   undoProject,
 } from "../node/store";
 import type { EventBus } from "./events";
@@ -94,6 +100,26 @@ export function createApp(ctx: AppContext): Hono {
   });
 
   app.get(ROUTES.lint, async (c) => c.json(await lintDir(ctx.dir)));
+
+  app.get(ROUTES.comments, async (c) => c.json({ ok: true, review: await loadReview(ctx.dir) }));
+  app.post(ROUTES.comments, async (c) => {
+    const { actor, ...input } = await body(c, CommentRequest);
+    return c.json(await commentOnProject(ctx.dir, input, { author: actor, source: "ui" }));
+  });
+  app.post("/api/comments/:id", async (c) => {
+    const req = await body(c, CommentStatusRequest);
+    return c.json(
+      await setCommentOnProject(ctx.dir, {
+        id: c.req.param("id"),
+        status: req.status,
+        note: req.note,
+        author: req.actor,
+      }),
+    );
+  });
+  app.delete("/api/comments/:id", async (c) =>
+    c.json(await removeCommentFromProject(ctx.dir, c.req.param("id"))),
+  );
 
   app.get(ROUTES.history, async (c) => c.json({ ok: true, ...(await historyState(ctx.dir)) }));
 

@@ -166,8 +166,13 @@ export function planDrag(project: Project, req: DragRequest): DragPlan {
     };
   }
 
-  // 普通轨道上的片段、图片、叠加层：位置改成绝对时间（拖动后不再跟随原来的锚点，和剪映一致）
-  const at = { ms: Math.round(start) };
+  // 普通轨道上的片段、图片、叠加层：跟随字幕 / 片段的锚点保留下来，只调 offsetMs（D28：
+  // 「早一点 / 晚一点」之后，剪切、变速时仍然跟着那句话走）；本来就是绝对时间的照旧改 ms
+  const anchor = "at" in item ? item.at : null;
+  const at =
+    anchor && !("ms" in anchor)
+      ? { ...anchor, offsetMs: anchor.offsetMs + Math.round(start - cur.startMs) }
+      : { ms: Math.round(start) };
   const set: Record<string, unknown> = {};
   if (req.mode === "move") set.at = at;
   if ("type" in item && item.type === "clip") {

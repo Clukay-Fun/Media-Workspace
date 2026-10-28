@@ -15,6 +15,13 @@ import { EditorState, type HistoryEntry } from "../core/api";
 import { MwError } from "../core/errors";
 import { migrate } from "../core/migrations";
 import { type ApplyOptions, applyOps } from "../core/ops";
+import {
+  addComment,
+  type NewComment,
+  Review,
+  removeComment,
+  setCommentStatus,
+} from "../core/review";
 import { Project } from "../core/schema";
 import { changedIds, type UndoState, undoState } from "../core/undo";
 import { validate, zodIssues } from "../core/validate";
@@ -297,6 +304,62 @@ export async function loadEditor(dir: string): Promise<EditorState> {
 
 export async function saveEditor(dir: string, editor: EditorState): Promise<void> {
   await atomicWrite(projectFiles(dir).editor, json(EditorState.parse(editor)));
+}
+
+/** review.json：审片批注（docs/decisions/0008），不经过 revision，但同样加锁、原子写入 */
+export async function loadReview(dir: string): Promise<Review> {
+  const raw = await readFile(projectFiles(dir).review, "utf8").catch(() => null);
+  return Review.parse(raw ? JSON.parse(raw) : {});
+}
+
+async function updateReview(dir: string, fn: (r: Review, p: Project) => Review): Promise<Review> {
+  return withLock(dir, async () => {
+    const next = fn(await loadReview(dir), await loadProject(dir));
+    await atomicWrite(projectFiles(dir).review, json(Review.parse(next)));
+    return next;
+  });
+}
+
+export async function commentOnProject(
+  dir: string,
+  input: NewComment,
+  meta: { author: string; source: Source },
+) {
+  const r = await updateReview(dir, (review, p) => {
+    if (input.target && !itemIds(p).has(input.target)) {
+      throw new MwError("NOT_FOUND", `条目「${input.target}」不存在`);
+    }
+    return addComment(review, input, {
+      ...meta,
+      now: new Date().toISOString(),
+      revision: p.revision,
+    });
+  });
+  return { ok: true as const, comment: r.comments.at(-1) };
+}
+
+export async function setCommentOnProject(
+  dir: string,
+  req: { id: string; status: "open" | "resolved"; note?: string; author: string },
+) {
+  const r = await updateReview(dir, (review, p) =>
+    setCommentStatus(review, req.id, req.status, {
+      author: req.author,
+      note: req.note,
+      now: new Date().toISOString(),
+      revision: p.revision,
+    }),
+  );
+  return { ok: true as const, comment: r.comments.find((c) => c.id === req.id) };
+}
+
+export async function removeCommentFromProject(dir: string, id: string) {
+  await updateReview(dir, (review) => removeComment(review, id));
+  return { ok: true as const };
+}
+
+function itemIds(p: Project): Set<string> {
+  return new Set(p.tracks.flatMap((t) => t.items.map((i) => i.id)));
 }
 
 function checkRevision(current: Project, base: number): void {

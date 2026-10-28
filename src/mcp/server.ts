@@ -4,6 +4,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import {
   alignProject,
+  commentsInfo,
   coverProject,
   exportProject,
   facesProject,
@@ -17,7 +18,13 @@ import {
   validateDir,
 } from "../node/actions";
 import { resolveProjectDir } from "../node/paths";
-import { applyToProject, historyState, revertProject, undoProject } from "../node/store";
+import {
+  applyToProject,
+  historyState,
+  revertProject,
+  setCommentOnProject,
+  undoProject,
+} from "../node/store";
 import { apiError } from "../server/app";
 
 // MCP stdio 服务（阶段 B）：工具和 mw 命令一一对应，逻辑全部复用 node/actions 和 node/store。
@@ -115,6 +122,31 @@ export function createMcpServer(): McpServer {
       inputSchema: { project },
     },
     ({ project: p }) => call(() => lintDir(dirOf(p))),
+  );
+
+  server.registerTool(
+    "comments",
+    {
+      description:
+        "人在审片台上留的批注（atMs 时间点、target 条目 ID、文字）。开始工作前先看，逐条处理后用 resolve 标记",
+      inputSchema: { project, all: z.boolean().default(false).describe("包括已处理的") },
+    },
+    ({ project: p, all }) => call(() => commentsInfo(dirOf(p), { all })),
+  );
+
+  server.registerTool(
+    "resolve",
+    {
+      description: "把批注标记为已处理，note 写明改了什么；不打算改的也标记，并在 note 里说明原因",
+      inputSchema: {
+        project,
+        id: z.string().min(1),
+        note: z.string().min(1),
+        actor,
+      },
+    },
+    ({ project: p, id, note, actor: a }) =>
+      call(() => setCommentOnProject(dirOf(p), { id, status: "resolved", note, author: a })),
   );
 
   server.registerTool(

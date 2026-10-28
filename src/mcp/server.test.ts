@@ -46,6 +46,7 @@ describe("MCP", () => {
       [
         "align",
         "apply",
+        "comments",
         "cover",
         "export",
         "faces",
@@ -56,6 +57,7 @@ describe("MCP", () => {
         "lint",
         "preview",
         "redo",
+        "resolve",
         "revert",
         "undo",
         "validate",
