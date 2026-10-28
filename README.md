@@ -23,6 +23,7 @@ pnpm fonts:check            # 普惠体放进 assets/fonts/alibaba-puhuiti-3/；
 
 ```bash
 ./bin/mw.mjs serve <工程>   # 本地工作台，默认 http://127.0.0.1:5170（网页需要先 pnpm web:build）
+pnpm web:dev                # 开发审片台（/api 代理到 mw serve）；VITE_MW_MOCK=1 时不连服务端，用示例工程
 ./bin/mw.mjs mcp            # MCP stdio 服务
 ```
 

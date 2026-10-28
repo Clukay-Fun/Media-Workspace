@@ -75,15 +75,24 @@ importers:
       '@types/react-dom':
         specifier: 19.3.0
         version: 19.3.0(@types/react@19.3.0)
+      '@vitejs/plugin-react':
+        specifier: 6.1.2
+        version: 6.1.2(vite@8.3.0(@types/node@24.19.2)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.15))
       tsx:
         specifier: 4.23.15
         version: 4.23.15
       typescript:
         specifier: 7.0.2
         version: 7.0.2
+      vite:
+        specifier: 8.3.0
+        version: 8.3.0(@types/node@24.19.2)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.15)
       vitest:
         specifier: 5.0.5
-        version: 5.0.5(@types/node@24.19.2)(vite@8.3.5(@types/node@24.19.2)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.15))
+        version: 5.0.5(@types/node@24.19.2)(vite@8.3.0(@types/node@24.19.2)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.15))
+      zustand:
+        specifier: 5.0.8
+        version: 5.0.8(@types/react@19.3.0)(react@19.3.1)
 
 packages:
 
@@ -1036,6 +1045,22 @@ packages:
     engines: {node: '>=16.20.0'}
     cpu: [x64]
     os: [win32]
+
+  '@vitejs/plugin-react@6.1.2':
+    resolution: {integrity: sha512-fhJNGUdscQa4HkI0xFxwonWyhnVReCPDbXI7FH7jmzpnVCrFQI7PRrhWecO263610vOrs9tr2Y4xcf8uAdFxbw==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+    peerDependencies:
+      '@rolldown/plugin-babel': ^0.1.7 || ^0.2.0
+      babel-plugin-react-compiler: ^1.0.0
+      oxc-transform-react: ^0.152.0
+      vite: ^8.0.0
+    peerDependenciesMeta:
+      '@rolldown/plugin-babel':
+        optional: true
+      babel-plugin-react-compiler:
+        optional: true
+      oxc-transform-react:
+        optional: true
 
   '@vitest/mocker@5.0.5':
     resolution: {integrity: sha512-xLL3lkDegJZw+MGoGaCCsFayDZthGgpAtr3Vziyfc4p7xH89K7KRPcRBBh/kEYm0Aqkt5DtTmkYpBtRV/FrHZg==}
@@ -2171,13 +2196,13 @@ packages:
     resolution: {integrity: sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg==}
     engines: {node: '>= 0.8'}
 
-  vite@8.3.5:
-    resolution: {integrity: sha512-z1YpjieJ9g0ebTmQpLBv/oq9E3F9EIlOe+7LahW8SrE3LTiG3udBRUXQOlYXP9b+IC2q2phHeVxj9xGlw34OEQ==}
+  vite@8.3.0:
+    resolution: {integrity: sha512-lhZBVvEHefgE+HQZC9O7EBJgCU/nVzFNl7vkS4RE0APtWLP02/8QVIkQtzBxPquh7lq5/78NHipTj7ODQ6XuyQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
     peerDependencies:
       '@types/node': ^20.19.0 || >=22.12.0
-      '@vitejs/devtools': ^0.7.1 || ^0.8.0
+      '@vitejs/devtools': ^0.7.1
       esbuild: ^0.27.0 || ^0.28.0
       jiti: '>=1.21.0'
       less: ^4.0.0
@@ -2311,6 +2336,24 @@ packages:
 
   zod@4.5.4:
     resolution: {integrity: sha512-sC95tT5iHHH9gtpj6A81kh+NEaRAUFN+qlUPDUbRfOMvNf5QCBqsb3WgvnpVtK5Y+4UfA6KqufotuTvMGiTlsA==}
+
+  zustand@5.0.8:
+    resolution: {integrity: sha512-gyPKpIaxY9XcO2vSMrLbiER7QMAMGOQZVRdJ6Zi782jkbzZygq5GI9nG8g+sMgitRtndwaBSl7uiqC49o1SSiw==}
+    engines: {node: '>=12.20.0'}
+    peerDependencies:
+      '@types/react': '>=18.0.0'
+      immer: '>=9.0.6'
+      react: '>=18.0.0'
+      use-sync-external-store: '>=1.2.0'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      immer:
+        optional: true
+      react:
+        optional: true
+      use-sync-external-store:
+        optional: true
 
 snapshots:
 
@@ -3264,14 +3307,19 @@ snapshots:
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
 
-  '@vitest/mocker@5.0.5(vite@8.3.5(@types/node@24.19.2)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.15))':
+  '@vitejs/plugin-react@6.1.2(vite@8.3.0(@types/node@24.19.2)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.15))':
+    dependencies:
+      '@rolldown/pluginutils': 1.0.1
+      vite: 8.3.0(@types/node@24.19.2)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.15)
+
+  '@vitest/mocker@5.0.5(vite@8.3.0(@types/node@24.19.2)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.15))':
     dependencies:
       '@jridgewell/trace-mapping': 0.3.31
       '@vitest/spy': 5.0.5
       estree-walker: 3.0.3
       magic-string: 1.4.5
     optionalDependencies:
-      vite: 8.3.5(@types/node@24.19.2)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.15)
+      vite: 8.3.0(@types/node@24.19.2)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.15)
 
   '@vitest/spy@5.0.5': {}
 
@@ -4330,7 +4378,7 @@ snapshots:
 
   vary@1.1.2: {}
 
-  vite@8.3.5(@types/node@24.19.2)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.15):
+  vite@8.3.0(@types/node@24.19.2)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.15):
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.7
@@ -4344,10 +4392,10 @@ snapshots:
       terser: 5.51.2
       tsx: 4.23.15
 
-  vitest@5.0.5(@types/node@24.19.2)(vite@8.3.5(@types/node@24.19.2)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.15)):
+  vitest@5.0.5(@types/node@24.19.2)(vite@8.3.0(@types/node@24.19.2)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.15)):
     dependencies:
       '@types/chai': 5.2.3
-      '@vitest/mocker': 5.0.5(vite@8.3.5(@types/node@24.19.2)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.15))
+      '@vitest/mocker': 5.0.5(vite@8.3.0(@types/node@24.19.2)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.15))
       chai: 6.3.0
       es-module-lexer: 2.3.2
       expect-type: 1.4.0
@@ -4358,7 +4406,7 @@ snapshots:
       tinybench: 6.2.2
       tinyexec: 1.3.1
       tinyglobby: 0.2.17
-      vite: 8.3.5(@types/node@24.19.2)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.15)
+      vite: 8.3.0(@types/node@24.19.2)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.15)
       why-is-node-running: 3.2.1
     optionalDependencies:
       '@types/node': 24.19.2
@@ -4431,3 +4479,8 @@ snapshots:
       zod: 4.5.4
 
   zod@4.5.4: {}
+
+  zustand@5.0.8(@types/react@19.3.0)(react@19.3.1):
+    optionalDependencies:
+      '@types/react': 19.3.0
+      react: 19.3.1

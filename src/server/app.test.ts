@@ -54,6 +54,7 @@ describe("本地服务接口", () => {
   it("读工程、提交操作、版本冲突返回 409", async () => {
     const { req } = setup();
     const p = await (await req("/api/project")).json();
+    expect(p.name).toBe("demo");
     expect(p.project.revision).toBe(0);
     const ok = await req("/api/ops", { body: { ops: [asset], baseRevision: 0 } });
     expect(ok.status).toBe(200);

@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { ZodError, type z } from "zod";
@@ -72,7 +72,9 @@ export function createApp(ctx: AppContext): Hono {
     return s.parse(raw) as z.output<T>;
   };
 
-  app.get(ROUTES.project, async (c) => c.json({ ok: true, project: await loadProject(ctx.dir) }));
+  app.get(ROUTES.project, async (c) =>
+    c.json({ ok: true, name: basename(ctx.dir, ".mwproj"), project: await loadProject(ctx.dir) }),
+  );
 
   app.get(ROUTES.preview, async (c) => {
     const project = await loadProject(ctx.dir);

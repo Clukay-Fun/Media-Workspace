@@ -94,7 +94,8 @@ export type ApiError = {
 
 export type CompileWarningDto = { code: string; path: string; message: string };
 
-export type ProjectResponse = { ok: true; project: Project };
+/** name 是工程目录名（去掉 .mwproj） */
+export type ProjectResponse = { ok: true; name: string; project: Project };
 export type PreviewResponse = { ok: true; props: PreviewProps };
 export type EditorResponse = { ok: true; editor: EditorState };
 export type OpsResponse = {
