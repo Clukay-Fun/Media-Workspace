@@ -3,26 +3,27 @@ import { Anim, Color, Direction, Easing, TextStyle } from "./text-style";
 import { PROJECT_FORMAT_VERSION } from "./version";
 
 // project.json 的结构（PLAN 5.2）。类型一律从这里推导，不另写一份。
+// 全部用 strictObject：出现不认识的字段直接报错（D25），AI 拼错字段名时能立刻发现。
 
 export const Id = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/, "ID 只能包含字母、数字、- 和 _");
 const Ms = z.number().int().nonnegative();
 
 export const SafeAreaPreset = z.enum(["all", "douyin", "channels", "xiaohongshu"]);
 
-export const Canvas = z.object({
+export const Canvas = z.strictObject({
   width: z.number().int().positive().default(1080),
   height: z.number().int().positive().default(1920),
   fps: z.number().int().positive().max(120).default(30),
   background: Color.default("#000000"),
-  safeArea: z.object({ preset: SafeAreaPreset }).default({ preset: "all" }),
+  safeArea: z.strictObject({ preset: SafeAreaPreset }).default({ preset: "all" }),
 });
 
-export const Theme = z.object({
+export const Theme = z.strictObject({
   accent: Color.default("#FFD400"),
   font: z.string().min(1).default("alibaba-puhuiti-3"),
 });
 
-export const Probe = z.object({
+export const Probe = z.strictObject({
   durationMs: Ms,
   width: z.number().int().positive().optional(),
   height: z.number().int().positive().optional(),
@@ -30,7 +31,7 @@ export const Probe = z.object({
   hasAudio: z.boolean().optional(),
 });
 
-export const Asset = z.object({
+export const Asset = z.strictObject({
   kind: z.enum(["video", "audio", "image"]),
   /** 用户的原始文件，只读 */
   path: z.string().min(1),
@@ -47,7 +48,7 @@ export const Asset = z.object({
 });
 
 /** 中心点坐标；不写的字段取默认值（画布中心、100%、不旋转、不透明） */
-export const Transform = z.object({
+export const Transform = z.strictObject({
   x: z.number().optional(),
   y: z.number().optional(),
   scale: z.number().positive().max(20).optional(),
@@ -56,23 +57,23 @@ export const Transform = z.object({
   radius: z.number().nonnegative().optional(),
 });
 
-export const Keyframe = z.object({
+export const Keyframe = z.strictObject({
   /** 相对条目在时间线上开始位置的毫秒数 */
   atMs: Ms,
   transform: Transform,
   easing: Easing.default("ease-in-out"),
 });
 
-export const Transition = z.object({
+export const Transition = z.strictObject({
   type: z.enum(["slide", "push", "fade"]),
   direction: Direction.optional(),
   durationMs: z.number().int().positive().max(5000),
 });
 
 export const Anchor = z.union([
-  z.object({ caption: Id, offsetMs: z.number().int().default(0) }),
-  z.object({ clip: Id, offsetMs: z.number().int().default(0) }),
-  z.object({ ms: Ms }),
+  z.strictObject({ caption: Id, offsetMs: z.number().int().default(0) }),
+  z.strictObject({ clip: Id, offsetMs: z.number().int().default(0) }),
+  z.strictObject({ ms: Ms }),
 ]);
 
 export const Slot = z.enum(["top", "upper-third", "center", "lower-third", "caption"]);
@@ -85,7 +86,7 @@ const Visual = {
 };
 
 /** 主轨片段：首尾相连，不写 at */
-export const MainClip = z.object({
+export const MainClip = z.strictObject({
   id: Id,
   type: z.literal("clip"),
   asset: Id,
@@ -98,7 +99,7 @@ export const MainClip = z.object({
 });
 
 /** 普通轨道上的视频 / 音频片段 */
-export const FloatClip = z.object({
+export const FloatClip = z.strictObject({
   id: Id,
   type: z.literal("clip"),
   asset: Id,
@@ -111,7 +112,7 @@ export const FloatClip = z.object({
   ...Visual,
 });
 
-export const ImageItem = z.object({
+export const ImageItem = z.strictObject({
   id: Id,
   type: z.literal("image"),
   asset: Id,
@@ -121,14 +122,14 @@ export const ImageItem = z.object({
   ...Visual,
 });
 
-export const Highlight = z.object({
+export const Highlight = z.strictObject({
   text: z.string().min(1),
   /** 同一句里出现多次时，第几次（从 0 开始）；不写表示全部 */
   nth: z.number().int().nonnegative().optional(),
 });
 
 /** 字幕绑定素材源时间（D19），不绑定片段 */
-export const Caption = z.object({
+export const Caption = z.strictObject({
   id: Id,
   asset: Id,
   startMs: Ms,
@@ -138,7 +139,7 @@ export const Caption = z.object({
   style: Id.optional(),
 });
 
-export const Overlay = z.object({
+export const Overlay = z.strictObject({
   id: Id,
   template: z.string().min(1),
   at: Anchor,
@@ -158,29 +159,28 @@ const TrackBase = {
   muted: z.boolean().default(false),
 };
 
-export const VideoTrack = z.object({
+export const VideoTrack = z.strictObject({
   ...TrackBase,
   kind: z.literal("video"),
   /** 磁吸主轨：全工程只能有一条 */
   main: z.boolean().default(false),
-  // 顺序有讲究：zod 默认丢弃未知字段，MainClip 放前面会把带 at 的片段吃掉
   items: z.array(z.union([FloatClip, ImageItem, MainClip])),
 });
 
-export const CaptionTrack = z.object({
+export const CaptionTrack = z.strictObject({
   ...TrackBase,
   kind: z.literal("caption"),
   style: Id.optional(),
   items: z.array(Caption),
 });
 
-export const OverlayTrack = z.object({
+export const OverlayTrack = z.strictObject({
   ...TrackBase,
   kind: z.literal("overlay"),
   items: z.array(Overlay),
 });
 
-export const AudioTrack = z.object({
+export const AudioTrack = z.strictObject({
   ...TrackBase,
   kind: z.literal("audio"),
   items: z.array(FloatClip),
@@ -193,19 +193,19 @@ export const Track = z.discriminatedUnion("kind", [
   AudioTrack,
 ]);
 
-export const Outro = z.object({
+export const Outro = z.strictObject({
   asset: Id,
   transitionIn: Transition.optional(),
   gainDb: z.number().min(-60).max(20).default(0),
 });
 
-export const Cover = z.object({
+export const Cover = z.strictObject({
   atMs: Ms,
   /** 封面上额外显示的叠加层 ID */
   title: Id.optional(),
 });
 
-export const Project = z.object({
+export const Project = z.strictObject({
   version: z.literal(PROJECT_FORMAT_VERSION),
   revision: z.number().int().nonnegative(),
   canvas: Canvas,

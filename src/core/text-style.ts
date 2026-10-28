@@ -10,24 +10,36 @@ export const Easing = z.enum(["linear", "ease-in", "ease-out", "ease-in-out", "s
 
 export const AnimPresetName = z.enum([
   "none",
+  // 入场
   "fade",
   "fade-up",
   "slide",
   "pop",
+  "scale-punch",
   "bounce",
+  "slam",
+  "wave",
   "typewriter",
   "blur-in",
   "zoom-in",
-  "zoom-out",
   "color-sweep",
+  // 强调：在某个时间点播放一次
+  "pulse",
+  "glow",
+  "color-shift",
   "shake",
+  "underline-sweep",
+  // 出场
+  "zoom-out",
+  "scale-out",
+  // 循环
   "breathe",
 ]);
 
 export const Direction = z.enum(["up", "down", "left", "right"]);
 
 /** 声明式动画：文字、图片、画中画的入场 / 出场 / 循环都用它 */
-export const Anim = z.object({
+export const Anim = z.strictObject({
   preset: AnimPresetName,
   durationMs: z.number().int().positive().max(10_000),
   easing: Easing.default("ease-out"),
@@ -36,9 +48,11 @@ export const Anim = z.object({
   intensity: z.number().positive().max(10).optional(),
 });
 
-export const TextStyle = z.object({
-  font: z.object({
+export const TextStyle = z.strictObject({
+  font: z.strictObject({
     family: z.string().min(1),
+    /** 主字体缺字时按顺序使用的后备字体（D26），不退回系统字体 */
+    fallback: z.array(z.string().min(1)).default([]),
     weight: z.number().int().min(100).max(900).default(700),
     size: z.number().positive().max(400),
     letterSpacing: z.number().default(0),
@@ -61,7 +75,7 @@ export const TextStyle = z.object({
     })
     .nullable()
     .default(null),
-  layout: z.object({
+  layout: z.strictObject({
     x: z.number(),
     y: z.number(),
     anchor: z.enum(["center", "top", "bottom", "left", "right"]).default("center"),
@@ -72,12 +86,23 @@ export const TextStyle = z.object({
   highlight: z
     .object({
       fill: Color,
-      stroke: z.object({ color: Color, width: z.number().nonnegative() }).nullable().default(null),
+      stroke: z
+        .strictObject({ color: Color, width: z.number().nonnegative() })
+        .nullable()
+        .default(null),
       scale: z.number().positive().max(3).default(1),
       anim: AnimPresetName.default("none"),
     })
     .nullable()
     .default(null),
+  /** 字幕的显示时间：提前出现、延后消失；相邻两句 cut = 后一句出现时前一句立即消失，overlap = 允许重叠 */
+  timing: z
+    .strictObject({
+      leadMs: z.number().int().nonnegative().max(2000).default(0),
+      tailMs: z.number().int().nonnegative().max(2000).default(0),
+      handoff: z.enum(["cut", "overlap"]).default("cut"),
+    })
+    .default({ leadMs: 0, tailMs: 0, handoff: "cut" }),
   animation: z
     .object({
       in: Anim.nullable().default(null),

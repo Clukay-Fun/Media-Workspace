@@ -1,4 +1,4 @@
-# Media Workspace 开发计划（v0.4）
+# Media Workspace 开发计划（v0.5）
 
 > 状态：已批准（2026-10-28），阶段 A 在 `dev` 分支上进行。
 > 最后更新：2026-10-28
@@ -6,6 +6,8 @@
 > - v0.3：参照剪映加入 14 项手动编辑功能；改为显式轨道模型；字幕改为绑定素材源时间；
 >   新增统一文本样式引擎和关键帧；以 `~/Desktop/1029` 样片作为阶段 A 的验收标准。
 > - v0.4：v1 不加语音识别；18 项功能全部纳入 v1；标题也默认用普惠体；片尾改为使用用户自己的片尾素材。
+> - v0.5：参考 Hypit、OpenMontage 的设计（`docs/decisions/0003`）：工程格式严格校验、后备字体、
+>   字幕显示时间（提前 / 延后 / 衔接）、高亮方式、强调类动画和情绪标注、拖动规则、MG 卡片分类、AI 自查流程。
 
 ## 0. 一句话定义
 
@@ -116,6 +118,8 @@ AI 应用（Codex、Claude Code 等）通过 CLI 或本地 MCP 提交操作；
 | **D22** | 编辑器状态（参考线、标尺开关、缩放、选中）存在 `editor.json`，不影响渲染，也不增加 revision | 拖动参考线不应该和 AI 的修改发生冲突 |
 | **D23** | 拖动过程中只更新本地预览，松开时提交**一次**操作 | 避免每次拖动产生上百个版本 |
 | **D24** | 坐标改为**自由坐标 + 命名槽位**：人用标尺和参考线自由摆放，AI 优先用槽位（槽位会换算成坐标） | 参考线和标尺意味着需要自由定位 |
+| **D25** | 工程格式**严格校验**：出现不认识的字段就报错（`UNKNOWN_FIELD`），不悄悄丢掉 | AI 拼错字段名时能立刻发现，而不是效果没生效还不知道为什么 |
+| **D26** | 字体写成**字体栈**：主字体 + 后备字体，每个都对应具体的字体文件；不退回系统字体 | 生僻字、英文符号缺字时有确定的后备，预览和导出一致 |
 
 （D6 被 D19 取代；D12 被样片分析结果修正，见第 8 节。）
 
@@ -211,13 +215,17 @@ AI 应用（Codex、Claude Code 等）通过 CLI 或本地 MCP 提交操作；
 
 ```jsonc
 {
-  "font": { "family": "alibaba-puhuiti-3", "weight": 700, "size": 64, "letterSpacing": 0, "lineHeight": 1.25 },
+  "font": { "family": "alibaba-puhuiti-3", "fallback": ["noto-sans-sc"],
+            "weight": 700, "size": 64, "letterSpacing": 0, "lineHeight": 1.25 },
   "fill": "#FFFFFF",
   "stroke": { "color": "#000000", "width": 6 },
   "shadow": { "color": "#00000099", "blur": 8, "x": 0, "y": 4 },
   "box": null,                    // 背景框：{ "color": "#000000AA", "radius": 12, "padding": [8, 16] }
   "layout": { "x": 540, "y": 1160, "anchor": "center", "maxWidth": 920, "maxLines": 2, "align": "center" },
   "highlight": { "fill": "#FFD400", "stroke": null, "scale": 1.0, "anim": "pop" },
+  // 阶段 C 加入：高亮方式 mode（keyword = 只亮关键词；current = 只亮正在念的字 / 词；trail = 念过的都留亮）、
+  // 当前词底下的圆角色块 activeBox、下划线 underline、渐变、发光
+  "timing": { "leadMs": 0, "tailMs": 0, "handoff": "cut" },  // 提前出现、延后消失；相邻两句 cut = 直接切换，overlap = 允许重叠
   "animation": {
     "in":  { "preset": "fade-up", "durationMs": 180, "easing": "ease-out" },
     "unit": "char",               // char | word | line：逐字、逐词、整行
@@ -228,9 +236,19 @@ AI 应用（Codex、Claude Code 等）通过 CLI 或本地 MCP 提交操作；
 }
 ```
 
-**动画预设库**（声明式，所有参数都可以调）：
-`fade`、`fade-up`、`slide`（上 / 下 / 左 / 右）、`pop`（缩放弹出）、`bounce`、`typewriter`、`blur-in`、`zoom-in`、`zoom-out`、`color-sweep`（颜色扫过，按时长均分）、`shake`、`breathe`（循环缩放）。
-同一套预设同时用于文字、图片和画中画的入场、出场、循环动画。
+**动画预设库**（声明式，所有参数都可以调），分四类：
+
+| 类别 | 预设 |
+|---|---|
+| 入场 | `fade`、`fade-up`、`slide`（上 / 下 / 左 / 右）、`pop`（缩放弹出）、`scale-punch`（回弹放大）、`bounce`、`slam`（砸落）、`wave`（逐字波浪）、`typewriter`、`blur-in`、`zoom-in`、`color-sweep`（颜色扫过，按时长均分） |
+| 强调 | `pulse`（放大一下再回来）、`glow`（发光）、`color-shift`（变色）、`shake`、`underline-sweep`（下划线划过）。在某个时间点上播放一次，用于关键词 |
+| 出场 | `fade`、`slide`、`zoom-out`、`scale-out` |
+| 循环 | `breathe`（循环缩放） |
+
+同一套预设同时用于文字、图片和画中画。每个预设带一个**情绪标注**（沉稳 / 冲击 / 俏皮 / 科技 / 柔和），
+`mw guide` 输出给 AI，方便 AI 按内容挑选动画。
+
+样式属性在界面上按**位置、外观、时间**三组展示，分组信息写在 schema 的元数据里，样式面板按它自动生成，不另外维护一份属性列表。
 
 ### 5.5 坐标和槽位
 
@@ -359,6 +377,7 @@ stdout 默认输出 JSON，日志写到 stderr。
 范围：core（schema、ops、validate、compile、srt、snap 的纯逻辑）、node（store、media、render），
 文本样式引擎和动画预设（字幕、高亮、逐字出现），标题模板 `title-bar`，片段 `transform` + 缩放关键帧，
 `clip.split`、`caption.import`（两种时间基准）、`cut.removeCaptions`、`cut.removePauses` 的操作层，以及完整的 CLI。
+工程格式严格校验（D25）、字体栈（D26）、字幕显示时间字段 `timing`（提前 / 延后 / 衔接）。
 
 验收：**只用 CLI，从 `剪辑前.mov` 做出和 `剪辑后.mp4` 效果接近的成片**：
 
@@ -380,6 +399,9 @@ stdout 默认输出 JSON，日志写到 stderr。
 时间线（多轨道、选中、拖动、裁剪、分割、吸附、波形、轨道锁定 / 隐藏 / 静音），属性面板，撤销 / 重做，
 以及 MCP stdio 服务（和 CLI 一一对应）。
 
+拖动规则（写成 core 里的纯函数并测试）：整体移动时长不变；拖开头时结尾不动；拖结尾时开头不动；
+一次拖动（包括吸附后的结果）只提交一次操作。
+
 验收：
 
 1. F1–F4、F10、F19 在界面上都能使用，行为和剪映一致。
@@ -389,7 +411,10 @@ stdout 默认输出 JSON，日志写到 stderr。
 
 ### 阶段 C：字幕体系
 
-范围：字幕快剪视图（F11）、文本样式编辑面板（F5）、字幕模板库（F13）、标题模板库（F14）、模板库的保存和导入。
+范围：字幕快剪视图（F11）、文本样式编辑面板（F5）、字幕模板库（F13）、标题模板库（F14）、模板库的保存和导入；
+字幕高亮方式（只亮关键词 / 只亮当前字 / 念过的留亮）、当前词色块、下划线、渐变、发光；强调类动画。
+`docs/orchestration-guide.md` 的第一版写进 AI 自查流程：先列方案再提交操作；提交后 `validate` + `preview --sheet` 自查，
+只修一轮；修的时候不能改动已经确定的时长。
 
 验收：在文稿视图里删除 3 句、合并 2 句、去停顿之后，导出的成片剪辑点正确；自己编排一个字幕样式，保存成模板，在另一个工程里使用。
 
@@ -403,6 +428,9 @@ stdout 默认输出 JSON，日志写到 stderr。
 
 范围：小卡 / 半屏卡 / 全屏卡（F12；半屏卡会把主画面移到上半部分）、封面导出（F18）、
 `docs/orchestration-guide.md`（给 AI 的编排规则）、`mw guide`。
+
+第一批 MG 模板按内容分类：大数字滚动、图表（柱状 / 折线 / 占比）、文字动效（金句）、
+人名条 / 提示条、要点列表、新闻 / 截图卡片、标志出场。每个模板声明适合的卡片尺寸（小卡 / 半屏 / 全屏）和情绪标注。
 
 验收：在 Codex 和 Claude Code 里各说一句话——
 「把这段口播剪掉停顿，加顶部标题，字幕用居中黄高亮模板，第二个观点用半屏卡，接上默认片尾，导出封面」——
@@ -435,9 +463,13 @@ AI 能自己完成 `inspect → apply → validate → preview --sheet → expor
 | 2026-10-28 | 语音识别 | **v1 不做**。字幕快剪使用用户提供的对应原片的 SRT |
 | 2026-10-28 | 功能范围 | F1–F19 **全部纳入 v1**，按阶段 A–E 推进 |
 | 2026-10-28 | 片尾 | 用户有自己的片尾素材，作为 `outro` 直接拼接（阶段 A） |
+| 2026-10-28 | 参考线内框 | 是字幕对准线，字幕横向不超出 x 106–965 |
+| 2026-10-28 | 滤镜 | 样片加了滤镜；v1 不做滤镜调色，复刻时不还原 |
+| 2026-10-28 | 参考项目 | Hypit、OpenMontage 只借鉴设计思路，不使用代码（协议不兼容），见 `docs/decisions/0003` |
 
 ## 14. 阶段 A 开始前需要用户提供
 
 1. ~~片尾素材~~：已提供，`~/Desktop/1029/片尾.mp4`（H.264、29fps、44.1kHz、1.76 秒，需要标准化）。
-2. 阿里巴巴普惠体 3.0 的字体文件（Regular、Medium、Bold、Heavy）。
+2. ~~阿里巴巴普惠体 3.0~~：已提供（Thin、Light、Regular、SemiBold、Bold、Heavy、Black，没有 Medium），
+   解压到 `assets/fonts/alibaba-puhuiti-3/`（不进仓库）。
 3. 如果有其他口播素材，可以一并提供，用于补充测试；没有的话，就只用 `~/Desktop/1029` 的样片。

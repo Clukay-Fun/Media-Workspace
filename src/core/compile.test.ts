@@ -239,6 +239,21 @@ describe("mapTimelineMs", () => {
 });
 
 describe("schema", () => {
+  it("不认识的字段直接报错（D25）", () => {
+    const r = Project.safeParse({
+      ...base,
+      tracks: [
+        {
+          id: "main",
+          kind: "video",
+          main: true,
+          items: [{ id: "c1", type: "clip", asset: "a1", inMs: 0, outMs: 1000, sped: 1.1 }],
+        },
+      ],
+    });
+    expect(r.success).toBe(false);
+  });
+
   it("普通轨道上带 at 的片段不会被当成主轨片段", () => {
     const p = make({
       tracks: [
