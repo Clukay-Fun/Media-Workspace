@@ -2014,63 +2014,6 @@ textarea:focus-visible {
   }
 }
 
-/* ---- 工程进度（顶栏中间） ---- */
-
-.steps {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin: 0;
-  padding: 3px;
-  list-style: none;
-  border-radius: 999px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-}
-
-.step {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 26px;
-  padding: 0 11px 0 4px;
-  border-radius: 999px;
-  font-size: 12px;
-  white-space: nowrap;
-  color: var(--text-3);
-}
-
-.step-no {
-  display: grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  font-size: 10px;
-  font-family: var(--mono);
-  background: var(--raised-2);
-}
-
-.step.done {
-  color: var(--text-2);
-}
-
-.step.done .step-no {
-  color: #fff;
-  background: var(--ok);
-}
-
-/* 下一步：黑底白字，和老萨的「当前步骤」一个意思 */
-.step.next {
-  color: #fff;
-  background: var(--text);
-}
-
-.step.next .step-no {
-  color: var(--text);
-  background: var(--accent);
-}
-
 /* ---- 章节条（预览上方） ---- */
 
 .chapter-bar {
