@@ -11,11 +11,11 @@ import { msOfFrame } from "./lib/timeline";
 // 界面状态。工程数据只从服务端读，修改一律提交 ops（AGENTS.md 规则 1）；
 // 本地只有选中、播放头、拖动中的草稿这些不影响渲染的东西。
 
-/** 审阅栏的三页：质检问题、AI 改动、批注 */
-export type SideTab = "issues" | "changes" | "comments";
+/** 右栏三页：属性（选中元素能点的选项；没选中时是章节和质检）、批注、AI 改动 */
+export type SideTab = "props" | "comments" | "changes";
 
-/** 左栏三页：选中元素的详情、样式库、素材 */
-export type LeftTab = "selection" | "styles" | "assets";
+/** 左栏两页：素材、样式库 */
+export type LeftTab = "assets" | "styles";
 
 const reviewedKey = (name: string) => `mw.reviewed.${name}`;
 
@@ -74,8 +74,6 @@ type State = {
   leftOpen: boolean;
   /** 窄容器里审阅栏是抽屉，这里记开没开 */
   sideOpen: boolean;
-  /** 时间线展开成完整轨道（可以拖动、裁剪） */
-  timelineExpanded: boolean;
   /** 人已经看过、确认过的版本；之后 AI 的改动算「待确认」 */
   reviewedRev: number | null;
   safeArea: boolean;
@@ -105,7 +103,6 @@ type State = {
   setSideOpen(open: boolean): void;
   setLeftTab(tab: LeftTab): void;
   setLeftOpen(open: boolean): void;
-  toggleTimeline(): void;
   confirmAiChanges(): void;
   toggleSafeArea(): void;
   setCaptionList(on: boolean): void;
@@ -200,11 +197,10 @@ export const useStore = create<State>((set, get) => {
     aiChange: null,
     exportJob: null,
     toasts: [],
-    sideTab: "comments",
-    leftTab: "selection",
+    sideTab: "props",
+    leftTab: "assets",
     leftOpen: false,
     sideOpen: false,
-    timelineExpanded: false,
     reviewedRev: null,
     safeArea: false,
     captionList: false,
@@ -322,7 +318,7 @@ export const useStore = create<State>((set, get) => {
       set((s) => ({
         selected: id,
         ...(id && opts?.reveal !== false
-          ? { revealNonce: s.revealNonce + 1, leftTab: "selection" as const }
+          ? { revealNonce: s.revealNonce + 1, sideTab: "props" as const }
           : {}),
       })),
     seek: (frame) =>
@@ -335,7 +331,6 @@ export const useStore = create<State>((set, get) => {
     setSideOpen: (sideOpen) => set((s) => ({ sideOpen, leftOpen: sideOpen ? false : s.leftOpen })),
     setLeftTab: (leftTab) => set({ leftTab, leftOpen: true, sideOpen: false }),
     setLeftOpen: (leftOpen) => set((s) => ({ leftOpen, sideOpen: leftOpen ? false : s.sideOpen })),
-    toggleTimeline: () => set((s) => ({ timelineExpanded: !s.timelineExpanded })),
     confirmAiChanges() {
       const { project, name } = get();
       if (!project) return;

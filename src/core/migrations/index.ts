@@ -11,6 +11,8 @@ const STEPS: Record<number, (p: Raw) => Raw> = {
   1: (p) => ({ ...p, version: 2 }),
   // 2 → 3：锚点可以指定字幕的第几个字、素材缓存新增 faces（docs/decisions/0007），都是可选字段
   2: (p) => ({ ...p, version: 3 }),
+  // 3 → 4：新增可选的章节（chapters）和主轨片段的剪辑理由（cutBefore），docs/decisions/0010
+  3: (p) => ({ ...p, version: 4 }),
 };
 
 export function migrate(data: unknown): unknown {

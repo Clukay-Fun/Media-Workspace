@@ -4,7 +4,7 @@ import { Project } from "../../core/schema";
 import { tickStep, timecode, timelineRows, waveform } from "./timeline";
 
 const project = Project.parse({
-  version: 3,
+  version: 4,
   revision: 0,
   canvas: {},
   assets: {
@@ -33,7 +33,7 @@ describe("时间线概览", () => {
 
   it("上层轨道在上，主轨在最下面，片尾接在主轨后", () => {
     const rows = timelineRows(project, tl);
-    expect(rows.map((r) => r.label)).toEqual(["字幕", "主轨"]);
+    expect(rows.map((r) => r.label)).toEqual(["字幕", "主视频"]);
     expect(rows[1]?.blocks.map((b) => [b.id, b.from, b.to])).toEqual([
       ["c1", 0, 60],
       ["outro", 60, 90],

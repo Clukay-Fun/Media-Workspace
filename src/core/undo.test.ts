@@ -39,7 +39,7 @@ describe("undoState", () => {
 describe("changedIds", () => {
   it("列出新增、删除、修改的条目和轨道", () => {
     const p = Project.parse({
-      version: 3,
+      version: 4,
       revision: 0,
       canvas: {},
       tracks: [

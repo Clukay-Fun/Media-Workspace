@@ -1,14 +1,19 @@
+import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { planDrag } from "../../core/edit";
 import type { Op } from "../../core/ops";
-import type { Anchor, Caption, Project } from "../../core/schema";
+import type { Anchor, Caption, Project, Slot, Transform } from "../../core/schema";
 import { findItem, type ItemRef, kindLabel } from "../lib/project";
 import { msOfFrame, timecode } from "../lib/timeline";
 import { useStore } from "../store";
 import { CommentCard } from "./comment-card";
 import { Icon } from "./icons";
+import { swatch } from "./left-panel";
 
-/** 选中元素的详情：只放审片时常用的几样——说的哪句、时间微调、改字、样式、锁定，和它的批注 */
+/**
+ * 选中元素的属性：能用点的就不用写——样式、位置、语速、时间微调都是直接点的选项；
+ * 点不出来的改动在底部输入框告诉 AI。
+ */
 export function SelectionCard() {
   const project = useStore((s) => s.project);
   const selected = useStore((s) => s.selected);
@@ -119,7 +124,15 @@ function Selection({
   const isCaption = track.kind === "caption";
   const anchor = "at" in item ? (item.at as Anchor) : null;
   const styleId = "style" in item ? (item.style ?? null) : null;
-  const styleNames = Object.keys(project.styles);
+  const hasStyle = isCaption || track.kind === "overlay";
+  // 字幕的位置由样式决定；主轨铺满画面。其余（标题、画中画、图片）可以选位置
+  const hasSlot = anchor !== null && !isCaption && track.kind !== "audio";
+  const slot = "slot" in item ? ((item.slot as Slot | undefined) ?? null) : null;
+  const transform = "transform" in item ? (item.transform as Transform | undefined) : undefined;
+  const customPos = transform?.x !== undefined || transform?.y !== undefined;
+  const speed = "speed" in item && typeof item.speed === "number" ? item.speed : null;
+  const cut = "cutBefore" in item ? (item.cutBefore as string | undefined) : undefined;
+  const locked = track.locked;
 
   const nudge = (deltaMs: number) => {
     try {
@@ -139,6 +152,16 @@ function Selection({
       : { op: "item.update", id, set: { style } };
     void submit([op], `已套用样式「${style}」`);
   };
+
+  const setSlot = (s: Slot) => {
+    // 拖动过的元素带着 x / y，会盖住位置预设；换位置时一起去掉
+    const { x: _x, y: _y, ...rest } = transform ?? {};
+    const set = customPos ? { slot: s, transform: rest } : { slot: s };
+    void submit([{ op: "item.update", id, set }], `已放到「${SLOT_LABEL[s]}」`);
+  };
+
+  const setSpeed = (v: number) =>
+    void submit([{ op: "item.update", id, set: { speed: v } }], `语速改成 ${v} 倍`);
 
   const lock = () =>
     void submit(
@@ -168,33 +191,92 @@ function Selection({
 
       {anchor && <p className="anchor">{describeAnchor(project, anchor)}</p>}
 
-      {isCaption && <CaptionEditor caption={item as Caption} locked={track.locked} />}
+      {isCaption && <CaptionEditor caption={item as Caption} locked={locked} />}
 
-      <div className="selection-actions">
-        {anchor && !track.locked && (
+      {cut && (
+        <p className="cut-note">
+          <span className="cut-tag static">{cut}</span>
+          这一段前面剪掉了一截，理由是 AI 粗剪时写的
+        </p>
+      )}
+
+      {hasStyle && (
+        <Field label="样式">
+          <div className="style-grid">
+            {Object.entries(project.styles).map(([name, style]) => (
+              <button
+                key={name}
+                type="button"
+                className={styleId === name ? "style-chip on" : "style-chip"}
+                disabled={locked}
+                title={name}
+                onClick={() => styleId !== name && setStyle(name)}
+              >
+                <span className="style-chip-sample" style={swatch(style)}>
+                  {isCaption ? "字幕" : "标题"}
+                </span>
+                <span className="style-chip-name">{name}</span>
+              </button>
+            ))}
+          </div>
+        </Field>
+      )}
+
+      {hasSlot && (
+        <Field label="位置" note={customPos ? "拖动过，自定义位置" : undefined}>
+          <div className="slot-picker" role="radiogroup" aria-label="位置">
+            {SLOTS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                role="radio"
+                aria-checked={!customPos && slot === s}
+                className={!customPos && slot === s ? "slot on" : "slot"}
+                disabled={locked}
+                onClick={() => setSlot(s)}
+              >
+                <span className="slot-frame" aria-hidden="true">
+                  <span className="slot-bar" style={{ top: `${SLOT_Y[s] * 100}%` }} />
+                </span>
+                {SLOT_LABEL[s]}
+              </button>
+            ))}
+          </div>
+        </Field>
+      )}
+
+      {speed !== null && (
+        <Field label="语速">
+          <div className="segmented" role="radiogroup" aria-label="语速">
+            {SPEEDS.map((v) => (
+              <button
+                key={v}
+                type="button"
+                role="radio"
+                aria-checked={speed === v}
+                className={speed === v ? "on" : undefined}
+                disabled={locked}
+                onClick={() => speed !== v && setSpeed(v)}
+              >
+                {v}×
+              </button>
+            ))}
+          </div>
+        </Field>
+      )}
+
+      {anchor && !locked && (
+        <Field label="出现时间">
           <div className="nudge" role="group" aria-label="调整出现时间">
             <NudgeBtn icon="back" label="提前 0.5 秒" onClick={() => nudge(-500)} />
             <NudgeBtn icon="prev" label="提前 0.1 秒" onClick={() => nudge(-100)} />
             <NudgeBtn icon="next" label="延后 0.1 秒" onClick={() => nudge(100)} />
             <NudgeBtn icon="forward" label="延后 0.5 秒" onClick={() => nudge(500)} />
           </div>
-        )}
-        {(isCaption || track.kind === "overlay") && (
-          <select
-            className="select"
-            value={styleId ?? ""}
-            disabled={track.locked}
-            title="样式"
-            onChange={(e) => e.target.value && setStyle(e.target.value)}
-          >
-            <option value="">{isCaption ? "样式：跟随轨道" : "样式：模板默认"}</option>
-            {styleNames.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        )}
+        </Field>
+      )}
+
+      <div className="selection-actions">
         {isCaption && <ListToggle />}
         <button
           type="button"
@@ -207,6 +289,44 @@ function Selection({
         </button>
       </div>
     </div>
+  );
+}
+
+const SLOTS: Slot[] = ["top", "upper-third", "center", "lower-third", "caption"];
+const SLOT_LABEL: Record<Slot, string> = {
+  top: "顶部",
+  "upper-third": "上方",
+  center: "中间",
+  "lower-third": "下方",
+  caption: "字幕区",
+};
+/** 只用来画示意图 */
+const SLOT_Y: Record<Slot, number> = {
+  top: 0.1,
+  "upper-third": 0.28,
+  center: 0.46,
+  "lower-third": 0.64,
+  caption: 0.78,
+};
+const SPEEDS = [1, 1.1, 1.2, 1.25];
+
+function Field({
+  label,
+  note,
+  children,
+}: {
+  label: string;
+  note?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="field">
+      <h3>
+        {label}
+        {note && <span className="field-note">{note}</span>}
+      </h3>
+      {children}
+    </section>
   );
 }
 
@@ -251,7 +371,7 @@ function CaptionEditor({ caption, locked }: { caption: Caption; locked: boolean 
       .submit([{ op: "caption.update", id: caption.id, set: { text: t } }], "字幕已修改");
   };
   return (
-    <section className="section">
+    <section className="field">
       <h3>字幕文字</h3>
       <textarea
         className="caption-text"
@@ -342,7 +462,7 @@ export function Composer() {
         ref={box}
         value={text}
         rows={3}
-        placeholder="对当前画面提出修改意见…"
+        placeholder={selected ? "告诉 AI 这里要改什么…" : "告诉 AI 要改什么…"}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {

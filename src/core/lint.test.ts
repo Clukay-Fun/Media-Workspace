@@ -13,7 +13,7 @@ const styles: Record<string, TextStyle> = {
 
 function make(captions: object[], overlays: object[] = []) {
   return Project.parse({
-    version: 3,
+    version: 4,
     revision: 0,
     canvas: {},
     assets: {

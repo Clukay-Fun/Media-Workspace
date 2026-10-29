@@ -6,7 +6,7 @@ import { type MainClip, Project } from "./schema";
 
 const project = (locked = false) =>
   Project.parse({
-    version: 3,
+    version: 4,
     revision: 3,
     canvas: {},
     assets: { a1: { kind: "video", path: "/raw.mov", probe: { durationMs: 20_000 } } },
@@ -112,6 +112,22 @@ describe("clip.split", () => {
     expect(r.changed).toEqual(["c1", "c1-1"]);
     // 分割前后，字幕在时间线上的位置不变
     expect(compile(r.project).captions).toEqual(compile(p).captions);
+  });
+
+  it("剪辑理由只留在前半段", () => {
+    const r = applyOps(project(), [
+      { op: "item.update", id: "c1", set: { cutBefore: "停顿" } },
+      { op: "clip.split", id: "c1", atMs: 4000 },
+    ]);
+    const [x, y] = (r.project.tracks[0]?.items ?? []) as MainClip[];
+    expect([x?.cutBefore, y?.cutBefore]).toEqual(["停顿", undefined]);
+  });
+
+  it("chapters.set 整体替换章节", () => {
+    const r = applyOps(project(), [
+      { op: "chapters.set", chapters: [{ title: "开场", at: { caption: "s1" } }] },
+    ]);
+    expect(r.project.chapters).toEqual([{ title: "开场", at: { caption: "s1", offsetMs: 0 } }]);
   });
 
   it("分割点在片段外报 TIME_RANGE", () => {

@@ -27,15 +27,18 @@ function demoProject(): Project {
     "第三件事 给每一笔大支出留出等待期",
     "坚持半年 你会回来感谢自己",
   ];
+  // 第 3、5 句后面各有一段被粗剪掉的废话（口误、停顿）
+  const cutAfter: Record<number, number> = { 2: 1600, 4: 1300 };
   let t = 2600;
   const captions = lines.map((text, i) => {
     const len = 1300 + [...text].length * 160;
     const c = { id: `s${i + 1}`, asset: "raw", startMs: t, endMs: t + len, text };
-    t += len + 240;
+    t += len + 240 + (cutAfter[i] ?? 0);
     return c;
   });
+  const at = (i: number) => captions[i] ?? { startMs: 0, endMs: 0 };
   return Project.parse({
-    version: 3,
+    version: 4,
     revision: 0,
     canvas: { background: "#1a1b1f" },
     assets: {
@@ -63,7 +66,34 @@ function demoProject(): Project {
         name: "主轨",
         kind: "video",
         main: true,
-        items: [{ id: "c1", type: "clip", asset: "raw", inMs: 2400, outMs: t, speed: 1.1 }],
+        items: [
+          {
+            id: "c1",
+            type: "clip",
+            asset: "raw",
+            inMs: 2400,
+            outMs: at(2).endMs + 120,
+            speed: 1.1,
+          },
+          {
+            id: "c2",
+            type: "clip",
+            asset: "raw",
+            inMs: at(3).startMs - 120,
+            outMs: at(4).endMs + 120,
+            speed: 1.1,
+            cutBefore: "口误",
+          },
+          {
+            id: "c3",
+            type: "clip",
+            asset: "raw",
+            inMs: at(5).startMs - 120,
+            outMs: t,
+            speed: 1.1,
+            cutBefore: "停顿",
+          },
+        ],
       },
       { id: "cap", name: "字幕", kind: "caption", items: captions },
       {
@@ -82,6 +112,13 @@ function demoProject(): Project {
       },
     ],
     outro: { asset: "outro" },
+    chapters: [
+      { title: "开场", at: { caption: "s1" } },
+      { title: "记账", at: { caption: "s4" } },
+      { title: "先存", at: { caption: "s6" } },
+      { title: "等待期", at: { caption: "s7" } },
+      { title: "结尾", at: { caption: "s8" } },
+    ],
   });
 }
 

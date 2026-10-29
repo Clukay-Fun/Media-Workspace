@@ -5,9 +5,9 @@ import { useCallback, useState } from "react";
 /** leftW、sideW 为 null 时用样式表里按容器宽度给的默认值 */
 export type Layout = { leftW: number | null; sideW: number | null; timelineH: number };
 
-const KEY = "mw.layout.v3";
+const KEY = "mw.layout.v4";
 
-export const DEFAULT_LAYOUT: Layout = { leftW: null, sideW: null, timelineH: 180 };
+export const DEFAULT_LAYOUT: Layout = { leftW: null, sideW: null, timelineH: 260 };
 
 function read(): Layout {
   try {

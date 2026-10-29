@@ -6,7 +6,7 @@ import { hitBoxes, pick, transformBox } from "./geometry";
 
 const project = (overlayTransform?: object) =>
   Project.parse({
-    version: 3,
+    version: 4,
     revision: 0,
     canvas: {},
     assets: { a1: { kind: "video", path: "/raw.mov", probe: { durationMs: 10_000 } } },

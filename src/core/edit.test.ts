@@ -8,7 +8,7 @@ import { Project } from "./schema";
 // 30fps；主轨两段：c1 源 0–2000、c2 源 4000–6000（时间线 0–2000、2000–4000）
 const project = (opts: { locked?: boolean } = {}) =>
   Project.parse({
-    version: 3,
+    version: 4,
     revision: 0,
     canvas: {},
     assets: {

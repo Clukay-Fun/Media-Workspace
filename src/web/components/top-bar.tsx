@@ -1,4 +1,5 @@
 import type React from "react";
+import { projectSteps } from "../lib/progress";
 import { frameOfMs } from "../lib/timeline";
 import { useStore } from "../store";
 import { Icon } from "./icons";
@@ -28,7 +29,7 @@ export function TopBar() {
 
   const jumpToIssue = () => {
     const first = issues[0];
-    setSideTab("issues");
+    setSideTab("props");
     if (!first || !project) return;
     select(first.id, { reveal: false });
     seek(frameOfMs(first.atMs, project.canvas.fps));
@@ -41,7 +42,7 @@ export function TopBar() {
           type="button"
           className="icon-btn left-toggle"
           aria-label="左栏"
-          title="选中、样式、素材"
+          title="素材、样式"
           onClick={() => setLeftOpen(!leftOpen)}
         >
           <Icon name="list" />
@@ -59,7 +60,7 @@ export function TopBar() {
       </div>
 
       <div className="topbar-center">
-        {aiChange && (
+        {aiChange ? (
           <div className="ai-change" role="status">
             <Icon name="spark" size={14} />
             <span>
@@ -89,6 +90,8 @@ export function TopBar() {
               <Icon name="close" size={12} />
             </button>
           </div>
+        ) : (
+          project && <Steps />
         )}
       </div>
 
@@ -115,8 +118,8 @@ export function TopBar() {
         <button
           type="button"
           className="icon-btn drawer-toggle"
-          aria-label="审阅栏"
-          title="审阅栏"
+          aria-label="右栏"
+          title="属性、批注、AI 改动"
           onClick={() => setSideOpen(!sideOpen)}
         >
           <Icon name="panel" />
@@ -134,5 +137,28 @@ export function TopBar() {
         </button>
       </div>
     </header>
+  );
+}
+
+/** 工程进度：导入 → 字幕 → 粗剪 → 章节 → 标题 → 导出，第一个没做的是「下一步」 */
+function Steps() {
+  const project = useStore((s) => s.project);
+  const exportJob = useStore((s) => s.exportJob);
+  if (!project) return null;
+  const steps = projectSteps(project, Boolean(exportJob?.done && !exportJob.error));
+  const next = steps.findIndex((s) => !s.done);
+  return (
+    <ol className="steps" aria-label="工程进度">
+      {steps.map((s, i) => (
+        <li
+          key={s.key}
+          className={["step", s.done ? "done" : "", i === next ? "next" : ""].join(" ")}
+          title={s.detail ?? (s.done ? "已完成" : i === next ? "下一步" : "还没做")}
+        >
+          <span className="step-no">{s.done ? <Icon name="check" size={10} /> : i + 1}</span>
+          {s.label}
+        </li>
+      ))}
+    </ol>
   );
 }

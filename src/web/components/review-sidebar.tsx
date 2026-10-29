@@ -6,9 +6,12 @@ import { frameOfMs, itemFrames, timecode } from "../lib/timeline";
 import { type SideTab, useStore } from "../store";
 import { CommentCard } from "./comment-card";
 import { Icon } from "./icons";
-import { Composer } from "./selection";
+import { Composer, SelectionCard } from "./selection";
 
-/** 审阅栏：质检问题、AI 改动、批注三页，批注输入框固定在底部 */
+/**
+ * 右栏：属性 / 批注 / AI 改动。属性页给选中元素能直接点的选项，点不出来的在底部输入框告诉 AI。
+ * 没选中时属性页是章节和质检问题。
+ */
 export function ReviewSidebar() {
   const tab = useStore((s) => s.sideTab);
   const open = useStore((s) => s.sideOpen);
@@ -22,13 +25,13 @@ export function ReviewSidebar() {
   const { setSideTab, setSideOpen } = useStore.getState();
 
   const tabs: { id: SideTab; label: string; count: number; tone: string }[] = [
-    { id: "issues", label: "问题", count: issues, tone: "warn" },
-    { id: "changes", label: "AI 改动", count: pending, tone: "ai" },
+    { id: "props", label: "属性", count: issues, tone: "warn" },
     { id: "comments", label: "批注", count: comments, tone: "comment" },
+    { id: "changes", label: "AI 改动", count: pending, tone: "ai" },
   ];
 
   return (
-    <aside className={open ? "sidebar open" : "sidebar"} aria-label="审阅">
+    <aside className={open ? "sidebar panel open" : "sidebar panel"} aria-label="属性和审阅">
       <div className="tabs" role="tablist">
         {tabs.map((t) => (
           <button
@@ -53,7 +56,7 @@ export function ReviewSidebar() {
         </button>
       </div>
       <div className="panel-scroll">
-        {tab === "issues" && <IssueList />}
+        {tab === "props" && <Properties />}
         {tab === "changes" && <ChangeList />}
         {tab === "comments" && <Comments />}
       </div>
@@ -72,11 +75,67 @@ const jumpTo = (id: string | undefined, ms?: number) => {
   else if (range) s.seek(range.from);
 };
 
-function IssueList() {
+function Properties() {
+  const selected = useStore((s) => s.selected);
+  const project = useStore((s) => s.project);
+  if (selected && project) {
+    return (
+      <>
+        <SelectionCard />
+        <IssueList only={selected} />
+      </>
+    );
+  }
+  return (
+    <>
+      <Chapters />
+      <h3 className="panel-title">质检</h3>
+      <IssueList />
+    </>
+  );
+}
+
+/** 没选中时的概览：章节目录，点一章跳过去 */
+function Chapters() {
+  const tl = useStore((s) => s.preview?.timeline);
+  const frame = useStore((s) => s.frame);
+  if (!tl) return null;
+  const { chapters, fps } = tl;
+  return (
+    <>
+      <h3 className="panel-title">章节</h3>
+      {chapters.length === 0 ? (
+        <p className="panel-note">还没分章节。AI 粗剪后会按内容分好，也可以写批注让它分。</p>
+      ) : (
+        <ol className="chapter-list">
+          {chapters.map((c, i) => {
+            const next = chapters[i + 1]?.from ?? tl.mainEndFrame;
+            const on = frame >= c.from && frame < next;
+            return (
+              <li key={`${c.title}-${c.from}`}>
+                <button
+                  type="button"
+                  className={on ? "chapter-row on" : "chapter-row"}
+                  onClick={() => useStore.getState().seek(c.from)}
+                >
+                  <span className="chapter-no mono">{String(i + 1).padStart(2, "0")}</span>
+                  <span className="chapter-title">{c.title}</span>
+                  <span className="mono muted">{timecode(c.from, fps)}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </>
+  );
+}
+
+function IssueList({ only }: { only?: string }) {
   const lint = useStore((s) => s.lint);
   const fps = useStore((s) => s.preview?.timeline.fps ?? 30);
-  const issues = lint?.issues ?? [];
-  if (issues.length === 0) return <Empty text="质检没有发现问题" />;
+  const issues = (lint?.issues ?? []).filter((i) => !only || i.id === only);
+  if (issues.length === 0) return only ? null : <Empty text="质检没有发现问题" />;
   return (
     <div className="card-list">
       {issues.map((i, n) => (

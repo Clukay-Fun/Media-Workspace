@@ -8,23 +8,20 @@ import type { TextStyle } from "../../core/text-style";
 import { findItem } from "../lib/project";
 import { type LeftTab, useStore } from "../store";
 import { Icon } from "./icons";
-import { SelectionCard } from "./selection";
 
 const TABS: { id: LeftTab; label: string }[] = [
-  { id: "selection", label: "选中" },
-  { id: "styles", label: "样式" },
   { id: "assets", label: "素材" },
+  { id: "styles", label: "样式" },
 ];
 
-/** 左栏：选中元素的详情、样式库、素材。批注、质检、AI 改动在右边审阅栏 */
+/** 左栏：素材和样式库。选中元素的属性在右栏 */
 export function LeftPanel() {
   const tab = useStore((s) => s.leftTab);
   const open = useStore((s) => s.leftOpen);
-  const selected = useStore((s) => s.selected);
   const { setLeftTab, setLeftOpen } = useStore.getState();
 
   return (
-    <aside className={open ? "left-panel open" : "left-panel"} aria-label="编辑">
+    <aside className={open ? "left-panel panel open" : "left-panel panel"} aria-label="素材和样式">
       <div className="tabs" role="tablist">
         {TABS.map((t) => (
           <button
@@ -48,18 +45,8 @@ export function LeftPanel() {
         </button>
       </div>
       <div className="panel-scroll">
-        {tab === "selection" &&
-          (selected ? (
-            <SelectionCard />
-          ) : (
-            <div className="empty small">
-              <Icon name="target" size={18} />
-              <p>还没有选中</p>
-              <span>在画面或时间线上点一句字幕、标题或片段</span>
-            </div>
-          ))}
-        {tab === "styles" && <Styles />}
         {tab === "assets" && <Assets />}
+        {tab === "styles" && <Styles />}
       </div>
     </aside>
   );
@@ -151,7 +138,7 @@ function Styles() {
 
 const sampleText = (name: string) => (name.startsWith("title") ? "标题这样显示" : "字幕这样出现");
 
-function swatch(s: TextStyle): React.CSSProperties {
+export function swatch(s: TextStyle): React.CSSProperties {
   return {
     color: s.fill,
     fontWeight: s.font.weight,

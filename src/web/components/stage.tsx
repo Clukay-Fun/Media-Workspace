@@ -8,7 +8,7 @@ import { applyOps, type Op } from "../../core/ops";
 import { safeAreaFor } from "../../core/safe-area";
 import { type HitBox, hitBoxes, pick } from "../lib/geometry";
 import { findItem } from "../lib/project";
-import { msOfFrame, timecode } from "../lib/timeline";
+import { frameOfMs, msOfFrame, timecode } from "../lib/timeline";
 import { useStore } from "../store";
 import { Icon } from "./icons";
 
@@ -174,7 +174,8 @@ export function Stage() {
   });
 
   return (
-    <main className="stage">
+    <main className="stage panel">
+      <ChapterBar />
       <div className="stage-area" ref={area}>
         {inputProps && scale > 0 ? (
           <div className="canvas" style={{ width: W * scale, height: H * scale }}>
@@ -256,8 +257,8 @@ export function Stage() {
                   style={{ left: (c.point?.x ?? 0) * scale, top: (c.point?.y ?? 0) * scale }}
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={() => {
+                    if (c.target) st.select(c.target, { reveal: false });
                     st.setSideTab("comments");
-                    if (c.target) st.select(c.target);
                   }}
                 >
                   <span>{c.id.replace(/^k/, "")}</span>
@@ -284,5 +285,58 @@ export function Stage() {
         )}
       </div>
     </main>
+  );
+}
+
+/**
+ * 预览上方的章节条：每章按时长占宽，当前章高亮，点一下跳到章首。
+ * 质检问题和待处理批注落在哪章，就在哪章上点一个小点。
+ */
+function ChapterBar() {
+  const tl = useStore((s) => s.preview?.timeline);
+  const frame = useStore((s) => s.frame);
+  const lint = useStore((s) => s.lint);
+  const review = useStore((s) => s.review);
+  if (!tl || tl.chapters.length === 0) return null;
+  const { chapters, fps } = tl;
+  const end = tl.mainEndFrame;
+  // 第一章总是从头算起，章节条不留没名字的空段
+  const parts = chapters.map((c, i) => ({
+    ...c,
+    from: i === 0 ? 0 : c.from,
+    to: chapters[i + 1]?.from ?? end,
+  }));
+  const at = (ms: number) => frameOfMs(ms, fps);
+  const issueFrames = (lint?.issues ?? []).map((i) => at(i.atMs));
+  const commentFrames = (review?.comments ?? [])
+    .filter((c) => c.status === "open" && c.atMs !== undefined)
+    .map((c) => at(c.atMs ?? 0));
+  const inPart = (f: number, p: { from: number; to: number }) => f >= p.from && f < p.to;
+  return (
+    <nav className="chapter-bar" aria-label="章节">
+      {parts.map((p) => {
+        const on = inPart(frame, p);
+        const warn = issueFrames.some((f) => inPart(f, p));
+        const note = commentFrames.some((f) => inPart(f, p));
+        return (
+          <button
+            key={`${p.title}-${p.from}`}
+            type="button"
+            className={on ? "chapter on" : "chapter"}
+            style={{ flexGrow: Math.max(1, p.to - p.from) }}
+            title={`${p.title || "开头"} · ${timecode(p.from, fps)}`}
+            onClick={() => useStore.getState().seek(p.from)}
+          >
+            <span className="chapter-name">{p.title}</span>
+            {(warn || note) && (
+              <span className="chapter-dots" aria-hidden="true">
+                {warn && <span className="dot warn" />}
+                {note && <span className="dot comment" />}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </nav>
   );
 }

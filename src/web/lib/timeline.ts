@@ -16,6 +16,8 @@ export type Block = {
   /** 主轨片段：素材里的起点和倍速，画波形用 */
   trimBeforeFrames?: number;
   speed?: number;
+  /** 主轨片段前面剪掉的内容的理由 */
+  cut?: string;
 };
 
 export type Row = {
@@ -26,14 +28,15 @@ export type Row = {
 };
 
 const KIND_LABEL: Record<Track["kind"], string> = {
-  video: "画面",
+  video: "画中画",
   caption: "字幕",
-  overlay: "标题 / 卡片",
+  overlay: "标题",
   audio: "音频",
 };
 
 /** 上层的轨道排在上面，主轨在最下面（和剪映一致） */
 export function timelineRows(project: Project, tl: ResolvedTimeline): Row[] {
+  const fileName = (asset: string) => project.assets[asset]?.path.split("/").at(-1) ?? asset;
   const rows: Row[] = project.tracks.map((track) => {
     const main = track.kind === "video" && track.main;
     const blocks: Block[] = [];
@@ -43,11 +46,12 @@ export function timelineRows(project: Project, tl: ResolvedTimeline): Row[] {
         key: v.id,
         from: v.from,
         to: v.from + v.durationInFrames,
-        label: v.asset,
+        label: fileName(v.asset),
         kind: "clip",
         asset: v.asset,
         trimBeforeFrames: v.trimBeforeFrames,
         speed: v.speed,
+        ...(v.cutBefore ? { cut: v.cutBefore } : {}),
       });
     }
     for (const i of tl.images.filter((x) => x.trackId === track.id)) {
@@ -56,7 +60,7 @@ export function timelineRows(project: Project, tl: ResolvedTimeline): Row[] {
         key: i.id,
         from: i.from,
         to: i.from + i.durationInFrames,
-        label: i.asset,
+        label: fileName(i.asset),
         kind: "image",
       });
     }
@@ -93,7 +97,8 @@ export function timelineRows(project: Project, tl: ResolvedTimeline): Row[] {
     }
     return {
       track,
-      label: track.name ?? (main ? "主轨" : KIND_LABEL[track.kind]),
+      // 按用途命名（主视频、字幕、标题…），轨道自己的名字放在提示里
+      label: main ? "主视频" : KIND_LABEL[track.kind],
       kind: main ? "main" : track.kind,
       blocks: blocks.toSorted((a, b) => a.from - b.from),
     };

@@ -15,13 +15,20 @@ import {
   waveform,
 } from "../lib/timeline";
 import { useStore } from "../store";
-import { Icon } from "./icons";
+import { Icon, type IconName } from "./icons";
 
-/** 轨道头宽度：展开时放轨道名和锁定 / 隐藏按钮，精简时只放名字 */
-const HEAD_FULL = 132;
-const HEAD_COMPACT = 76;
+/** 轨道头宽度：图标、按用途起的名字、锁定 / 隐藏按钮 */
+const HEAD = 150;
 /** .tl-grid 的右内边距 */
 const GUTTER = 16;
+
+const ROW_ICON: Record<Row["kind"], IconName> = {
+  main: "film",
+  video: "image",
+  caption: "text",
+  overlay: "title",
+  audio: "volume",
+};
 
 export function Timeline() {
   const project = useStore((s) => s.project);
@@ -34,10 +41,8 @@ export function Timeline() {
   const peaks = useStore((s) => s.peaks);
   const { seek, select } = useStore.getState();
   const [ghost, setGhost] = useState<Ghost | null>(null);
-  const expanded = useStore((s) => s.timelineExpanded);
   const history = useStore((s) => s.history);
   const reviewedRev = useStore((s) => s.reviewedRev);
-  const HEAD = expanded ? HEAD_FULL : HEAD_COMPACT;
 
   // 量整个时间线区域（数据没到之前也在），轨道区宽度 = 总宽 − 轨道头 − 右边距
   const root = useRef<HTMLElement>(null);
@@ -52,10 +57,8 @@ export function Timeline() {
   const width = Math.max(0, rootW - HEAD - GUTTER);
 
   const tl = preview?.timeline;
-  const allRows = useMemo(() => (project && tl ? timelineRows(project, tl) : []), [project, tl]);
-  if (!project || !tl) return <section className="timeline" ref={root} />;
-  // 精简时只留主轨（画面段落），字幕、标题等轨道展开后才显示
-  const rows = expanded ? allRows : allRows.filter((r) => r.kind === "main");
+  const rows = useMemo(() => (project && tl ? timelineRows(project, tl) : []), [project, tl]);
+  if (!project || !tl) return <section className="timeline panel" ref={root} />;
   const aiBands = aiChanges(history, reviewedRev)
     .pending.flatMap((e) => e.changed)
     .filter((id, i, a) => a.indexOf(id) === i)
@@ -148,7 +151,7 @@ export function Timeline() {
   };
 
   return (
-    <section className="timeline" ref={root}>
+    <section className="timeline panel" ref={root}>
       <Toolbar frame={frame} fps={fps} total={total} />
       <div className="tl-grid" style={{ gridTemplateColumns: `${HEAD}px 1fr` }}>
         <div className="tl-corner" />
@@ -164,7 +167,12 @@ export function Timeline() {
           ))}
         </div>
 
-        <div className="tl-head marker-head">标记</div>
+        <div className="tl-head marker-head">
+          <span className="row-label">
+            <Icon name="comment" size={13} />
+            批注 · 质检
+          </span>
+        </div>
         <div className="tl-lane markers" onPointerDown={scrub}>
           {markers.map((m) => (
             <button
@@ -186,7 +194,12 @@ export function Timeline() {
 
         {aiBands.length > 0 && (
           <>
-            <div className="tl-head ai-head">AI 改动</div>
+            <div className="tl-head ai-head">
+              <span className="row-label">
+                <Icon name="spark" size={13} />
+                AI 改动
+              </span>
+            </div>
             <div className="tl-lane ai-lane" onPointerDown={scrub}>
               {aiBands.map((b) => (
                 <button
@@ -209,7 +222,6 @@ export function Timeline() {
 
         {rows.map((row) => (
           <RowView
-            compact={!expanded}
             key={row.track.id}
             row={row}
             px={px}
@@ -243,9 +255,7 @@ function RowView({
   onScrub,
   ghost,
   onDragStart,
-  compact,
 }: {
-  compact: boolean;
   row: Row;
   px: (f: number) => number;
   fps: number;
@@ -267,36 +277,34 @@ function RowView({
   return (
     <>
       <div className={`tl-head ${track.hidden ? "is-hidden" : ""}`}>
-        <span className="row-label" title={track.id}>
-          {compact ? "画面" : row.label}
-          {compact && track.locked && <Icon name="lock" size={11} className="lock-mark" />}
+        <span className={`row-label row-${row.kind}`} title={track.name ?? track.id}>
+          <Icon name={ROW_ICON[row.kind]} size={13} />
+          {row.label}
         </span>
-        {!compact && (
-          <span className="row-tools">
+        <span className="row-tools">
+          <TrackToggle
+            on={track.locked}
+            icon={track.locked ? "lock" : "unlock"}
+            label={track.locked ? "解锁轨道" : "锁定轨道（AI 也不能改）"}
+            onClick={() =>
+              toggle("locked", track.locked ? "已解锁轨道" : "已锁定轨道，AI 也不能改动它")
+            }
+          />
+          <TrackToggle
+            on={track.hidden}
+            icon={track.hidden ? "eyeOff" : "eye"}
+            label={track.hidden ? "显示轨道" : "隐藏轨道"}
+            onClick={() => toggle("hidden", track.hidden ? "已显示轨道" : "已隐藏轨道")}
+          />
+          {audible && (
             <TrackToggle
-              on={track.locked}
-              icon={track.locked ? "lock" : "unlock"}
-              label={track.locked ? "解锁轨道" : "锁定轨道（AI 也不能改）"}
-              onClick={() =>
-                toggle("locked", track.locked ? "已解锁轨道" : "已锁定轨道，AI 也不能改动它")
-              }
+              on={track.muted}
+              icon={track.muted ? "mute" : "volume"}
+              label={track.muted ? "取消静音" : "静音"}
+              onClick={() => toggle("muted", track.muted ? "已取消静音" : "已静音")}
             />
-            <TrackToggle
-              on={track.hidden}
-              icon={track.hidden ? "eyeOff" : "eye"}
-              label={track.hidden ? "显示轨道" : "隐藏轨道"}
-              onClick={() => toggle("hidden", track.hidden ? "已显示轨道" : "已隐藏轨道")}
-            />
-            {audible && (
-              <TrackToggle
-                on={track.muted}
-                icon={track.muted ? "mute" : "volume"}
-                label={track.muted ? "取消静音" : "静音"}
-                onClick={() => toggle("muted", track.muted ? "已取消静音" : "已静音")}
-              />
-            )}
-          </span>
-        )}
+          )}
+        </span>
       </div>
       <div
         className={[
@@ -421,6 +429,11 @@ function BlockView({
           <span className="handle end" aria-hidden="true" />
         </>
       )}
+      {block.cut && (
+        <span className="cut-tag" title={`前面剪掉了：${block.cut}`}>
+          {block.cut}
+        </span>
+      )}
       {wave && (
         <svg
           className="wave"
@@ -441,15 +454,11 @@ function BlockView({
 
 type Ghost = { id: string; from: number; to: number; snapAt: number | null };
 
-/**
- * 时间线首行：左边撤销 / 重做、分割、吸附、展开轨道；中间播放控制（和画面中线对齐，
- * 因为时间线和预览同宽）；右边时间和安全区开关
- */
+/** 时间线首行：左边撤销 / 重做、分割、吸附；中间播放控制；右边时间和安全区开关 */
 function Toolbar({ frame, fps, total }: { frame: number; fps: number; total: number }) {
   const history = useStore((s) => s.history);
   const snap = useStore((s) => s.snap);
   const playing = useStore((s) => s.playing);
-  const expanded = useStore((s) => s.timelineExpanded);
   const safeArea = useStore((s) => s.safeArea);
   const st = useStore.getState();
   return (
@@ -478,12 +487,6 @@ function Toolbar({ frame, fps, total }: { frame: number; fps: number; total: num
           label={snap ? "吸附：开（拖动时按住 ⌘ 临时关闭）" : "吸附：关"}
           on={snap}
           onClick={st.toggleSnap}
-        />
-        <ToolBtn
-          icon="tracks"
-          label={expanded ? "收起轨道" : "展开全部轨道"}
-          on={expanded}
-          onClick={st.toggleTimeline}
         />
       </div>
       <div className="transport-center">
@@ -521,7 +524,7 @@ function ToolBtn({
   disabled = false,
   on = false,
 }: {
-  icon: "undo" | "redo" | "split" | "magnet" | "tracks" | "prev" | "next" | "safe";
+  icon: "undo" | "redo" | "split" | "magnet" | "prev" | "next" | "safe";
   label: string;
   onClick: () => void;
   disabled?: boolean;
