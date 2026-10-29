@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/bin/mw.mjs\" hook prompt",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -4,7 +4,7 @@ import { Project } from "./schema";
 import { sourceFrameAt } from "./time";
 
 const base = {
-  version: 3,
+  version: 4,
   revision: 0,
   canvas: {},
   assets: {
@@ -312,6 +312,50 @@ describe("mapTimelineMs", () => {
     expect(mapTimelineMs(segs, 500)).toEqual({ asset: "a1", srcMs: 5000, clip: "c2" });
     expect(mapTimelineMs(segs, 1500)).toEqual({ asset: "a1", srcMs: 6000, clip: "c2" });
     expect(mapTimelineMs(segs, 1501)).toBeNull();
+  });
+});
+
+describe("章节和剪辑理由（v4）", () => {
+  const project = make({
+    tracks: [
+      {
+        id: "main",
+        kind: "video",
+        main: true,
+        items: [
+          { id: "c1", type: "clip", asset: "a1", inMs: 0, outMs: 3000 },
+          { id: "c2", type: "clip", asset: "a1", inMs: 5000, outMs: 9000, cutBefore: "口误" },
+        ],
+      },
+      {
+        id: "cap",
+        kind: "caption",
+        items: [
+          { id: "s1", asset: "a1", startMs: 0, endMs: 2000, text: "开场" },
+          { id: "s2", asset: "a1", startMs: 3500, endMs: 4500, text: "剪掉了" },
+          { id: "s3", asset: "a1", startMs: 6000, endMs: 8000, text: "第一点" },
+        ],
+      },
+    ],
+    chapters: [
+      { title: "第一点", at: { caption: "s3" } },
+      { title: "开场", at: { ms: 0 } },
+      { title: "没了", at: { caption: "s2" } },
+    ],
+  });
+  const tl = compile(project);
+
+  it("章节按时间排序，锚点被剪掉的不出现", () => {
+    // s3 在源 6000ms，c2 从源 5000ms 接在时间线 3000ms 处 → 4000ms = 120 帧
+    expect(tl.chapters).toEqual([
+      { title: "开场", from: 0 },
+      { title: "第一点", from: 120 },
+    ]);
+    expect(tl.warnings.some((w) => w.path === "chapters[2].at")).toBe(true);
+  });
+
+  it("主轨片段带上剪辑理由", () => {
+    expect(tl.videos.map((v) => v.cutBefore)).toEqual([null, "口误"]);
   });
 });
 

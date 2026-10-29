@@ -51,6 +51,8 @@ export type ResolvedVideo = Flags & {
   transitionIn: ResolvedTransition | null;
   animIn: Anim | null;
   animOut: Anim | null;
+  /** 主轨片段前面剪掉的内容的理由（MainClip.cutBefore） */
+  cutBefore: string | null;
 };
 
 export type ResolvedImage = Flags & {
@@ -102,6 +104,9 @@ export type ResolvedOutro = {
   transitionIn: ResolvedTransition | null;
 };
 
+/** 章节按开始时间排序；锚点被剪掉的章节不出现 */
+export type ResolvedChapter = { title: string; from: number };
+
 export type CompileWarning = { code: string; path: string; message: string };
 
 export type ResolvedTimeline = {
@@ -117,6 +122,7 @@ export type ResolvedTimeline = {
   captions: ResolvedCaption[];
   overlays: ResolvedOverlay[];
   outro: ResolvedOutro | null;
+  chapters: ResolvedChapter[];
   warnings: CompileWarning[];
 };
 
@@ -264,6 +270,7 @@ export function compile(project: Project): ResolvedTimeline {
       transitionIn: trans,
       animIn: clip.animIn ?? null,
       animOut: clip.animOut ?? null,
+      cutBefore: clip.cutBefore ?? null,
     });
     clipFrames.set(clip.id, from);
     prevEnd = end;
@@ -456,6 +463,7 @@ export function compile(project: Project): ResolvedTimeline {
           transitionIn: null,
           animIn: clip.animIn ?? null,
           animOut: clip.animOut ?? null,
+          cutBefore: null,
         });
       });
     }
@@ -487,6 +495,13 @@ export function compile(project: Project): ResolvedTimeline {
       });
     }
   });
+
+  const chapters: ResolvedChapter[] = project.chapters
+    .flatMap((c, i) => {
+      const from = resolveAnchor(c.at, `chapters[${i}].at`);
+      return from === null ? [] : [{ title: c.title, from }];
+    })
+    .sort((a, b) => a.from - b.from);
 
   // 4. 片尾：接在主轨最后，不受主轨编辑影响
   let outro: ResolvedOutro | null = null;
@@ -532,6 +547,7 @@ export function compile(project: Project): ResolvedTimeline {
     captions,
     overlays,
     outro,
+    chapters,
     warnings,
   };
 }

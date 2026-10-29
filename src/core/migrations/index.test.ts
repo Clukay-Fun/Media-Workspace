@@ -9,9 +9,9 @@ describe("migrate", () => {
     expect(migrate(v1)).toEqual({ ...v1, version: PROJECT_FORMAT_VERSION });
   });
 
-  it("v2 工程升到 v3，内容不变", () => {
-    const v2 = { version: 2, revision: 1, tracks: [] };
-    expect(migrate(v2)).toEqual({ ...v2, version: 3 });
+  it("v3 工程升到 v4，内容不变（章节、剪辑理由都是可选的）", () => {
+    const v3 = { version: 3, revision: 1, tracks: [] };
+    expect(migrate(v3)).toEqual({ ...v3, version: 4 });
   });
 
   it("当前版本原样返回", () => {

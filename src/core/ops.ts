@@ -6,6 +6,7 @@ import {
   Asset,
   Canvas,
   type Caption,
+  Chapter,
   Cover,
   Id,
   Keyframe,
@@ -32,6 +33,8 @@ export const Op = z.discriminatedUnion("op", [
   z.strictObject({ op: z.literal("cover.update"), set: Cover.nullable() }),
   z.strictObject({ op: z.literal("outro.set"), outro: Outro }),
   z.strictObject({ op: z.literal("outro.remove") }),
+  /** 整体替换章节列表 */
+  z.strictObject({ op: z.literal("chapters.set"), chapters: z.array(Chapter) }),
   // 素材
   z.strictObject({ op: z.literal("asset.add"), id: Id.optional(), asset: Asset }),
   z.strictObject({
@@ -193,6 +196,7 @@ type ClipLike = Item & {
   keyframes: Keyframe[];
   at?: Anchor;
   transitionIn?: unknown;
+  cutBefore?: string;
   animIn?: unknown;
   animOut?: unknown;
 };
@@ -291,7 +295,7 @@ class Ctx {
           .filter((k) => k.atMs >= 0);
         if (before) {
           // 中间被剪掉：后半段是新片段，没有转场
-          const { transitionIn: _t, ...rest } = after;
+          const { transitionIn: _t, cutBefore: _c, ...rest } = after;
           const id = this.newId(`${item.id}-`);
           next.push({ ...rest, id, keyframes });
           this.changed.add(id);
@@ -322,6 +326,9 @@ function run(ctx: Ctx, op: Op): void {
       return;
     case "outro.remove":
       p.outro = null;
+      return;
+    case "chapters.set":
+      p.chapters = op.chapters;
       return;
 
     case "asset.add": {
@@ -610,7 +617,7 @@ function splitClip(ctx: Ctx, id: string, atMs: number): void {
 
   const newId = ctx.newId(`${id}-`);
   // 后半段：没有入场转场和入场动画；关键帧按新的开头平移
-  const { transitionIn: _t, animIn: _a, ...rest } = clip;
+  const { transitionIn: _t, cutBefore: _c, animIn: _a, ...rest } = clip;
   const second: ClipLike = {
     ...rest,
     id: newId,

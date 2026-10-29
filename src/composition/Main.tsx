@@ -161,8 +161,9 @@ const OverlayLayer: React.FC<{
   const tpl = TEMPLATES[o.template];
   if (!tpl) return null;
   const props = tpl.schema.parse(o.props);
+  // 和图片、画中画一样：整层以画布中心为原点平移、缩放（core/lint 和界面点选按同样的方式换算位置）
   return (
-    <AbsoluteFill>
+    <AbsoluteFill style={cssTransform(o.transform, width, height)}>
       <tpl.Component
         props={props}
         style={style}
@@ -191,8 +192,9 @@ function presentation(t: ResolvedTransition): TransitionPresentation<Record<stri
 export const Main: React.FC<MainProps> = ({ timeline, styles, srcs, fonts }) => {
   useFonts(fonts);
   const { width, height, fps } = timeline;
+  // 没指定样式时用工程里的同名默认样式（新建工程时从内置样式复制进来，可能被改过），工程里没有才用内置的
   const styleOf = (id: string | null, fallback: keyof typeof BUILTIN_STYLES) =>
-    (id ? styles[id] : undefined) ?? BUILTIN_STYLES[fallback];
+    styles[id ?? fallback] ?? styles[fallback] ?? BUILTIN_STYLES[fallback];
 
   const mains = timeline.videos.filter((v) => v.main);
   const mainZ = mains[0]?.z ?? 0;

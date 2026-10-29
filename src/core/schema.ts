@@ -102,6 +102,8 @@ export const MainClip = z.strictObject({
   speed: z.number().min(0.1).max(10).default(1),
   gainDb: z.number().min(-60).max(20).default(0),
   transitionIn: Transition.optional(),
+  /** 这一段前面剪掉的内容为什么剪（口误、重复、停顿…），AI 粗剪时写，审片时标在时间线上（v4） */
+  cutBefore: z.string().min(1).max(16).optional(),
   ...Visual,
 });
 
@@ -217,6 +219,12 @@ export const Cover = z.strictObject({
   title: Id.optional(),
 });
 
+/** 章节（开场、讲第一点…）：预览上方的章节条，点一下跳过去（v4）。锚到字幕，剪辑后跟着走 */
+export const Chapter = z.strictObject({
+  title: z.string().min(1).max(12),
+  at: Anchor,
+});
+
 export const Project = z.strictObject({
   version: z.literal(PROJECT_FORMAT_VERSION),
   revision: z.number().int().nonnegative(),
@@ -227,6 +235,7 @@ export const Project = z.strictObject({
   tracks: z.array(Track).default([]),
   outro: Outro.nullable().default(null),
   cover: Cover.nullable().default(null),
+  chapters: z.array(Chapter).default([]),
 });
 
 export type Project = z.infer<typeof Project>;
@@ -244,6 +253,7 @@ export type Transform = z.infer<typeof Transform>;
 export type Keyframe = z.infer<typeof Keyframe>;
 export type Transition = z.infer<typeof Transition>;
 export type Anchor = z.infer<typeof Anchor>;
+export type Chapter = z.infer<typeof Chapter>;
 export type Slot = z.infer<typeof Slot>;
 
 export function isMainClip(item: VideoTrack["items"][number]): item is MainClip {
