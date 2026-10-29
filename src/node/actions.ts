@@ -337,6 +337,7 @@ export function guideInfo() {
       "加标题、卡片之前先列方案（哪句话 → 加什么画面 → 用哪个模板 → 什么时间），给用户确认后再 apply",
       "需要在说到某个词时出现的元素，用 at: { caption: <字幕ID>, char: <第几个字> } 锚定，而不是估算毫秒",
       "开始工作前先看 comments：人在审片台上留的批注（带时间点和条目 ID），逐条处理后用 resolve 标记并写明改了什么；不打算改的也 resolve，在 note 里说明原因",
+      "用户说「等我批注」或手头没活时，在后台跑 mw comments <工程> --wait：审片台上一有新批注就返回，处理完再挂上继续等",
       "提交后跑 lint：字太小、出安全区、字幕放不下、互相遮挡、挡脸；导入新视频时看一眼 subtitleCheck，原片已有字幕会重影",
     ],
     ops: z.toJSONSchema(Op, { io: "input" }),

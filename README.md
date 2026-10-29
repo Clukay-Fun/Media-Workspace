@@ -33,6 +33,11 @@ pnpm web:dev                # 开发审片台（/api 代理到 mw serve）；VIT
 claude mcp add media-workspace -- node <仓库路径>/bin/mw.mjs mcp
 ```
 
+**让 AI 接到审片台的批注**：仓库自带对话 hook（Claude Code 用 `.claude/settings.json`，Codex 用 `.codex/hooks.json`）。
+在本仓库目录里和 AI 对话时，每发一条消息，正在审的工程里的新批注会自动附上；没有批注时什么都不加。
+Codex 的 hook 还是实验功能，需要在 `~/.codex/config.toml` 的 `[features]` 里打开 `codex_hooks = true`。
+想让 AI 一直等着批注，就让它在后台跑 `mw comments <工程> --wait`。
+
 工程默认放在 `~/MediaWorkspace/projects/`，可以用 `MW_HOME` 修改；识音模型放在 `~/MediaWorkspace/models/`。
 
 ## 授权说明

@@ -22,6 +22,14 @@ import {
 import { ASR_MODEL, asrModelDir, fetchAsrModel, hasAsrModel } from "../node/asr";
 import { resolveProjectDir } from "../node/paths";
 import {
+  clearServing,
+  hookOutput,
+  markServing,
+  promptContext,
+  reviewTargets,
+  waitForComments,
+} from "../node/review-hook";
+import {
   applyToProject,
   commentOnProject,
   emptyProject,
@@ -387,9 +395,18 @@ cli
 cli
   .command("comments <proj>", "审片批注：默认只列还没处理的")
   .option("--all", "包括已处理的")
+  .option("--wait", "一直等到审片台上出现新批注再返回（AI 空闲时挂在后台用）")
+  .option("--timeout <s>", "--wait 最多等几秒，超时返回空列表")
   .action(
-    act(async (proj: string, o: { all?: boolean }) => {
-      out(await commentsInfo(resolveProjectDir(proj), { all: o.all }));
+    act(async (proj: string, o: { all?: boolean; wait?: boolean; timeout?: number }) => {
+      const dir = resolveProjectDir(proj);
+      if (o.wait) {
+        const timeoutMs = o.timeout === undefined ? undefined : Number(o.timeout) * 1000;
+        const comments = await waitForComments(dir, timeoutMs === undefined ? {} : { timeoutMs });
+        out({ ok: true, comments });
+        return;
+      }
+      out(await commentsInfo(dir, { all: o.all }));
     }),
   );
 
@@ -432,6 +449,19 @@ cli
     }),
   );
 
+cli
+  .command("hook <event>", "给对话客户端用的 hook（目前只有 prompt）：把审片台的新批注附在消息后面")
+  .action(async (event: string) => {
+    // hook 出错不能挡住用户发消息：任何异常都当成没有批注，静默退出
+    try {
+      if (event !== "prompt") return;
+      const context = await promptContext(await reviewTargets());
+      if (context) process.stdout.write(`${JSON.stringify(hookOutput(context))}\n`);
+    } catch (e) {
+      log(`mw hook：${(e as Error)?.message ?? e}`);
+    }
+  });
+
 cli.command("guide", "给 AI 的说明：操作、样式结构、模板、动画预设").action(
   act(async () => {
     out(guideInfo());
@@ -468,11 +498,18 @@ cli
         port: o.port === undefined ? API_PORT : Number(o.port),
         onLog: log,
       });
+      const dir = resolveProjectDir(proj);
+      await markServing(dir);
       out({ ok: true, url: s.url });
       // 一直运行，直到 Ctrl+C
       await new Promise<void>((done) => {
-        process.once("SIGINT", () => void s.close().then(done));
-        process.once("SIGTERM", () => void s.close().then(done));
+        const stop = () =>
+          void s
+            .close()
+            .then(() => clearServing(dir))
+            .then(done);
+        process.once("SIGINT", stop);
+        process.once("SIGTERM", stop);
       });
     }),
   );
