@@ -20,7 +20,7 @@ export function CommentCard({
   const { select, seek, setCommentStatus } = useStore.getState();
   const resolved = c.status === "resolved";
   const jump = () => {
-    if (c.target) select(c.target);
+    if (c.target) select(c.target, { reveal: false });
     if (c.atMs !== undefined) seek(frameOfMs(c.atMs, fps));
   };
 

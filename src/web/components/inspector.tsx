@@ -10,6 +10,18 @@ import { CommentCard } from "./comment-card";
 import { Icon } from "./icons";
 
 export function Inspector() {
+  return (
+    <aside className="inspector">
+      <div className="inspector-body">
+        <SelectionView />
+      </div>
+      <Composer />
+    </aside>
+  );
+}
+
+/** 选中元素的信息和它的批注；宽屏放在右栏，窄屏是侧栏的「选中」页 */
+export function SelectionView() {
   const project = useStore((s) => s.project);
   const selected = useStore((s) => s.selected);
   const preview = useStore((s) => s.preview);
@@ -18,30 +30,27 @@ export function Inspector() {
   const comments = (review?.comments ?? []).filter((c) => selected && c.target === selected);
 
   return (
-    <aside className="inspector">
-      <div className="inspector-body">
-        {project && ref && selected ? (
-          <Selection project={project} id={selected} ref_={ref} fps={preview?.timeline.fps ?? 30} />
-        ) : (
-          <div className="empty">
-            <Icon name="target" size={20} />
-            <p>在画面或时间线上点一个元素</p>
-            <span>可以看它锚定在哪句话、用了什么样式；双击画面可以在那个位置钉一条批注。</span>
+    <>
+      {project && ref && selected ? (
+        <Selection project={project} id={selected} ref_={ref} fps={preview?.timeline.fps ?? 30} />
+      ) : (
+        <div className="empty">
+          <Icon name="target" size={20} />
+          <p>在画面或时间线上点一个元素</p>
+          <span>可以看它锚定在哪句话、用了什么样式；双击画面可以在那个位置钉一条批注。</span>
+        </div>
+      )}
+      {comments.length > 0 && (
+        <section className="section">
+          <h3>这个元素的批注</h3>
+          <div className="comment-list">
+            {comments.map((c) => (
+              <CommentCard key={c.id} comment={c} compact />
+            ))}
           </div>
-        )}
-        {comments.length > 0 && (
-          <section className="section">
-            <h3>这个元素的批注</h3>
-            <div className="comment-list">
-              {comments.map((c) => (
-                <CommentCard key={c.id} comment={c} compact />
-              ))}
-            </div>
-          </section>
-        )}
-      </div>
-      <Composer />
-    </aside>
+        </section>
+      )}
+    </>
   );
 }
 
@@ -144,7 +153,7 @@ function Selection({
         <section className="section">
           <h3>模板</h3>
           <p className="muted">
-            <b>{template.meta.label}</b> · {template.meta.description}
+            <b>{template.meta.label}</b> · {forHumans(template.meta.description)}
           </p>
         </section>
       )}
@@ -189,6 +198,9 @@ function Selection({
     </>
   );
 }
+
+/** 模板说明是写给 AI 的，去掉括号里的参数写法（含英文字母的括注） */
+const forHumans = (text: string) => text.replace(/\s*[（(][^（）()]*[A-Za-z][^（）()]*[）)]/g, "");
 
 function describeAnchor(project: Project, at: Anchor): string {
   if ("ms" in at) return `固定在 ${(at.ms / 1000).toFixed(1)} 秒`;
@@ -253,7 +265,7 @@ function CaptionEditor({ caption, locked }: { caption: Caption; locked: boolean 
   );
 }
 
-function Composer() {
+export function Composer() {
   const selected = useStore((s) => s.selected);
   const frame = useStore((s) => s.frame);
   const fps = useStore((s) => s.preview?.timeline.fps ?? 30);

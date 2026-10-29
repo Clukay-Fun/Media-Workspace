@@ -12,7 +12,7 @@ export function TopBar() {
   const review = useStore((s) => s.review);
   const aiChange = useStore((s) => s.aiChange);
   const exportJob = useStore((s) => s.exportJob);
-  const { undo, startExport, setLeftTab, dismissAiChange, select, seek } = useStore.getState();
+  const { undo, startExport, setPanelTab, dismissAiChange, select, seek } = useStore.getState();
 
   const open = review?.comments.filter((c) => c.status === "open").length ?? 0;
   const issues = lint?.issues ?? [];
@@ -32,13 +32,15 @@ export function TopBar() {
       <div className="topbar-title">
         <span className="wordmark">审片台</span>
         <span className="sep" aria-hidden="true" />
-        <span className="project-name">{name || "载入中…"}</span>
+        <span className="project-name" title={name}>
+          {name || "载入中…"}
+        </span>
         {project && <span className="revision">第 {project.revision} 版</span>}
         <span
           className={live ? "live on" : "live"}
           title={live ? "实时同步中" : "连接已断开，正在重连"}
         >
-          {live ? "同步中" : "已断开"}
+          <span className="wide-only">{live ? "同步中" : "已断开"}</span>
         </span>
       </div>
 
@@ -47,7 +49,8 @@ export function TopBar() {
           <div className="ai-change" role="status">
             <Icon name="spark" size={14} />
             <span>
-              <b>{aiChange.actor || "AI"}</b> 刚改了 {aiChange.changed.length} 处
+              <b>{aiChange.actor || "AI"}</b> <span className="wide-only">刚</span>改了{" "}
+              {aiChange.changed.length} 处
             </span>
             <button
               type="button"
@@ -60,7 +63,7 @@ export function TopBar() {
             </button>
             {canUndoAi && (
               <button type="button" className="link" onClick={() => void undo("undo")}>
-                撤销这次修改
+                撤销<span className="wide-only">这次修改</span>
               </button>
             )}
             <button
@@ -79,20 +82,22 @@ export function TopBar() {
         <button
           type="button"
           className={issues.length ? "chip warn" : "chip"}
+          aria-label={`质检 ${issues.length}`}
           onClick={jumpToIssue}
           disabled={issues.length === 0}
           title={issues[0]?.message ?? "质检没有发现问题"}
         >
           <Icon name="warn" size={14} />
-          质检 {issues.length}
+          <span className="wide-only">质检</span> {issues.length}
         </button>
         <button
           type="button"
           className={open ? "chip accent" : "chip"}
-          onClick={() => setLeftTab("comments")}
+          aria-label={`待处理批注 ${open}`}
+          onClick={() => setPanelTab("comments")}
         >
           <Icon name="comment" size={14} />
-          待处理 {open}
+          <span className="wide-only">待处理</span> {open}
         </button>
         <span className="divider" aria-hidden="true" />
         <button

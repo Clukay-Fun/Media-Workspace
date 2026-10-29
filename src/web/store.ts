@@ -9,7 +9,8 @@ import { type Api, ApiFailure, type LiveEvent } from "./data/client";
 // 界面状态。工程数据只从服务端读，修改一律提交 ops（AGENTS.md 规则 1）；
 // 本地只有选中、播放头、拖动中的草稿这些不影响渲染的东西。
 
-export type LeftTab = "assets" | "styles" | "comments";
+/** 侧栏分页。「选中」只在窄屏合并成一栏时出现，宽屏时选中的内容在右栏 */
+export type PanelTab = "selection" | "comments" | "styles" | "assets";
 
 export type AiChange = { actor: string; revision: number; changed: string[] };
 
@@ -31,6 +32,8 @@ type State = {
   loadError: string | null;
 
   selected: string | null;
+  /** 在画面、时间线上主动选中时加一；窄屏侧栏据此切到「选中」页（从批注列表跳过去时不加） */
+  revealNonce: number;
   frame: number;
   /** 每次主动跳转加一，预览区据此调用 player.seekTo（播放时的帧变化不触发） */
   seekNonce: number;
@@ -42,7 +45,7 @@ type State = {
   aiChange: AiChange | null;
   exportJob: ExportJob | null;
   toasts: Toast[];
-  leftTab: LeftTab;
+  panelTab: PanelTab;
   safeArea: boolean;
   composerNonce: number;
   /** 双击画面钉下的位置（画布像素），写批注时一起提交 */
@@ -55,12 +58,12 @@ type State = {
   addComment(c: NewComment): Promise<void>;
   setCommentStatus(id: string, status: "open" | "resolved"): Promise<void>;
   startExport(): Promise<void>;
-  select(id: string | null): void;
+  select(id: string | null, opts?: { reveal?: boolean }): void;
   seek(frame: number): void;
   setFrame(frame: number): void;
   setPlaying(playing: boolean): void;
   setDraft(draft: State["draft"]): void;
-  setLeftTab(tab: LeftTab): void;
+  setPanelTab(tab: PanelTab): void;
   toggleSafeArea(): void;
   focusComposer(): void;
   setPin(pin: State["pin"]): void;
@@ -152,10 +155,11 @@ export const useStore = create<State>((set, get) => {
     aiChange: null,
     exportJob: null,
     toasts: [],
-    leftTab: "comments",
+    panelTab: "comments",
     safeArea: false,
     composerNonce: 0,
     pin: null,
+    revealNonce: 0,
 
     init() {
       void get().refresh();
@@ -244,13 +248,17 @@ export const useStore = create<State>((set, get) => {
       }
     },
 
-    select: (id) => set({ selected: id }),
+    select: (id, opts) =>
+      set((s) => ({
+        selected: id,
+        revealNonce: id && opts?.reveal !== false ? s.revealNonce + 1 : s.revealNonce,
+      })),
     seek: (frame) =>
       set((s) => ({ frame: Math.max(0, Math.round(frame)), seekNonce: s.seekNonce + 1 })),
     setFrame: (frame) => set({ frame }),
     setPlaying: (playing) => set({ playing }),
     setDraft: (draft) => set({ draft }),
-    setLeftTab: (leftTab) => set({ leftTab }),
+    setPanelTab: (panelTab) => set({ panelTab }),
     toggleSafeArea: () => set((s) => ({ safeArea: !s.safeArea })),
     focusComposer: () => set((s) => ({ composerNonce: s.composerNonce + 1 })),
     setPin: (pin) => set({ pin }),

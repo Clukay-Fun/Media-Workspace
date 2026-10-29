@@ -4,17 +4,19 @@ import { LeftPanel } from "./components/left-panel";
 import { Stage } from "./components/stage";
 import { Timeline } from "./components/timeline";
 import { TopBar } from "./components/top-bar";
+import { NARROW, useMedia } from "./lib/use-media";
 import { useStore } from "./store";
 
 export function App() {
   useEffect(() => useStore.getState().init(), []);
   useShortcuts();
+  const narrow = useMedia(NARROW);
   return (
-    <div className="app">
+    <div className={narrow ? "app narrow" : "app"}>
       <TopBar />
-      <LeftPanel />
+      {!narrow && <LeftPanel />}
       <Stage />
-      <Inspector />
+      {narrow ? <LeftPanel merged /> : <Inspector />}
       <Timeline />
       <Toasts />
     </div>

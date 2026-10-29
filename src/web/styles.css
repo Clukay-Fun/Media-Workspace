@@ -352,7 +352,7 @@ textarea:focus-visible {
   }
 }
 
-.ai-change span {
+.ai-change > span {
   color: var(--text);
 }
 
@@ -1481,4 +1481,88 @@ textarea:focus-visible {
   .app {
     grid-template-columns: 256px minmax(0, 1fr) 288px;
   }
+}
+
+/* 窄屏（和 AI 对话框并排时常见）：左右两栏合成一个侧栏，顶栏只留图标和数字 */
+@media (max-width: 1279px) {
+  .app {
+    grid-template-columns: minmax(0, 1fr) 304px;
+    grid-template-areas:
+      "top top"
+      "stage right"
+      "tl tl";
+  }
+
+  .left-panel.merged {
+    grid-area: right;
+    border-right: 0;
+    border-left: 1px solid var(--line);
+  }
+
+  .topbar {
+    gap: 10px;
+  }
+
+  .wide-only,
+  .revision {
+    display: none;
+  }
+}
+
+/* 矮屏：时间线让出高度给预览 */
+@media (max-height: 860px) {
+  .app {
+    grid-template-rows: 48px minmax(0, 1fr) 188px;
+  }
+}
+
+/* 很窄：上下堆叠，整页滚动 */
+@media (max-width: 760px) {
+  .app {
+    height: auto;
+    min-height: 100vh;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 48px 62vh minmax(360px, auto) 220px;
+    grid-template-areas:
+      "top"
+      "stage"
+      "right"
+      "tl";
+  }
+
+  .left-panel.merged {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .topbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .topbar-center,
+  .sep,
+  .project-name {
+    display: none;
+  }
+}
+
+.handoff {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
+  background: var(--ai-soft);
+  border: 1px solid rgb(95 208 184 / 0.2);
+}
+
+.handoff .mini-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }

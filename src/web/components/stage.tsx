@@ -256,7 +256,7 @@ export function Stage() {
                   style={{ left: (c.point?.x ?? 0) * scale, top: (c.point?.y ?? 0) * scale }}
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={() => {
-                    st.setLeftTab("comments");
+                    st.setPanelTab("comments");
                     if (c.target) st.select(c.target);
                   }}
                 >

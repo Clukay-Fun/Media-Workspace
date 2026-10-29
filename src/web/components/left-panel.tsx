@@ -1,36 +1,53 @@
 import { Player } from "@remotion/player";
 import type React from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
 import { TextBlock } from "../../composition/TextBlock";
+import type { Comment } from "../../core/review";
 import type { Project } from "../../core/schema";
 import type { TextStyle } from "../../core/text-style";
 import { findItem } from "../lib/project";
-import { type LeftTab, useStore } from "../store";
+import { frameOfMs, timecode } from "../lib/timeline";
+import { type PanelTab, useStore } from "../store";
 import { CommentCard } from "./comment-card";
 import { Icon } from "./icons";
+import { Composer, SelectionView } from "./inspector";
 
-const TABS: { id: LeftTab; label: string }[] = [
+const TABS: { id: PanelTab; label: string }[] = [
   { id: "comments", label: "批注" },
   { id: "styles", label: "样式" },
   { id: "assets", label: "素材" },
 ];
 
-export function LeftPanel() {
-  const tab = useStore((s) => s.leftTab);
+/**
+ * 宽屏是左栏（批注 / 样式 / 素材），右栏另放选中信息。
+ * 窄屏（和 AI 对话框并排时常见）合并成一个侧栏：多一页「选中」，批注输入框固定在底部。
+ */
+export function LeftPanel({ merged = false }: { merged?: boolean }) {
+  const current = useStore((s) => s.panelTab);
   const review = useStore((s) => s.review);
+  const reveal = useStore((s) => s.revealNonce);
+  const { setPanelTab } = useStore.getState();
   const open = review?.comments.filter((c) => c.status === "open").length ?? 0;
+  const tabs = merged ? [{ id: "selection" as const, label: "选中" }, ...TABS] : TABS;
+  // 宽屏没有「选中」页，从窄屏拉宽时退回批注
+  const tab = !merged && current === "selection" ? "comments" : current;
+
+  useEffect(() => {
+    if (merged && reveal > 0) setPanelTab("selection");
+  }, [merged, reveal, setPanelTab]);
+
   return (
-    <aside className="left-panel">
+    <aside className={merged ? "left-panel merged" : "left-panel"}>
       <div className="tabs" role="tablist">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
             role="tab"
             aria-selected={tab === t.id}
             className={tab === t.id ? "tab active" : "tab"}
-            onClick={() => useStore.getState().setLeftTab(t.id)}
+            onClick={() => setPanelTab(t.id)}
           >
             {t.label}
             {t.id === "comments" && open > 0 && <span className="count">{open}</span>}
@@ -38,10 +55,12 @@ export function LeftPanel() {
         ))}
       </div>
       <div className="panel-scroll">
+        {tab === "selection" && <SelectionView />}
         {tab === "comments" && <Comments />}
         {tab === "styles" && <Styles />}
         {tab === "assets" && <Assets />}
       </div>
+      {merged && <Composer />}
     </aside>
   );
 }
@@ -52,8 +71,27 @@ function Comments() {
   const all = review?.comments ?? [];
   const open = all.filter((c) => c.status === "open").toReversed();
   const done = all.filter((c) => c.status === "resolved").toReversed();
+  const fps = useStore((s) => s.preview?.timeline.fps ?? 30);
+  const handOff = async () => {
+    const { toast } = useStore.getState();
+    try {
+      await navigator.clipboard.writeText(handOffText(open.toReversed(), fps));
+      toast("已复制，粘贴到和 AI 的对话里");
+    } catch {
+      toast("复制失败，浏览器没给剪贴板权限", "error");
+    }
+  };
   return (
     <div className="comments">
+      {open.length > 0 && (
+        <div className="handoff">
+          <span>{open.length} 条等 AI 处理，复制到对话里就能让它现在改。</span>
+          <button type="button" className="mini-btn" onClick={() => void handOff()}>
+            <Icon name="spark" size={12} />
+            复制给 AI
+          </button>
+        </div>
+      )}
       {open.length === 0 ? (
         <div className="empty small">
           <p>没有待处理的批注</p>
@@ -83,6 +121,21 @@ function Comments() {
       )}
     </div>
   );
+}
+
+/** 粘贴到对话里的一段话：批注原文带上时间和目标，再告诉 AI 怎么回写结果 */
+function handOffText(open: Comment[], fps: number): string {
+  const lines = open.map((c) => {
+    const at = c.atMs !== undefined ? ` ${timecode(frameOfMs(c.atMs, fps), fps)}` : "";
+    const target = c.target ? ` [${c.target}]` : "";
+    return `- ${c.id}${at}${target}：${c.text}`;
+  });
+  return [
+    `审片台有 ${open.length} 条批注，请逐条处理：`,
+    ...lines,
+    "",
+    "完整上下文用 comments 查看；改完一条就用 resolve 标记，并在 note 里写改了什么（不改也写原因）。",
+  ].join("\n");
 }
 
 function Styles() {
