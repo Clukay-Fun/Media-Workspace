@@ -95,12 +95,56 @@ textarea:focus-visible {
 .app {
   display: grid;
   height: 100vh;
-  grid-template-columns: 296px minmax(0, 1fr) 320px;
-  grid-template-rows: 48px minmax(0, 1fr) 236px;
+  grid-template-columns: var(--left-w, 58%) 0 minmax(0, 1fr);
+  grid-template-rows: 48px minmax(0, 1fr);
   grid-template-areas:
     "top top top"
-    "left stage right"
-    "tl tl tl";
+    "work split stage";
+}
+
+/* 左列：上面板、下时间线 */
+.workspace {
+  grid-area: work;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) 0 var(--tl-h, 240px);
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 分隔条本身不占位置，命中区域比线宽，悬停和拖动时才显色 */
+.splitter {
+  position: relative;
+  z-index: 5;
+}
+
+.splitter::before {
+  content: "";
+  position: absolute;
+  background: transparent;
+  transition: background-color 120ms ease;
+}
+
+.splitter.x {
+  grid-area: split;
+  cursor: col-resize;
+}
+
+.splitter.x::before {
+  inset: 0 -3px;
+}
+
+.splitter.y {
+  cursor: row-resize;
+}
+
+.splitter.y::before {
+  inset: -3px 0;
+}
+
+.splitter:hover::before,
+.splitter:active::before {
+  background: var(--ai);
+  opacity: 0.6;
 }
 
 /* ---- 通用控件 ---- */
@@ -403,12 +447,32 @@ textarea:focus-visible {
 /* ---- 左栏 ---- */
 
 .left-panel {
-  grid-area: left;
   display: flex;
   flex-direction: column;
   min-height: 0;
   border-right: 1px solid var(--line);
   background: var(--panel);
+  container-type: inline-size;
+}
+
+/* 面板够宽时批注输入框放右边，窄时放底部 */
+.panel-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+@container (min-width: 560px) {
+  .panel-body {
+    grid-template-columns: minmax(0, 1fr) 280px;
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .panel-body .composer {
+    border-top: 0;
+    border-left: 1px solid var(--line);
+  }
 }
 
 .tabs {
@@ -946,22 +1010,6 @@ textarea:focus-visible {
 
 /* ---- 右栏 ---- */
 
-.inspector {
-  grid-area: right;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  border-left: 1px solid var(--line);
-  background: var(--panel);
-}
-
-.inspector-body {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 16px;
-}
-
 .selection-head {
   display: flex;
   align-items: center;
@@ -1034,8 +1082,7 @@ textarea:focus-visible {
 }
 
 .nudge {
-  display: grid;
-  grid-template-columns: 1fr 1.4fr 1.4fr 1fr;
+  display: inline-flex;
   gap: 4px;
 }
 
@@ -1142,11 +1189,9 @@ textarea:focus-visible {
   border-color: rgb(240 191 76 / 0.55);
 }
 
-.composer-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 8px;
+.composer .send-btn {
+  display: block;
+  margin: 8px 0 0 auto;
 }
 
 .composer-foot .hint {
@@ -1167,7 +1212,6 @@ textarea:focus-visible {
 /* ---- 时间线 ---- */
 
 .timeline {
-  grid-area: tl;
   position: relative;
   overflow-y: auto;
   border-top: 1px solid var(--line);
@@ -1181,12 +1225,42 @@ textarea:focus-visible {
 }
 
 .tl-corner {
+  height: 28px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tl-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
   display: flex;
   align-items: center;
-  height: 28px;
-  padding-left: 16px;
-  font-size: 12px;
+  justify-content: space-between;
+  height: 36px;
+  padding: 0 12px 0 8px;
   border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.tl-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.tl-time {
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.snap-line {
+  position: absolute;
+  top: 36px;
+  bottom: 0;
+  width: 1px;
+  margin-left: -0.5px;
+  pointer-events: none;
+  background: var(--comment);
 }
 
 .tl-ruler {
@@ -1335,6 +1409,39 @@ textarea:focus-visible {
   box-shadow: inset 0 0 0 1px var(--select);
 }
 
+.block.editable {
+  cursor: grab;
+}
+
+.block.dragging {
+  z-index: 2;
+  cursor: grabbing;
+  opacity: 0.85;
+  box-shadow:
+    inset 0 0 0 1px var(--select),
+    0 4px 12px rgb(0 0 0 / 0.4);
+}
+
+/* 选中后两端出现裁剪手柄 */
+.block .handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+  background: var(--select);
+}
+
+.block .handle.start {
+  left: 0;
+  border-radius: 3px 0 0 3px;
+}
+
+.block .handle.end {
+  right: 0;
+  border-radius: 0 3px 3px 0;
+}
+
 .block-label {
   position: relative;
   overflow: hidden;
@@ -1409,7 +1516,7 @@ textarea:focus-visible {
 
 .playhead {
   position: absolute;
-  top: 0;
+  top: 36px;
   bottom: 0;
   width: 1px;
   margin-left: -0.5px;
@@ -1476,71 +1583,109 @@ textarea:focus-visible {
   }
 }
 
-/* 窄屏：收窄两侧 */
-@media (max-width: 1360px) {
-  .app {
-    grid-template-columns: 256px minmax(0, 1fr) 288px;
+.icon-btn.on {
+  color: var(--ai);
+}
+
+.mini-btn.on {
+  color: var(--ai);
+  border-color: rgb(95 208 184 / 0.4);
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  margin-bottom: 10px;
+  padding: 0 10px;
+  border-radius: var(--radius);
+  color: var(--text-3);
+  background: var(--raised);
+  border: 1px solid var(--line);
+}
+
+.search:focus-within {
+  border-color: var(--line-strong);
+}
+
+.search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: transparent;
+}
+
+.caption-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.caption-row {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: 5px;
+  text-align: left;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.caption-row .mono {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.caption-row.playing {
+  color: var(--text);
+}
+
+.caption-row.current {
+  color: var(--text);
+  background: var(--raised-2);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .caption-row:hover {
+    background: var(--raised);
   }
 }
 
-/* 窄屏（和 AI 对话框并排时常见）：左右两栏合成一个侧栏，顶栏只留图标和数字 */
-@media (max-width: 1279px) {
-  .app {
-    grid-template-columns: minmax(0, 1fr) 304px;
-    grid-template-areas:
-      "top top"
-      "stage right"
-      "tl tl";
-  }
-
-  .left-panel.merged {
-    grid-area: right;
-    border-right: 0;
-    border-left: 1px solid var(--line);
-  }
-
-  .topbar {
-    gap: 10px;
-  }
-
-  .wide-only,
-  .revision {
-    display: none;
-  }
+.selection-head .mini-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
 }
 
-/* 矮屏：时间线让出高度给预览 */
-@media (max-height: 860px) {
-  .app {
-    grid-template-rows: 48px minmax(0, 1fr) 188px;
-  }
-}
-
-/* 很窄：上下堆叠，整页滚动 */
+/* 很窄：上下堆叠，整页滚动，不能拖 */
 @media (max-width: 760px) {
   .app {
     height: auto;
     min-height: 100vh;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: 48px 62vh minmax(360px, auto) 220px;
+    grid-template-rows: 48px 62vh auto;
     grid-template-areas:
       "top"
       "stage"
-      "right"
-      "tl";
+      "work";
   }
 
-  .left-panel.merged {
-    border-left: 0;
-    border-top: 1px solid var(--line);
+  .workspace {
+    grid-template-rows: minmax(420px, auto) 0 240px;
   }
 
-  .topbar {
-    grid-template-columns: minmax(0, 1fr) auto;
+  .splitter {
+    display: none;
   }
 
   .topbar-center,
-  .sep,
   .project-name {
     display: none;
   }
@@ -1549,19 +1694,18 @@ textarea:focus-visible {
 .handoff {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   margin-bottom: 10px;
-  padding: 10px 12px;
+  padding: 8px 8px 8px 12px;
   border-radius: var(--radius);
   font-size: 12px;
-  line-height: 1.5;
   color: var(--text-2);
   background: var(--ai-soft);
   border: 1px solid rgb(95 208 184 / 0.2);
 }
 
 .handoff .mini-btn {
-  flex: none;
   display: inline-flex;
   align-items: center;
   gap: 4px;

@@ -9,40 +9,33 @@ import { useStore } from "../store";
 import { CommentCard } from "./comment-card";
 import { Icon } from "./icons";
 
-export function Inspector() {
-  return (
-    <aside className="inspector">
-      <div className="inspector-body">
-        <SelectionView />
-      </div>
-      <Composer />
-    </aside>
-  );
-}
-
-/** 选中元素的信息和它的批注；宽屏放在右栏，窄屏是侧栏的「选中」页 */
+/** 「选中」页：选中元素的信息和它的批注；选中字幕时可以切换成全部字幕列表 */
 export function SelectionView() {
   const project = useStore((s) => s.project);
   const selected = useStore((s) => s.selected);
   const preview = useStore((s) => s.preview);
   const review = useStore((s) => s.review);
+  const listing = useStore((s) => s.captionList);
   const ref = project && selected ? findItem(project, selected) : null;
   const comments = (review?.comments ?? []).filter((c) => selected && c.target === selected);
+  const isCaption = ref?.track.kind === "caption";
 
+  if (!project || !ref || !selected) {
+    return (
+      <div className="empty">
+        <Icon name="target" size={20} />
+        <p>点画面或时间线上的元素</p>
+        <span>双击画面可以钉一条批注</span>
+      </div>
+    );
+  }
+  if (isCaption && listing) return <CaptionList />;
   return (
     <>
-      {project && ref && selected ? (
-        <Selection project={project} id={selected} ref_={ref} fps={preview?.timeline.fps ?? 30} />
-      ) : (
-        <div className="empty">
-          <Icon name="target" size={20} />
-          <p>在画面或时间线上点一个元素</p>
-          <span>可以看它锚定在哪句话、用了什么样式；双击画面可以在那个位置钉一条批注。</span>
-        </div>
-      )}
+      <Selection project={project} id={selected} ref_={ref} fps={preview?.timeline.fps ?? 30} />
       {comments.length > 0 && (
         <section className="section">
-          <h3>这个元素的批注</h3>
+          <h3>批注</h3>
           <div className="comment-list">
             {comments.map((c) => (
               <CommentCard key={c.id} comment={c} compact />
@@ -50,6 +43,67 @@ export function SelectionView() {
           </div>
         </section>
       )}
+    </>
+  );
+}
+
+function ListToggle() {
+  const listing = useStore((s) => s.captionList);
+  return (
+    <button
+      type="button"
+      className={listing ? "mini-btn on" : "mini-btn"}
+      onClick={() => useStore.getState().setCaptionList(!listing)}
+      title={listing ? "回到这句字幕" : "显示全部字幕"}
+    >
+      <Icon name="list" size={12} />
+      全部字幕
+    </button>
+  );
+}
+
+/** 全部字幕，点一句跳过去；当前选中的那句滚到可见 */
+function CaptionList() {
+  const tl = useStore((s) => s.preview?.timeline);
+  const selected = useStore((s) => s.selected);
+  const frame = useStore((s) => s.frame);
+  const current = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    current.current?.scrollIntoView({ block: "nearest" });
+  }, [selected]);
+  if (!tl) return null;
+  const captions = tl.captions.toSorted((a, b) => a.from - b.from);
+  return (
+    <>
+      <header className="selection-head">
+        <span className="kind-badge">字幕 {captions.length} 句</span>
+        <ListToggle />
+      </header>
+      <div className="caption-list">
+        {captions.map((c) => {
+          const playing = frame >= c.from && frame < c.from + c.durationInFrames;
+          return (
+            <button
+              type="button"
+              key={c.id}
+              ref={c.id === selected ? current : undefined}
+              className={[
+                "caption-row",
+                c.id === selected ? "current" : "",
+                playing ? "playing" : "",
+              ].join(" ")}
+              onClick={() => {
+                const { select, seek } = useStore.getState();
+                select(c.id, { reveal: false });
+                seek(c.from);
+              }}
+            >
+              <span className="mono">{timecode(c.from, tl.fps)}</span>
+              <span className="caption-row-text">{c.text}</span>
+            </button>
+          );
+        })}
+      </div>
     </>
   );
 }
@@ -104,6 +158,7 @@ function Selection({
       <header className="selection-head">
         <span className="kind-badge">{kindLabel(ref_)}</span>
         <h2>{id}</h2>
+        {isCaption && <ListToggle />}
         {track.locked && (
           <span className="locked-note" title="轨道已锁定，AI 和界面都不能修改">
             <Icon name="lock" size={12} /> 已锁定
@@ -130,18 +185,10 @@ function Selection({
           <p className="anchor">{describeAnchor(project, anchor)}</p>
           {!track.locked && (
             <div className="nudge" role="group" aria-label="调整出现时间">
-              <button type="button" onClick={() => nudge(-500)}>
-                −0.5s
-              </button>
-              <button type="button" onClick={() => nudge(-100)}>
-                早一点
-              </button>
-              <button type="button" onClick={() => nudge(100)}>
-                晚一点
-              </button>
-              <button type="button" onClick={() => nudge(500)}>
-                +0.5s
-              </button>
+              <NudgeBtn icon="back" label="提前 0.5 秒" onClick={() => nudge(-500)} />
+              <NudgeBtn icon="prev" label="提前 0.1 秒" onClick={() => nudge(-100)} />
+              <NudgeBtn icon="next" label="延后 0.1 秒" onClick={() => nudge(100)} />
+              <NudgeBtn icon="forward" label="延后 0.5 秒" onClick={() => nudge(500)} />
             </div>
           )}
         </section>
@@ -174,7 +221,6 @@ function Selection({
               </option>
             ))}
           </select>
-          <p className="hint">更细的排版和动画，在下面写批注交给 AI。</p>
         </section>
       )}
 
@@ -201,6 +247,22 @@ function Selection({
 
 /** 模板说明是写给 AI 的，去掉括号里的参数写法（含英文字母的括注） */
 const forHumans = (text: string) => text.replace(/\s*[（(][^（）()]*[A-Za-z][^（）()]*[）)]/g, "");
+
+function NudgeBtn({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: "back" | "prev" | "next" | "forward";
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button type="button" aria-label={label} title={label} onClick={onClick}>
+      <Icon name={icon} size={14} />
+    </button>
+  );
+}
 
 function describeAnchor(project: Project, at: Anchor): string {
   if ("ms" in at) return `固定在 ${(at.ms / 1000).toFixed(1)} 秒`;
@@ -247,20 +309,23 @@ function CaptionEditor({ caption, locked }: { caption: Caption; locked: boolean 
           }
         }}
       />
-      <p className="hint">
-        {caption.charStartMs
-          ? "逐字时间来自识音对齐；改字数后需要 AI 重新对齐。"
-          : "逐字时间按字数估算（还没识音对齐）。"}
-      </p>
-      {caption.highlights.length > 0 && (
-        <div className="tags">
-          {caption.highlights.map((h) => (
-            <span key={`${h.text}-${h.nth ?? 0}`} className="tag">
-              {h.text}
-            </span>
-          ))}
-        </div>
-      )}
+      <div className="tags">
+        <span
+          className={caption.charStartMs ? "tag ok" : "tag dim"}
+          title={
+            caption.charStartMs
+              ? "逐字时间来自识音对齐；改了字数要让 AI 重新对齐"
+              : "逐字时间按字数估算，还没识音对齐"
+          }
+        >
+          {caption.charStartMs ? "已对齐" : "估算"}
+        </span>
+        {caption.highlights.map((h) => (
+          <span key={`${h.text}-${h.nth ?? 0}`} className="tag">
+            {h.text}
+          </span>
+        ))}
+      </div>
     </section>
   );
 }
@@ -315,7 +380,7 @@ export function Composer() {
         ref={box}
         value={text}
         rows={3}
-        placeholder="让 AI 改：例如「这张卡片换成半屏」"
+        placeholder="写批注，回车记下（C）"
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -325,17 +390,14 @@ export function Composer() {
           if (e.key === "Escape") e.currentTarget.blur();
         }}
       />
-      <div className="composer-foot">
-        <span className="hint">回车发送 · ⇧回车换行 · 按 C 随时写</span>
-        <button
-          type="button"
-          className="send-btn"
-          disabled={!text.trim() || busy}
-          onClick={() => void send()}
-        >
-          记下
-        </button>
-      </div>
+      <button
+        type="button"
+        className="send-btn"
+        disabled={!text.trim() || busy}
+        onClick={() => void send()}
+      >
+        记下
+      </button>
     </div>
   );
 }

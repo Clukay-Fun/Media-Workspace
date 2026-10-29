@@ -1,10 +1,12 @@
 import { create } from "zustand";
 import type { HistoryResponse, LintResponse, PreviewProps } from "../core/api";
 import type { ResolvedTimeline } from "../core/compile";
+import { planSplit } from "../core/edit";
 import type { Op } from "../core/ops";
 import type { NewComment, Review } from "../core/review";
 import type { Project } from "../core/schema";
 import { type Api, ApiFailure, type LiveEvent } from "./data/client";
+import { msOfFrame } from "./lib/timeline";
 
 // 界面状态。工程数据只从服务端读，修改一律提交 ops（AGENTS.md 规则 1）；
 // 本地只有选中、播放头、拖动中的草稿这些不影响渲染的东西。
@@ -47,6 +49,10 @@ type State = {
   toasts: Toast[];
   panelTab: PanelTab;
   safeArea: boolean;
+  /** 时间线拖动时吸附到字幕边界、播放头 */
+  snap: boolean;
+  /** 选中字幕时显示全部字幕列表 */
+  captionList: boolean;
   composerNonce: number;
   /** 双击画面钉下的位置（画布像素），写批注时一起提交 */
   pin: { x: number; y: number } | null;
@@ -55,6 +61,8 @@ type State = {
   refresh(): Promise<void>;
   submit(ops: Op[], label?: string): Promise<boolean>;
   undo(direction: "undo" | "redo"): Promise<void>;
+  /** 在播放头处分割选中的条目；没选中时分割播放头下的主轨片段 */
+  splitAtPlayhead(): Promise<void>;
   addComment(c: NewComment): Promise<void>;
   setCommentStatus(id: string, status: "open" | "resolved"): Promise<void>;
   startExport(): Promise<void>;
@@ -65,6 +73,8 @@ type State = {
   setDraft(draft: State["draft"]): void;
   setPanelTab(tab: PanelTab): void;
   toggleSafeArea(): void;
+  setCaptionList(on: boolean): void;
+  toggleSnap(): void;
   focusComposer(): void;
   setPin(pin: State["pin"]): void;
   dismissAiChange(): void;
@@ -157,6 +167,8 @@ export const useStore = create<State>((set, get) => {
     toasts: [],
     panelTab: "comments",
     safeArea: false,
+    captionList: false,
+    snap: true,
     composerNonce: 0,
     pin: null,
     revealNonce: 0,
@@ -202,6 +214,23 @@ export const useStore = create<State>((set, get) => {
       } catch (e) {
         fail(e);
         return false;
+      }
+    },
+
+    async splitAtPlayhead() {
+      const { project, preview, frame, selected, submit, toast } = get();
+      if (!project || !preview) return;
+      const tl = preview.timeline;
+      const under = tl.videos.find(
+        (v) => v.main && frame > v.from && frame < v.from + v.durationInFrames,
+      );
+      const id = selected ?? under?.id;
+      if (!id) return toast("播放头下没有可以分割的片段", "error");
+      try {
+        const { ops } = planSplit(project, { id, atMs: msOfFrame(frame, tl.fps) });
+        await submit(ops, `已在播放头处分割 ${id}`);
+      } catch (e) {
+        toast(e instanceof Error ? e.message : String(e), "error");
       }
     },
 
@@ -260,6 +289,8 @@ export const useStore = create<State>((set, get) => {
     setDraft: (draft) => set({ draft }),
     setPanelTab: (panelTab) => set({ panelTab }),
     toggleSafeArea: () => set((s) => ({ safeArea: !s.safeArea })),
+    setCaptionList: (captionList) => set({ captionList }),
+    toggleSnap: () => set((s) => ({ snap: !s.snap })),
     focusComposer: () => set((s) => ({ composerNonce: s.composerNonce + 1 })),
     setPin: (pin) => set({ pin }),
     dismissAiChange: () => set({ aiChange: null }),

@@ -30,8 +30,6 @@ export function TopBar() {
   return (
     <header className="topbar">
       <div className="topbar-title">
-        <span className="wordmark">审片台</span>
-        <span className="sep" aria-hidden="true" />
         <span className="project-name" title={name}>
           {name || "载入中…"}
         </span>
@@ -40,7 +38,7 @@ export function TopBar() {
           className={live ? "live on" : "live"}
           title={live ? "实时同步中" : "连接已断开，正在重连"}
         >
-          <span className="wide-only">{live ? "同步中" : "已断开"}</span>
+          {live ? "同步中" : "已断开"}
         </span>
       </div>
 
@@ -49,8 +47,7 @@ export function TopBar() {
           <div className="ai-change" role="status">
             <Icon name="spark" size={14} />
             <span>
-              <b>{aiChange.actor || "AI"}</b> <span className="wide-only">刚</span>改了{" "}
-              {aiChange.changed.length} 处
+              <b>{aiChange.actor || "AI"}</b> 刚改了 {aiChange.changed.length} 处
             </span>
             <button
               type="button"
@@ -63,7 +60,7 @@ export function TopBar() {
             </button>
             {canUndoAi && (
               <button type="button" className="link" onClick={() => void undo("undo")}>
-                撤销<span className="wide-only">这次修改</span>
+                撤销这次修改
               </button>
             )}
             <button
@@ -88,7 +85,7 @@ export function TopBar() {
           title={issues[0]?.message ?? "质检没有发现问题"}
         >
           <Icon name="warn" size={14} />
-          <span className="wide-only">质检</span> {issues.length}
+          质检 {issues.length}
         </button>
         <button
           type="button"
@@ -97,28 +94,7 @@ export function TopBar() {
           onClick={() => setPanelTab("comments")}
         >
           <Icon name="comment" size={14} />
-          <span className="wide-only">待处理</span> {open}
-        </button>
-        <span className="divider" aria-hidden="true" />
-        <button
-          type="button"
-          className="icon-btn"
-          aria-label="撤销"
-          title="撤销（⌘Z）"
-          disabled={!history?.undo}
-          onClick={() => void undo("undo")}
-        >
-          <Icon name="undo" />
-        </button>
-        <button
-          type="button"
-          className="icon-btn"
-          aria-label="重做"
-          title="重做（⇧⌘Z）"
-          disabled={!history?.redo}
-          onClick={() => void undo("redo")}
-        >
-          <Icon name="redo" />
+          待处理 {open}
         </button>
         <button
           type="button"

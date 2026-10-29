@@ -14,33 +14,29 @@ import { Icon } from "./icons";
 import { Composer, SelectionView } from "./inspector";
 
 const TABS: { id: PanelTab; label: string }[] = [
+  { id: "selection", label: "选中" },
   { id: "comments", label: "批注" },
   { id: "styles", label: "样式" },
   { id: "assets", label: "素材" },
 ];
 
-/**
- * 宽屏是左栏（批注 / 样式 / 素材），右栏另放选中信息。
- * 窄屏（和 AI 对话框并排时常见）合并成一个侧栏：多一页「选中」，批注输入框固定在底部。
- */
-export function LeftPanel({ merged = false }: { merged?: boolean }) {
-  const current = useStore((s) => s.panelTab);
+/** 选中 / 批注 / 样式 / 素材，加上批注输入框。面板够宽时输入框放右边，否则放底部 */
+export function LeftPanel() {
+  const tab = useStore((s) => s.panelTab);
   const review = useStore((s) => s.review);
   const reveal = useStore((s) => s.revealNonce);
   const { setPanelTab } = useStore.getState();
   const open = review?.comments.filter((c) => c.status === "open").length ?? 0;
-  const tabs = merged ? [{ id: "selection" as const, label: "选中" }, ...TABS] : TABS;
-  // 宽屏没有「选中」页，从窄屏拉宽时退回批注
-  const tab = !merged && current === "selection" ? "comments" : current;
 
+  // 在画面、时间线上点了元素就切到「选中」
   useEffect(() => {
-    if (merged && reveal > 0) setPanelTab("selection");
-  }, [merged, reveal, setPanelTab]);
+    if (reveal > 0) setPanelTab("selection");
+  }, [reveal, setPanelTab]);
 
   return (
-    <aside className={merged ? "left-panel merged" : "left-panel"}>
+    <aside className="left-panel">
       <div className="tabs" role="tablist">
-        {tabs.map((t) => (
+        {TABS.map((t) => (
           <button
             key={t.id}
             type="button"
@@ -54,16 +50,38 @@ export function LeftPanel({ merged = false }: { merged?: boolean }) {
           </button>
         ))}
       </div>
-      <div className="panel-scroll">
-        {tab === "selection" && <SelectionView />}
-        {tab === "comments" && <Comments />}
-        {tab === "styles" && <Styles />}
-        {tab === "assets" && <Assets />}
+      <div className="panel-body">
+        <div className="panel-scroll">
+          {tab === "selection" && <SelectionView />}
+          {tab === "comments" && <Comments />}
+          {tab === "styles" && <Styles />}
+          {tab === "assets" && <Assets />}
+        </div>
+        <Composer />
       </div>
-      {merged && <Composer />}
     </aside>
   );
 }
+
+function SearchBox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <label className="search">
+      <Icon name="search" size={13} />
+      <input
+        type="search"
+        value={value}
+        placeholder="搜索"
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => e.key === "Escape" && onChange("")}
+      />
+    </label>
+  );
+}
+
+const matches = (q: string, ...fields: (string | undefined)[]) => {
+  const k = q.trim().toLowerCase();
+  return !k || fields.some((f) => f?.toLowerCase().includes(k));
+};
 
 function Comments() {
   const review = useStore((s) => s.review);
@@ -85,7 +103,7 @@ function Comments() {
     <div className="comments">
       {open.length > 0 && (
         <div className="handoff">
-          <span>{open.length} 条等 AI 处理，复制到对话里就能让它现在改。</span>
+          <span>{open.length} 条等 AI 处理</span>
           <button type="button" className="mini-btn" onClick={() => void handOff()}>
             <Icon name="spark" size={12} />
             复制给 AI
@@ -94,8 +112,7 @@ function Comments() {
       )}
       {open.length === 0 ? (
         <div className="empty small">
-          <p>没有待处理的批注</p>
-          <span>看片时按 C，或在右下角写下意见，AI 下次工作时会先处理。</span>
+          <p>没有待处理的批注 · 按 C 写一条</p>
         </div>
       ) : (
         <div className="comment-list">
@@ -143,6 +160,7 @@ function Styles() {
   const selected = useStore((s) => s.selected);
   const fonts = useStore((s) => s.preview?.fonts);
   const [hover, setHover] = useState<string | null>(null);
+  const [q, setQ] = useState("");
   if (!project) return null;
   const ref = selected ? findItem(project, selected) : null;
   const target = ref && (ref.track.kind === "caption" || ref.track.kind === "overlay") ? ref : null;
@@ -161,47 +179,42 @@ function Styles() {
   };
   return (
     <div className="styles">
-      <p className="panel-note">
-        {target ? (
-          <>
-            点「套用」改到 <b>{selected}</b>
-          </>
-        ) : (
-          "先在画面上选中一句字幕或标题，再套用样式"
-        )}
-      </p>
-      {Object.entries(project.styles).map(([name, style]) => (
-        <div
-          key={name}
-          className="style-card"
-          onMouseEnter={() => setHover(name)}
-          onMouseLeave={() => setHover(null)}
-        >
-          <div className="style-sample">
-            {hover === name && fonts ? (
-              <StylePlayer style={style} />
-            ) : (
-              <span className="swatch" style={swatch(style)}>
-                {sampleText(name)}
-              </span>
-            )}
-          </div>
-          <div className="style-info">
-            <div>
-              <b>{name}</b>
-              <span className="muted">{describeStyle(style)}</span>
+      <SearchBox value={q} onChange={setQ} />
+      {Object.entries(project.styles)
+        .filter(([name, style]) => matches(q, name, describeStyle(style)))
+        .map(([name, style]) => (
+          <div
+            key={name}
+            className="style-card"
+            onMouseEnter={() => setHover(name)}
+            onMouseLeave={() => setHover(null)}
+          >
+            <div className="style-sample">
+              {hover === name && fonts ? (
+                <StylePlayer style={style} />
+              ) : (
+                <span className="swatch" style={swatch(style)}>
+                  {sampleText(name)}
+                </span>
+              )}
             </div>
-            <button
-              type="button"
-              className="mini-btn"
-              disabled={!target}
-              onClick={() => apply(name)}
-            >
-              套用
-            </button>
+            <div className="style-info">
+              <div>
+                <b>{name}</b>
+                <span className="muted">{describeStyle(style)}</span>
+              </div>
+              <button
+                type="button"
+                className="mini-btn"
+                disabled={!target}
+                title={target ? `套用到 ${selected}` : "先选中一句字幕或标题"}
+                onClick={() => apply(name)}
+              >
+                套用
+              </button>
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
     </div>
   );
 }
@@ -297,18 +310,21 @@ function StylePlayer({ style }: { style: TextStyle }) {
 function Assets() {
   const project = useStore((s) => s.project);
   const lint = useStore((s) => s.lint);
+  const [q, setQ] = useState("");
   if (!project) return null;
   return (
     <div className="assets">
-      {Object.entries(project.assets).map(([id, a]) => (
-        <AssetRow
-          key={id}
-          id={id}
-          project={project}
-          noFaces={lint?.noFaceData.includes(id) ?? false}
-        />
-      ))}
-      <p className="panel-note">导入新素材：让 AI 调用 import，或者运行 mw import。</p>
+      <SearchBox value={q} onChange={setQ} />
+      {Object.entries(project.assets)
+        .filter(([id, a]) => matches(q, id, a.path))
+        .map(([id]) => (
+          <AssetRow
+            key={id}
+            id={id}
+            project={project}
+            noFaces={lint?.noFaceData.includes(id) ?? false}
+          />
+        ))}
     </div>
   );
 }
