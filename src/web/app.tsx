@@ -1,5 +1,6 @@
 import type React from "react";
 import { useEffect, useRef } from "react";
+import { LeftPanel } from "./components/left-panel";
 import { ReviewSidebar } from "./components/review-sidebar";
 import { Splitter } from "./components/splitter";
 import { Stage } from "./components/stage";
@@ -9,8 +10,8 @@ import { DEFAULT_LAYOUT, useLayout } from "./lib/layout";
 import { useStore } from "./store";
 
 /**
- * 审片工作区：左边上预览、下时间线（同宽，播放控制和画面中线对齐），右边审阅栏。
- * 断点按容器宽度（container query），嵌进别的应用、宿主侧栏开合时也对。
+ * 三栏：左栏（选中、样式、素材），中间上预览、下时间线（同宽，播放控制和画面中线对齐），
+ * 右边审阅栏（问题、AI 改动、批注）。断点按容器宽度（container query），嵌进别的应用时也对。
  */
 export function App() {
   useEffect(() => useStore.getState().init(), []);
@@ -18,13 +19,22 @@ export function App() {
   const [layout, setLayout] = useLayout();
   const app = useRef<HTMLDivElement>(null);
   const main = useRef<HTMLDivElement>(null);
+  const left = useRef(0);
   const side = useRef(0);
   const origin = useRef(layout);
 
   const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+  // 中间至少留 420，竖屏画面才不会太小
+  const room = (other: number) => (app.current?.clientWidth ?? window.innerWidth) - other - 420;
+  const dragLeft = (dx: number) => {
+    setLayout({ leftW: clamp(left.current + dx, 220, Math.min(480, room(side.current))) });
+  };
   const dragSide = (dx: number) => {
-    const w = app.current?.clientWidth ?? window.innerWidth;
-    setLayout({ sideW: clamp(side.current - dx, 260, Math.min(520, w - 420)) });
+    setLayout({ sideW: clamp(side.current - dx, 260, Math.min(520, room(left.current))) });
+  };
+  const measure = () => {
+    left.current = app.current?.querySelector(".left-panel")?.clientWidth ?? 280;
+    side.current = app.current?.querySelector(".sidebar")?.clientWidth ?? 340;
   };
   const dragTimeline = (dy: number) => {
     const h = main.current?.clientHeight ?? window.innerHeight;
@@ -38,12 +48,22 @@ export function App() {
         ref={app}
         style={
           {
+            ...(layout.leftW ? { "--left-w": `${layout.leftW}px` } : {}),
             ...(layout.sideW ? { "--side-w": `${layout.sideW}px` } : {}),
             "--tl-h": `${layout.timelineH}px`,
           } as React.CSSProperties
         }
       >
         <TopBar />
+        <LeftPanel />
+        <Splitter
+          axis="x"
+          label="调整左栏宽度"
+          className="left"
+          onStart={measure}
+          onDrag={dragLeft}
+          onReset={() => setLayout({ leftW: null })}
+        />
         <div className="review-main" ref={main}>
           <Stage />
           <Splitter
@@ -60,9 +80,8 @@ export function App() {
         <Splitter
           axis="x"
           label="调整审阅栏宽度"
-          onStart={() => {
-            side.current = app.current?.querySelector(".sidebar")?.clientWidth ?? 340;
-          }}
+          className="side"
+          onStart={measure}
           onDrag={dragSide}
           onReset={() => setLayout({ sideW: null })}
         />

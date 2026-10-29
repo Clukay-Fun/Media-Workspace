@@ -16,7 +16,8 @@ export function TopBar() {
   const aiChange = useStore((s) => s.aiChange);
   const exportJob = useStore((s) => s.exportJob);
   const sideOpen = useStore((s) => s.sideOpen);
-  const { undo, startExport, setSideTab, setSideOpen, dismissAiChange, select, seek } =
+  const leftOpen = useStore((s) => s.leftOpen);
+  const { undo, startExport, setSideTab, setSideOpen, setLeftOpen, dismissAiChange, select, seek } =
     useStore.getState();
 
   const open = review?.comments.filter((c) => c.status === "open").length ?? 0;
@@ -36,6 +37,15 @@ export function TopBar() {
   return (
     <header className="topbar">
       <div className="topbar-title">
+        <button
+          type="button"
+          className="icon-btn left-toggle"
+          aria-label="左栏"
+          title="选中、样式、素材"
+          onClick={() => setLeftOpen(!leftOpen)}
+        >
+          <Icon name="list" />
+        </button>
         <span className="project-name" title={name} hidden={EMBED}>
           {name || "载入中…"}
         </span>

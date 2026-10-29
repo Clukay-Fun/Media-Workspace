@@ -11,9 +11,11 @@ export function Splitter({
   onStart,
   onDrag,
   onReset,
+  className,
 }: {
   axis: "x" | "y";
   label: string;
+  className?: string;
   onStart: () => void;
   onDrag: (delta: number) => void;
   onReset: () => void;
@@ -26,7 +28,7 @@ export function Splitter({
       aria-orientation={axis === "x" ? "vertical" : "horizontal"}
       aria-label={label}
       tabIndex={-1}
-      className={`splitter ${axis}`}
+      className={className ? `splitter ${axis} ${className}` : `splitter ${axis}`}
       onPointerDown={(e) => {
         e.currentTarget.setPointerCapture(e.pointerId);
         start.current = pos(e);

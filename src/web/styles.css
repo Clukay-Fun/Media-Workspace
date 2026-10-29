@@ -104,15 +104,15 @@ textarea:focus-visible {
   position: relative;
   display: grid;
   height: 100%;
-  grid-template-columns: minmax(0, 1fr) 0 var(--side-w, 340px);
+  grid-template-columns: var(--left-w, 300px) 0 minmax(0, 1fr) 0 var(--side-w, 340px);
   grid-template-rows: 42px minmax(0, 1fr);
   grid-template-areas:
-    "top top top"
-    "main split side";
+    "top top top top top"
+    "left lsplit main split side";
   overflow: hidden;
 }
 
-/* 左边：上预览、下时间线，同宽 */
+/* 中间：上预览、下时间线，同宽 */
 .review-main {
   grid-area: main;
   display: grid;
@@ -137,6 +137,10 @@ textarea:focus-visible {
 .splitter.x {
   grid-area: split;
   cursor: col-resize;
+}
+
+.splitter.x.left {
+  grid-area: lsplit;
 }
 
 .splitter.x::before {
@@ -454,7 +458,17 @@ textarea:focus-visible {
   transition: transform 240ms linear;
 }
 
-/* ---- 审阅栏 ---- */
+/* ---- 左栏、审阅栏 ---- */
+
+.left-panel {
+  grid-area: left;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+  background: var(--panel);
+}
 
 .sidebar {
   grid-area: side;
@@ -475,7 +489,8 @@ textarea:focus-visible {
 }
 
 .drawer-close,
-.drawer-toggle {
+.drawer-toggle,
+.left-toggle {
   display: none;
 }
 
@@ -1863,11 +1878,51 @@ textarea:focus-visible {
 
 @container (max-width: 1279px) {
   .app {
-    grid-template-columns: minmax(0, 1fr) 0 var(--side-w, 300px);
+    grid-template-columns: var(--left-w, 260px) 0 minmax(0, 1fr) 0 var(--side-w, 300px);
   }
 }
 
-/* 650–899：审阅栏变成抽屉 */
+/* 900–1023：左栏变成从左边滑出的抽屉，审阅栏还在 */
+@container (max-width: 1023px) {
+  .app {
+    grid-template-columns: minmax(0, 1fr) 0 var(--side-w, 300px);
+    grid-template-areas:
+      "top top top"
+      "main split side";
+  }
+
+  .splitter.x.left {
+    display: none;
+  }
+
+  .left-panel {
+    position: absolute;
+    top: 42px;
+    left: 0;
+    bottom: 0;
+    z-index: 20;
+    width: min(320px, 88%);
+    box-shadow: 12px 0 32px rgb(0 0 0 / 0.45);
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition:
+      transform 240ms var(--ease-out),
+      visibility 0s linear 240ms;
+  }
+
+  .left-panel.open {
+    transform: none;
+    visibility: visible;
+    transition: transform 240ms var(--ease-out);
+  }
+
+  .left-panel .drawer-close,
+  .left-toggle {
+    display: inline-grid;
+  }
+}
+
+/* 650–899：审阅栏也变成抽屉 */
 @container (max-width: 899px) {
   .app {
     grid-template-columns: minmax(0, 1fr);
@@ -1917,7 +1972,8 @@ textarea:focus-visible {
 
 /* 小于 650：专注预览，审阅栏整屏切换 */
 @container (max-width: 649px) {
-  .sidebar {
+  .sidebar,
+  .left-panel {
     width: 100%;
     box-shadow: none;
   }

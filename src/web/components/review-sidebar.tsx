@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { HistoryEntry } from "../../core/api";
 import type { Comment } from "../../core/review";
 import { aiChanges } from "../lib/changes";
@@ -6,17 +6,12 @@ import { frameOfMs, itemFrames, timecode } from "../lib/timeline";
 import { type SideTab, useStore } from "../store";
 import { CommentCard } from "./comment-card";
 import { Icon } from "./icons";
-import { Composer, SelectionCard } from "./selection";
+import { Composer } from "./selection";
 
-/**
- * 审阅中心：质检问题、AI 改动、批注三页共用一块区域，选中元素时换成它的详情。
- * 批注输入框固定在底部。
- */
+/** 审阅栏：质检问题、AI 改动、批注三页，批注输入框固定在底部 */
 export function ReviewSidebar() {
   const tab = useStore((s) => s.sideTab);
   const open = useStore((s) => s.sideOpen);
-  const selected = useStore((s) => s.selected);
-  const reveal = useStore((s) => s.revealNonce);
   const issues = useStore((s) => s.lint?.issues.length ?? 0);
   const comments = useStore(
     (s) => s.review?.comments.filter((c) => c.status === "open").length ?? 0,
@@ -25,13 +20,6 @@ export function ReviewSidebar() {
   const reviewedRev = useStore((s) => s.reviewedRev);
   const pending = aiChanges(history, reviewedRev).pending.length;
   const { setSideTab, setSideOpen } = useStore.getState();
-
-  // 在画面、时间线上点了元素就显示它的详情；点标签回到列表（选中保留）
-  const [detail, setDetail] = useState(false);
-  useEffect(() => {
-    if (reveal > 0) setDetail(true);
-  }, [reveal]);
-  const showDetail = detail && selected !== null;
 
   const tabs: { id: SideTab; label: string; count: number; tone: string }[] = [
     { id: "issues", label: "问题", count: issues, tone: "warn" },
@@ -47,12 +35,9 @@ export function ReviewSidebar() {
             key={t.id}
             type="button"
             role="tab"
-            aria-selected={!showDetail && tab === t.id}
-            className={!showDetail && tab === t.id ? "tab active" : "tab"}
-            onClick={() => {
-              setDetail(false);
-              setSideTab(t.id);
-            }}
+            aria-selected={tab === t.id}
+            className={tab === t.id ? "tab active" : "tab"}
+            onClick={() => setSideTab(t.id)}
           >
             {t.label}
             {t.count > 0 && <span className={`count tone-${t.tone}`}>{t.count}</span>}
@@ -68,15 +53,9 @@ export function ReviewSidebar() {
         </button>
       </div>
       <div className="panel-scroll">
-        {showDetail ? (
-          <SelectionCard />
-        ) : (
-          <>
-            {tab === "issues" && <IssueList />}
-            {tab === "changes" && <ChangeList />}
-            {tab === "comments" && <Comments />}
-          </>
-        )}
+        {tab === "issues" && <IssueList />}
+        {tab === "changes" && <ChangeList />}
+        {tab === "comments" && <Comments />}
       </div>
       <Composer />
     </aside>

@@ -14,6 +14,9 @@ import { msOfFrame } from "./lib/timeline";
 /** 审阅栏的三页：质检问题、AI 改动、批注 */
 export type SideTab = "issues" | "changes" | "comments";
 
+/** 左栏三页：选中元素的详情、样式库、素材 */
+export type LeftTab = "selection" | "styles" | "assets";
+
 const reviewedKey = (name: string) => `mw.reviewed.${name}`;
 
 function saveReviewed(name: string, rev: number) {
@@ -52,7 +55,7 @@ type State = {
   loadError: string | null;
 
   selected: string | null;
-  /** 在画面、时间线上主动选中时加一；窄屏侧栏据此切到「选中」页（从批注列表跳过去时不加） */
+  /** 在画面、时间线上主动选中时加一（从列表跳过去时不加） */
   revealNonce: number;
   frame: number;
   /** 每次主动跳转加一，预览区据此调用 player.seekTo（播放时的帧变化不触发） */
@@ -66,6 +69,9 @@ type State = {
   exportJob: ExportJob | null;
   toasts: Toast[];
   sideTab: SideTab;
+  leftTab: LeftTab;
+  /** 窄容器里左栏是抽屉，这里记开没开 */
+  leftOpen: boolean;
   /** 窄容器里审阅栏是抽屉，这里记开没开 */
   sideOpen: boolean;
   /** 时间线展开成完整轨道（可以拖动、裁剪） */
@@ -97,6 +103,8 @@ type State = {
   setDraft(draft: State["draft"]): void;
   setSideTab(tab: SideTab): void;
   setSideOpen(open: boolean): void;
+  setLeftTab(tab: LeftTab): void;
+  setLeftOpen(open: boolean): void;
   toggleTimeline(): void;
   confirmAiChanges(): void;
   toggleSafeArea(): void;
@@ -193,6 +201,8 @@ export const useStore = create<State>((set, get) => {
     exportJob: null,
     toasts: [],
     sideTab: "comments",
+    leftTab: "selection",
+    leftOpen: false,
     sideOpen: false,
     timelineExpanded: false,
     reviewedRev: null,
@@ -311,15 +321,20 @@ export const useStore = create<State>((set, get) => {
     select: (id, opts) =>
       set((s) => ({
         selected: id,
-        revealNonce: id && opts?.reveal !== false ? s.revealNonce + 1 : s.revealNonce,
+        ...(id && opts?.reveal !== false
+          ? { revealNonce: s.revealNonce + 1, leftTab: "selection" as const }
+          : {}),
       })),
     seek: (frame) =>
       set((s) => ({ frame: Math.max(0, Math.round(frame)), seekNonce: s.seekNonce + 1 })),
     setFrame: (frame) => set({ frame }),
     setPlaying: (playing) => set({ playing }),
     setDraft: (draft) => set({ draft }),
-    setSideTab: (sideTab) => set({ sideTab, sideOpen: true }),
-    setSideOpen: (sideOpen) => set({ sideOpen }),
+    // 窄容器里两边都是抽屉，同一时间只开一个
+    setSideTab: (sideTab) => set({ sideTab, sideOpen: true, leftOpen: false }),
+    setSideOpen: (sideOpen) => set((s) => ({ sideOpen, leftOpen: sideOpen ? false : s.leftOpen })),
+    setLeftTab: (leftTab) => set({ leftTab, leftOpen: true, sideOpen: false }),
+    setLeftOpen: (leftOpen) => set((s) => ({ leftOpen, sideOpen: leftOpen ? false : s.sideOpen })),
     toggleTimeline: () => set((s) => ({ timelineExpanded: !s.timelineExpanded })),
     confirmAiChanges() {
       const { project, name } = get();
@@ -330,7 +345,8 @@ export const useStore = create<State>((set, get) => {
     toggleSafeArea: () => set((s) => ({ safeArea: !s.safeArea })),
     setCaptionList: (captionList) => set({ captionList }),
     toggleSnap: () => set((s) => ({ snap: !s.snap })),
-    focusComposer: () => set((s) => ({ composerNonce: s.composerNonce + 1, sideOpen: true })),
+    focusComposer: () =>
+      set((s) => ({ composerNonce: s.composerNonce + 1, sideOpen: true, leftOpen: false })),
     setPin: (pin) => set({ pin }),
     dismissAiChange: () => set({ aiChange: null }),
     toast(text, tone = "info") {
