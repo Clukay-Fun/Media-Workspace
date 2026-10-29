@@ -7,6 +7,7 @@ import {
   type EditorState,
   type ExportStarted,
   type HistoryResponse,
+  type LibraryStylesResponse,
   type LintResponse,
   type OpsRequest,
   type OpsResponse,
@@ -15,6 +16,7 @@ import {
   type ProjectResponse,
   type ReviewResponse,
   ROUTES,
+  type SaveLibraryStyleRequest,
   type ServerEvent,
 } from "../../core/api";
 
@@ -28,6 +30,8 @@ export type Api = {
   review(): Promise<ReviewResponse>;
   editor(): Promise<EditorResponse>;
   saveEditor(editor: EditorState): Promise<void>;
+  libraryStyles(): Promise<LibraryStylesResponse>;
+  saveLibraryStyle(req: SaveLibraryStyleRequest): Promise<{ ok: true; saved: string }>;
   peaks(assetId: string): Promise<PeaksResponse | null>;
   ops(req: OpsRequest): Promise<OpsResponse>;
   undo(direction: "undo" | "redo", baseRevision: number): Promise<OpsResponse>;
@@ -76,6 +80,8 @@ export const httpApi: Api = {
   saveEditor: async (editor) => {
     await request<{ ok: true }>(ROUTES.editor, { method: "PUT", body: editor });
   },
+  libraryStyles: () => request(ROUTES.libraryStyles),
+  saveLibraryStyle: (req) => request(ROUTES.libraryStyles, { body: req }),
   peaks: (id) => request<PeaksResponse>(ROUTES.peaks(id)).catch(() => null),
   ops: (req) => request(ROUTES.ops, { body: req }),
   undo: (direction, baseRevision) => request(ROUTES[direction], { body: { baseRevision } }),

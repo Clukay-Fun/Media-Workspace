@@ -20,6 +20,7 @@ import {
   validateDir,
 } from "../node/actions";
 import { ASR_MODEL, asrModelDir, fetchAsrModel, hasAsrModel } from "../node/asr";
+import { listStyles, removeStyle, saveStyle, textStylesDir, useStyle } from "../node/library";
 import { resolveProjectDir } from "../node/paths";
 import {
   clearServing,
@@ -390,6 +391,63 @@ cli
       if (o.add || o.clear) await saveEditor(dir, ed);
       out(ed.guides);
     }),
+  );
+
+cli
+  .command(
+    "styles [action] [...args]",
+    "样式模板库：列出 / save <工程> <样式> / use <工程> <模板> / remove <模板>",
+  )
+  .option("--as <name>", "save：存进库用的名字；use：在工程里用的样式 ID")
+  .option("--desc <text>", "save：一句话说明这个样式适合什么内容")
+  .option("--overwrite", "save：覆盖库里的同名样式")
+  .action(
+    act(
+      async (
+        action: string | undefined,
+        args: string[],
+        o: { as?: string; desc?: string; overwrite?: boolean },
+      ) => {
+        const as = o.as === undefined ? {} : { as: String(o.as) };
+        const need = (n: number, usage: string) => {
+          if (args.length !== n) throw new UsageError(`用法：mw styles ${usage}`);
+        };
+        switch (action ?? "list") {
+          case "list":
+            out({ ok: true, dir: textStylesDir(), ...(await listStyles()) });
+            return;
+          case "save": {
+            need(2, "save <工程> <样式 ID> [--as 名字] [--desc 说明]");
+            const [proj = "", id = ""] = args;
+            const style = await saveStyle(resolveProjectDir(proj), id, {
+              ...as,
+              ...(o.desc === undefined ? {} : { description: String(o.desc) }),
+              overwrite: o.overwrite === true,
+            });
+            out({ ok: true, saved: style.name, file: textStylesDir() });
+            return;
+          }
+          case "use": {
+            need(2, "use <工程> <模板名> [--as 样式 ID]");
+            const [proj = "", name = ""] = args;
+            out(
+              await useStyle(resolveProjectDir(proj), name, {
+                ...as,
+                source: "cli",
+                actor: "user",
+              }),
+            );
+            return;
+          }
+          case "remove":
+            need(1, "remove <模板名>");
+            out(await removeStyle(args[0] ?? ""));
+            return;
+          default:
+            throw new UsageError(`不认识的操作：${action}（可以用 list、save、use、remove）`);
+        }
+      },
+    ),
   );
 
 cli

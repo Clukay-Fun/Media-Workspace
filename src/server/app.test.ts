@@ -180,6 +180,25 @@ describe("本地服务接口", () => {
     expect(dev.status).toBe(200);
   });
 
+  it("模板库：列出、存进库、重名报错", async () => {
+    const oldHome = process.env.MW_HOME;
+    process.env.MW_HOME = root;
+    try {
+      const { req } = setup();
+      const list = await (await req("/api/library/styles")).json();
+      expect(list.styles.map((s: { name: string }) => s.name)).toContain("caption-word-yellow");
+      const body = { style: "caption-word-yellow", as: "srv-cap" };
+      const saved = await req("/api/library/styles", { method: "POST", body });
+      expect(await saved.json()).toEqual({ ok: true, saved: "srv-cap" });
+      const again = await req("/api/library/styles", { method: "POST", body });
+      expect(again.status).toBe(422);
+      expect((await again.json()).code).toBe("DUPLICATE_ID");
+    } finally {
+      if (oldHome === undefined) delete process.env.MW_HOME;
+      else process.env.MW_HOME = oldHome;
+    }
+  });
+
   it("没有的接口返回结构化的 404", async () => {
     const { req } = setup();
     const r = await req("/api/nope");

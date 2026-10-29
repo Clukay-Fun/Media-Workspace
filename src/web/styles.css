@@ -715,6 +715,25 @@ textarea:focus-visible {
   color: var(--text-3);
 }
 
+.style-info .style-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+
+.styles .list-head {
+  margin: 6px 2px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.styles .empty-note {
+  margin: 0 2px;
+  font-size: 12px;
+}
+
 .mini-btn {
   height: 26px;
   white-space: nowrap;

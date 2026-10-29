@@ -12,12 +12,14 @@ import {
   httpStatus,
   OpsRequest,
   ROUTES,
+  SaveLibraryStyleRequest,
   type ServerEvent,
   UndoRequest,
 } from "../core/api";
 import { MwError } from "../core/errors";
 import { zodIssues } from "../core/validate";
 import { lintDir, templateOpts } from "../node/actions";
+import { listStyles, saveStyle } from "../node/library";
 import { buildProps } from "../node/render";
 import {
   applyToProject,
@@ -111,6 +113,17 @@ export function createApp(ctx: AppContext): Hono {
       ...templateOpts,
     });
     return c.json(r);
+  });
+
+  app.get(ROUTES.libraryStyles, async (c) => c.json({ ok: true, ...(await listStyles()) }));
+  app.post(ROUTES.libraryStyles, async (c) => {
+    const { style, as, description, overwrite } = await body(c, SaveLibraryStyleRequest);
+    const saved = await saveStyle(ctx.dir, style, {
+      overwrite,
+      ...(as === undefined ? {} : { as }),
+      ...(description === undefined ? {} : { description }),
+    });
+    return c.json({ ok: true, saved: saved.name });
   });
 
   app.get(ROUTES.lint, async (c) => c.json(await lintDir(ctx.dir)));

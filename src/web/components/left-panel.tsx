@@ -1,10 +1,12 @@
 import { Player } from "@remotion/player";
 import type React from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
 import { TextBlock } from "../../composition/TextBlock";
+import type { LibraryStyle } from "../../core/api";
 import type { Project } from "../../core/schema";
 import type { TextStyle } from "../../core/text-style";
+import { ApiFailure } from "../data/client";
 import { findItem } from "../lib/project";
 import { type LeftTab, useStore } from "../store";
 import { Icon } from "./icons";
@@ -75,63 +77,143 @@ const matches = (q: string, ...fields: (string | undefined)[]) => {
 function Styles() {
   const project = useStore((s) => s.project);
   const selected = useStore((s) => s.selected);
-  const fonts = useStore((s) => s.preview?.fonts);
-  const [hover, setHover] = useState<string | null>(null);
   const [q, setQ] = useState("");
+  const [library, setLibrary] = useState<LibraryStyle[] | null>(null);
+  const reload = () =>
+    void useStore
+      .getState()
+      .api.libraryStyles()
+      .then((r) => setLibrary(r.styles))
+      .catch(() => setLibrary([]));
+  useEffect(reload, []);
   if (!project) return null;
   const ref = selected ? findItem(project, selected) : null;
   const target = ref && (ref.track.kind === "caption" || ref.track.kind === "overlay") ? ref : null;
+  const st = useStore.getState();
   const apply = (name: string) => {
     if (!target || !selected) return;
-    void useStore
-      .getState()
-      .submit(
-        [
-          target.track.kind === "caption"
-            ? { op: "caption.update", id: selected, set: { style: name } }
-            : { op: "item.update", id: selected, set: { style: name } },
-        ],
-        `已把「${name}」套用到 ${selected}`,
-      );
+    void st.submit(
+      [
+        target.track.kind === "caption"
+          ? { op: "caption.update", id: selected, set: { style: name } }
+          : { op: "item.update", id: selected, set: { style: name } },
+      ],
+      `已把「${name}」套用到 ${selected}`,
+    );
   };
+  const save = async (name: string) => {
+    // 内置样式的名字不能占用，改过的内置样式存成「名字-mine」；库里已有的问一下要不要覆盖
+    const builtin = library?.some((l) => l.builtin && l.name === name);
+    const as = builtin ? `${name}-mine` : name;
+    const send = (overwrite: boolean) => st.api.saveLibraryStyle({ style: name, as, overwrite });
+    try {
+      await send(false).catch(async (e) => {
+        if (!(e instanceof ApiFailure && e.code === "DUPLICATE_ID")) throw e;
+        if (!window.confirm(`模板库里已经有「${as}」，覆盖它吗？`)) throw null;
+        await send(true);
+      });
+      st.toast(`已把「${name}」存进模板库（${as}），其他工程也能用`);
+      reload();
+    } catch (e) {
+      if (e) st.toast(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+  const addToProject = (l: LibraryStyle) =>
+    void st.submit(
+      [{ op: "style.add", id: l.name, style: l.style }],
+      `已把「${l.name}」加入本工程`,
+    );
+
+  const own = Object.entries(project.styles).filter(([name, style]) =>
+    matches(q, name, describeStyle(style)),
+  );
+  const more = (library ?? []).filter(
+    (l) => !(l.name in project.styles) && matches(q, l.name, l.description, describeStyle(l.style)),
+  );
   return (
     <div className="styles">
       <SearchBox value={q} onChange={setQ} />
-      {Object.entries(project.styles)
-        .filter(([name, style]) => matches(q, name, describeStyle(style)))
-        .map(([name, style]) => (
-          <div
-            key={name}
-            className="style-card"
-            onMouseEnter={() => setHover(name)}
-            onMouseLeave={() => setHover(null)}
+      <h4 className="list-head">本工程</h4>
+      {own.map(([name, style]) => (
+        <StyleCard key={name} name={name} style={style}>
+          <button
+            type="button"
+            className="icon-btn ghost"
+            title="存为模板：以后在其他工程里也能用"
+            aria-label={`把 ${name} 存为模板`}
+            onClick={() => void save(name)}
           >
-            <div className="style-sample">
-              {hover === name && fonts ? (
-                <StylePlayer style={style} />
-              ) : (
-                <span className="swatch" style={swatch(style)}>
-                  {sampleText(name)}
-                </span>
-              )}
-            </div>
-            <div className="style-info">
-              <div>
-                <b>{name}</b>
-                <span className="muted">{describeStyle(style)}</span>
-              </div>
-              <button
-                type="button"
-                className="mini-btn"
-                disabled={!target}
-                title={target ? `套用到 ${selected}` : "先选中一句字幕或标题"}
-                onClick={() => apply(name)}
-              >
-                套用
-              </button>
-            </div>
-          </div>
-        ))}
+            <Icon name="save" size={13} />
+          </button>
+          <button
+            type="button"
+            className="mini-btn"
+            disabled={!target}
+            title={target ? `套用到 ${selected}` : "先选中一句字幕或标题"}
+            onClick={() => apply(name)}
+          >
+            套用
+          </button>
+        </StyleCard>
+      ))}
+      <h4 className="list-head">模板库</h4>
+      {library === null ? (
+        <p className="muted empty-note">载入中…</p>
+      ) : more.length === 0 ? (
+        <p className="muted empty-note">模板库里的样式都已经在本工程里了</p>
+      ) : (
+        more.map((l) => (
+          <StyleCard key={l.name} name={l.name} style={l.style} note={l.description}>
+            <button
+              type="button"
+              className="mini-btn"
+              title="复制一份到本工程，之后就能套用"
+              onClick={() => addToProject(l)}
+            >
+              加入工程
+            </button>
+          </StyleCard>
+        ))
+      )}
+    </div>
+  );
+}
+
+function StyleCard({
+  name,
+  style,
+  note,
+  children,
+}: {
+  name: string;
+  style: TextStyle;
+  note?: string;
+  children: React.ReactNode;
+}) {
+  const fonts = useStore((s) => s.preview?.fonts);
+  const [hover, setHover] = useState(false);
+  return (
+    <div
+      className="style-card"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <div className="style-sample">
+        {hover && fonts ? (
+          <StylePlayer style={style} />
+        ) : (
+          <span className="swatch" style={swatch(style)}>
+            {sampleText(name)}
+          </span>
+        )}
+      </div>
+      <div className="style-info">
+        <div>
+          <b>{name}</b>
+          <span className="muted">{note || describeStyle(style)}</span>
+        </div>
+        <div className="style-actions">{children}</div>
+      </div>
     </div>
   );
 }
@@ -147,6 +229,14 @@ export function swatch(s: TextStyle): React.CSSProperties {
       : undefined,
     paintOrder: "stroke fill",
     fontFamily: `"${s.font.family}", ${s.font.fallback.map((f) => `"${f}"`).join(", ")}, sans-serif`,
+    // 背景框按字号 84 缩到色块大小（大约 1/4）
+    ...(s.box
+      ? {
+          background: s.box.color,
+          borderRadius: s.box.radius / 4,
+          padding: `${s.box.padding[0] / 4}px ${s.box.padding[1] / 4}px`,
+        }
+      : {}),
   };
 }
 
