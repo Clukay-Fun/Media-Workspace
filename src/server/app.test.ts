@@ -154,6 +154,32 @@ describe("本地服务接口", () => {
     expect((await req("/api/project", { host: "evil.example.com" })).status).toBe(403);
   });
 
+  it("拒绝外部网页的简单写请求，允许开发工作台来源", async () => {
+    const { app, req } = setup();
+    const external = await app.request("http://127.0.0.1:5170/api/comments", {
+      method: "POST",
+      headers: {
+        host: "127.0.0.1:5170",
+        origin: "https://attacker.example",
+        "content-type": "text/plain",
+      },
+      body: JSON.stringify({ text: "外部批注" }),
+    });
+    expect(external.status).toBe(403);
+    expect((await (await req("/api/comments")).json()).review.comments).toEqual([]);
+
+    const dev = await app.request("http://127.0.0.1:5170/api/comments", {
+      method: "POST",
+      headers: {
+        host: "127.0.0.1:5170",
+        origin: "http://127.0.0.1:5173",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ text: "开发工作台批注" }),
+    });
+    expect(dev.status).toBe(200);
+  });
+
   it("没有的接口返回结构化的 404", async () => {
     const { req } = setup();
     const r = await req("/api/nope");

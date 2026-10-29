@@ -69,9 +69,18 @@ export async function startMediaServer(root: string | null, port = 0): Promise<M
     const type = MIME[extname(file).toLowerCase()] ?? "application/octet-stream";
     const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? "");
     if (range) {
-      const start = range[1] ? Number(range[1]) : size - Number(range[2]);
-      const end = range[1] && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
-      if (start > end || start >= size) {
+      const first = range[1] ? Number(range[1]) : null;
+      const last = range[2] ? Number(range[2]) : null;
+      const start = first ?? Math.max(0, size - (last ?? 0));
+      const end = first !== null && last !== null ? Math.min(last, size - 1) : size - 1;
+      if (
+        size === 0 ||
+        (first === null && (!last || !Number.isSafeInteger(last))) ||
+        (first !== null && !Number.isSafeInteger(first)) ||
+        (last !== null && !Number.isSafeInteger(last)) ||
+        start > end ||
+        start >= size
+      ) {
         res.writeHead(416, { "Content-Range": `bytes */${size}` }).end();
         return;
       }

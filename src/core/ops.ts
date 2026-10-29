@@ -390,6 +390,7 @@ function run(ctx: Ctx, op: Op): void {
     }
     case "track.move": {
       const { track, index } = ctx.track(op.id);
+      ctx.unlocked(track);
       ctx.tracks.splice(index, 1);
       ctx.tracks.splice(Math.min(op.index, ctx.tracks.length), 0, track);
       ctx.changed.add(op.id);

@@ -46,13 +46,25 @@ export type AppContext = {
 
 /** 只接受来自本机的请求：防止网页通过 DNS 重绑定访问本地服务 */
 const LOCAL_HOST = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/;
+const DEV_ORIGINS = new Set(["http://127.0.0.1:5173", "http://localhost:5173"]);
 
 export function createApp(ctx: AppContext): Hono {
   const app = new Hono();
 
   app.use("/api/*", async (c, next) => {
-    if (!LOCAL_HOST.test(c.req.header("host") ?? "")) {
+    const host = c.req.header("host") ?? "";
+    if (!LOCAL_HOST.test(host)) {
       return c.json(apiError(new MwError("USAGE", "只接受本机访问")), 403);
+    }
+    const origin = c.req.header("origin");
+    if (origin && origin !== `http://${host}` && !DEV_ORIGINS.has(origin)) {
+      return c.json(apiError(new MwError("USAGE", "不接受其他网页发起的请求")), 403);
+    }
+    if (
+      ["POST", "PUT"].includes(c.req.method) &&
+      !c.req.header("content-type")?.toLowerCase().startsWith("application/json")
+    ) {
+      return c.json(apiError(new MwError("USAGE", "请求体必须是 JSON")), 400);
     }
     await next();
   });

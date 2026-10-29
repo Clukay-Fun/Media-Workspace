@@ -82,6 +82,14 @@ describe("applyOps：原子性和锁定", () => {
     ).toBe("TRACK_LOCKED");
   });
 
+  it("锁定的轨道不能移动，解锁后可以移动", () => {
+    expect(
+      fail(() => applyOps(project(true), [{ op: "track.move", id: "main", index: 1 }])).code,
+    ).toBe("TRACK_LOCKED");
+    const moved = applyOps(project(), [{ op: "track.move", id: "main", index: 1 }]);
+    expect(moved.project.tracks.map((t) => t.id)).toEqual(["cap", "main"]);
+  });
+
   it("拼错的字段报 UNKNOWN_FIELD，不会悄悄丢掉", () => {
     const e = fail(() =>
       applyOps(project(), [{ op: "item.update", id: "c1", set: { sped: 1.1 } }]),
