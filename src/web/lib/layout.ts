@@ -2,11 +2,12 @@ import { useCallback, useState } from "react";
 
 // 面板尺寸只是个人习惯，存在浏览器里；读写失败（隐私模式等）就用默认值
 
-export type Layout = { leftW: number; timelineH: number };
+/** sideW 为 null 时用样式表里按容器宽度给的默认值（340 / 300） */
+export type Layout = { sideW: number | null; timelineH: number };
 
-const KEY = "mw.layout";
+const KEY = "mw.layout.v2";
 
-export const DEFAULT_LAYOUT: Layout = { leftW: 0.58, timelineH: 240 };
+export const DEFAULT_LAYOUT: Layout = { sideW: null, timelineH: 180 };
 
 function read(): Layout {
   try {
@@ -17,7 +18,6 @@ function read(): Layout {
   }
 }
 
-/** leftW 存成占窗口宽度的比例，换窗口大小时左右比例不变；timelineH 是像素 */
 export function useLayout(): [Layout, (patch: Partial<Layout>) => void] {
   const [layout, setLayout] = useState(read);
   const update = useCallback((patch: Partial<Layout>) => {

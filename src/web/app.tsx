@@ -1,6 +1,6 @@
 import type React from "react";
 import { useEffect, useRef } from "react";
-import { LeftPanel } from "./components/left-panel";
+import { ReviewSidebar } from "./components/review-sidebar";
 import { Splitter } from "./components/splitter";
 import { Stage } from "./components/stage";
 import { Timeline } from "./components/timeline";
@@ -8,65 +8,71 @@ import { TopBar } from "./components/top-bar";
 import { DEFAULT_LAYOUT, useLayout } from "./lib/layout";
 import { useStore } from "./store";
 
-/** 左边上面板、下时间线，右边整列放视频（竖屏视频在又高又窄的一列里显示得最大） */
+/**
+ * 审片工作区：左边上预览、下时间线（同宽，播放控制和画面中线对齐），右边审阅栏。
+ * 断点按容器宽度（container query），嵌进别的应用、宿主侧栏开合时也对。
+ */
 export function App() {
   useEffect(() => useStore.getState().init(), []);
   useShortcuts();
   const [layout, setLayout] = useLayout();
   const app = useRef<HTMLDivElement>(null);
-  const left = useRef<HTMLDivElement>(null);
+  const main = useRef<HTMLDivElement>(null);
+  const side = useRef(0);
   const origin = useRef(layout);
 
   const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
-  const dragLeft = (dx: number) => {
+  const dragSide = (dx: number) => {
     const w = app.current?.clientWidth ?? window.innerWidth;
-    const px = clamp(origin.current.leftW * w + dx, 360, w - 300);
-    setLayout({ leftW: px / w });
+    setLayout({ sideW: clamp(side.current - dx, 260, Math.min(520, w - 420)) });
   };
   const dragTimeline = (dy: number) => {
-    const h = left.current?.clientHeight ?? window.innerHeight;
-    setLayout({ timelineH: clamp(origin.current.timelineH - dy, 120, h - 200) });
+    const h = main.current?.clientHeight ?? window.innerHeight;
+    setLayout({ timelineH: clamp(origin.current.timelineH - dy, 96, h - 200) });
   };
 
   return (
-    <div
-      className="app"
-      ref={app}
-      style={
-        {
-          "--left-w": `${layout.leftW * 100}%`,
-          "--tl-h": `${layout.timelineH}px`,
-        } as React.CSSProperties
-      }
-    >
-      <TopBar />
-      <div className="workspace" ref={left}>
-        <LeftPanel />
+    <div className="review-root">
+      <div
+        className="app"
+        ref={app}
+        style={
+          {
+            ...(layout.sideW ? { "--side-w": `${layout.sideW}px` } : {}),
+            "--tl-h": `${layout.timelineH}px`,
+          } as React.CSSProperties
+        }
+      >
+        <TopBar />
+        <div className="review-main" ref={main}>
+          <Stage />
+          <Splitter
+            axis="y"
+            label="调整时间线高度"
+            onStart={() => {
+              origin.current = layout;
+            }}
+            onDrag={dragTimeline}
+            onReset={() => setLayout({ timelineH: DEFAULT_LAYOUT.timelineH })}
+          />
+          <Timeline />
+        </div>
         <Splitter
-          axis="y"
-          label="调整时间线高度"
+          axis="x"
+          label="调整审阅栏宽度"
           onStart={() => {
-            origin.current = layout;
+            side.current = app.current?.querySelector(".sidebar")?.clientWidth ?? 340;
           }}
-          onDrag={dragTimeline}
-          onReset={() => setLayout({ timelineH: DEFAULT_LAYOUT.timelineH })}
+          onDrag={dragSide}
+          onReset={() => setLayout({ sideW: null })}
         />
-        <Timeline />
+        <ReviewSidebar />
+        <Toasts />
       </div>
-      <Splitter
-        axis="x"
-        label="调整左右宽度"
-        onStart={() => {
-          origin.current = layout;
-        }}
-        onDrag={dragLeft}
-        onReset={() => setLayout({ leftW: DEFAULT_LAYOUT.leftW })}
-      />
-      <Stage />
-      <Toasts />
     </div>
   );
 }
+
 /** 快捷键：空格播放，←/→ 逐帧（⇧ 一秒），⌘Z / ⇧⌘Z，⌘B 分割，C 写批注，Esc 取消选中。打字时不响应 */
 function useShortcuts() {
   useEffect(() => {

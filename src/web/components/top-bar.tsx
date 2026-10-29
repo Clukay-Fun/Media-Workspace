@@ -3,6 +3,9 @@ import { frameOfMs } from "../lib/timeline";
 import { useStore } from "../store";
 import { Icon } from "./icons";
 
+/** 嵌进别的应用时（地址带 ?embed），宿主已经显示了工程名，这里不再重复 */
+const EMBED = new URLSearchParams(location.search).has("embed");
+
 export function TopBar() {
   const name = useStore((s) => s.name);
   const project = useStore((s) => s.project);
@@ -12,7 +15,9 @@ export function TopBar() {
   const review = useStore((s) => s.review);
   const aiChange = useStore((s) => s.aiChange);
   const exportJob = useStore((s) => s.exportJob);
-  const { undo, startExport, setPanelTab, dismissAiChange, select, seek } = useStore.getState();
+  const sideOpen = useStore((s) => s.sideOpen);
+  const { undo, startExport, setSideTab, setSideOpen, dismissAiChange, select, seek } =
+    useStore.getState();
 
   const open = review?.comments.filter((c) => c.status === "open").length ?? 0;
   const issues = lint?.issues ?? [];
@@ -22,15 +27,16 @@ export function TopBar() {
 
   const jumpToIssue = () => {
     const first = issues[0];
+    setSideTab("issues");
     if (!first || !project) return;
-    select(first.id);
+    select(first.id, { reveal: false });
     seek(frameOfMs(first.atMs, project.canvas.fps));
   };
 
   return (
     <header className="topbar">
       <div className="topbar-title">
-        <span className="project-name" title={name}>
+        <span className="project-name" title={name} hidden={EMBED}>
           {name || "载入中…"}
         </span>
         {project && <span className="revision">第 {project.revision} 版</span>}
@@ -53,7 +59,8 @@ export function TopBar() {
               type="button"
               className="link"
               onClick={() => {
-                select(aiChange.changed[0] ?? null);
+                select(aiChange.changed[0] ?? null, { reveal: false });
+                setSideTab("changes");
               }}
             >
               查看
@@ -81,7 +88,6 @@ export function TopBar() {
           className={issues.length ? "chip warn" : "chip"}
           aria-label={`质检 ${issues.length}`}
           onClick={jumpToIssue}
-          disabled={issues.length === 0}
           title={issues[0]?.message ?? "质检没有发现问题"}
         >
           <Icon name="warn" size={14} />
@@ -91,10 +97,19 @@ export function TopBar() {
           type="button"
           className={open ? "chip accent" : "chip"}
           aria-label={`待处理批注 ${open}`}
-          onClick={() => setPanelTab("comments")}
+          onClick={() => setSideTab("comments")}
         >
           <Icon name="comment" size={14} />
           待处理 {open}
+        </button>
+        <button
+          type="button"
+          className="icon-btn drawer-toggle"
+          aria-label="审阅栏"
+          title="审阅栏"
+          onClick={() => setSideOpen(!sideOpen)}
+        >
+          <Icon name="panel" />
         </button>
         <button
           type="button"

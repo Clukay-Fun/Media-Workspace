@@ -256,7 +256,7 @@ export function Stage() {
                   style={{ left: (c.point?.x ?? 0) * scale, top: (c.point?.y ?? 0) * scale }}
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={() => {
-                    st.setPanelTab("comments");
+                    st.setSideTab("comments");
                     if (c.target) st.select(c.target);
                   }}
                 >
@@ -282,52 +282,6 @@ export function Stage() {
             )}
           </div>
         )}
-      </div>
-
-      <div className="transport">
-        <div className="transport-left">
-          <button
-            type="button"
-            className={safeArea ? "chip on" : "chip"}
-            onClick={st.toggleSafeArea}
-            title="显示平台安全区"
-          >
-            <Icon name="safe" size={14} />
-            安全区
-          </button>
-        </div>
-        <div className="transport-center">
-          <button
-            type="button"
-            className="icon-btn"
-            aria-label="上一帧"
-            onClick={() => st.seek(Math.max(0, frame - 1))}
-          >
-            <Icon name="prev" />
-          </button>
-          <button
-            type="button"
-            className="play-btn"
-            aria-label={playing ? "暂停" : "播放"}
-            onClick={() => st.setPlaying(!playing)}
-          >
-            <Icon name={playing ? "pause" : "play"} />
-          </button>
-          <button
-            type="button"
-            className="icon-btn"
-            aria-label="下一帧"
-            onClick={() => st.seek(Math.min(total - 1, frame + 1))}
-          >
-            <Icon name="next" />
-          </button>
-        </div>
-        <div className="transport-right">
-          <span className="timecode">
-            {timecode(frame, fps)}
-            <span className="timecode-total"> / {timecode(total, fps)}</span>
-          </span>
-        </div>
       </div>
     </main>
   );

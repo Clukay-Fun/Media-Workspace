@@ -141,3 +141,15 @@ export function waveform(
     return max;
   });
 }
+
+/** 条目在时间线上占的帧范围（被剪成几段时取整体），不在时间线上返回 null */
+export function itemFrames(tl: ResolvedTimeline, id: string): { from: number; to: number } | null {
+  const parts = [...tl.videos, ...tl.images, ...tl.captions, ...tl.overlays].filter(
+    (x) => x.id === id,
+  );
+  if (parts.length === 0) return null;
+  return {
+    from: Math.min(...parts.map((p) => p.from)),
+    to: Math.max(...parts.map((p) => p.from + p.durationInFrames)),
+  };
+}

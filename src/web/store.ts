@@ -11,8 +11,26 @@ import { msOfFrame } from "./lib/timeline";
 // 界面状态。工程数据只从服务端读，修改一律提交 ops（AGENTS.md 规则 1）；
 // 本地只有选中、播放头、拖动中的草稿这些不影响渲染的东西。
 
-/** 侧栏分页。「选中」只在窄屏合并成一栏时出现，宽屏时选中的内容在右栏 */
-export type PanelTab = "selection" | "comments" | "styles" | "assets";
+/** 审阅栏的三页：质检问题、AI 改动、批注 */
+export type SideTab = "issues" | "changes" | "comments";
+
+const reviewedKey = (name: string) => `mw.reviewed.${name}`;
+
+function saveReviewed(name: string, rev: number) {
+  try {
+    localStorage.setItem(reviewedKey(name), String(rev));
+  } catch {}
+}
+
+/** 上次确认到哪一版；第一次打开这个工程时从当前版本算起，旧历史不算待确认 */
+export function loadReviewed(name: string, current: number): number {
+  try {
+    const v = Number(localStorage.getItem(reviewedKey(name)));
+    if (Number.isFinite(v) && v > 0) return v;
+  } catch {}
+  saveReviewed(name, current);
+  return current;
+}
 
 export type AiChange = { actor: string; revision: number; changed: string[] };
 
@@ -47,7 +65,13 @@ type State = {
   aiChange: AiChange | null;
   exportJob: ExportJob | null;
   toasts: Toast[];
-  panelTab: PanelTab;
+  sideTab: SideTab;
+  /** 窄容器里审阅栏是抽屉，这里记开没开 */
+  sideOpen: boolean;
+  /** 时间线展开成完整轨道（可以拖动、裁剪） */
+  timelineExpanded: boolean;
+  /** 人已经看过、确认过的版本；之后 AI 的改动算「待确认」 */
+  reviewedRev: number | null;
   safeArea: boolean;
   /** 时间线拖动时吸附到字幕边界、播放头 */
   snap: boolean;
@@ -71,7 +95,10 @@ type State = {
   setFrame(frame: number): void;
   setPlaying(playing: boolean): void;
   setDraft(draft: State["draft"]): void;
-  setPanelTab(tab: PanelTab): void;
+  setSideTab(tab: SideTab): void;
+  setSideOpen(open: boolean): void;
+  toggleTimeline(): void;
+  confirmAiChanges(): void;
   toggleSafeArea(): void;
   setCaptionList(on: boolean): void;
   toggleSnap(): void;
@@ -165,7 +192,10 @@ export const useStore = create<State>((set, get) => {
     aiChange: null,
     exportJob: null,
     toasts: [],
-    panelTab: "comments",
+    sideTab: "comments",
+    sideOpen: false,
+    timelineExpanded: false,
+    reviewedRev: null,
     safeArea: false,
     captionList: false,
     snap: true,
@@ -196,6 +226,7 @@ export const useStore = create<State>((set, get) => {
           lint: l,
           review: r.review,
           loadError: null,
+          reviewedRev: get().reviewedRev ?? loadReviewed(p.name, p.project.revision),
         });
         void loadPeaks(p.project);
       } catch (e) {
@@ -287,11 +318,19 @@ export const useStore = create<State>((set, get) => {
     setFrame: (frame) => set({ frame }),
     setPlaying: (playing) => set({ playing }),
     setDraft: (draft) => set({ draft }),
-    setPanelTab: (panelTab) => set({ panelTab }),
+    setSideTab: (sideTab) => set({ sideTab, sideOpen: true }),
+    setSideOpen: (sideOpen) => set({ sideOpen }),
+    toggleTimeline: () => set((s) => ({ timelineExpanded: !s.timelineExpanded })),
+    confirmAiChanges() {
+      const { project, name } = get();
+      if (!project) return;
+      set({ reviewedRev: project.revision, aiChange: null });
+      saveReviewed(name, project.revision);
+    },
     toggleSafeArea: () => set((s) => ({ safeArea: !s.safeArea })),
     setCaptionList: (captionList) => set({ captionList }),
     toggleSnap: () => set((s) => ({ snap: !s.snap })),
-    focusComposer: () => set((s) => ({ composerNonce: s.composerNonce + 1 })),
+    focusComposer: () => set((s) => ({ composerNonce: s.composerNonce + 1, sideOpen: true })),
     setPin: (pin) => set({ pin }),
     dismissAiChange: () => set({ aiChange: null }),
     toast(text, tone = "info") {

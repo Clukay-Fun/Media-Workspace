@@ -2,9 +2,11 @@ import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type DragMode, planDrag } from "../../core/edit";
 import type { Track } from "../../core/schema";
+import { aiChanges } from "../lib/changes";
 import {
   type Block,
   frameOfMs,
+  itemFrames,
   msOfFrame,
   type Row,
   tickStep,
@@ -15,7 +17,9 @@ import {
 import { useStore } from "../store";
 import { Icon } from "./icons";
 
-const HEAD = 132;
+/** 轨道头宽度：展开时放轨道名和锁定 / 隐藏按钮，精简时只放名字 */
+const HEAD_FULL = 132;
+const HEAD_COMPACT = 76;
 /** .tl-grid 的右内边距 */
 const GUTTER = 16;
 
@@ -30,23 +34,35 @@ export function Timeline() {
   const peaks = useStore((s) => s.peaks);
   const { seek, select } = useStore.getState();
   const [ghost, setGhost] = useState<Ghost | null>(null);
+  const expanded = useStore((s) => s.timelineExpanded);
+  const history = useStore((s) => s.history);
+  const reviewedRev = useStore((s) => s.reviewedRev);
+  const HEAD = expanded ? HEAD_FULL : HEAD_COMPACT;
 
   // 量整个时间线区域（数据没到之前也在），轨道区宽度 = 总宽 − 轨道头 − 右边距
   const root = useRef<HTMLElement>(null);
-  const [width, setWidth] = useState(0);
+  const [rootW, setRootW] = useState(0);
   useEffect(() => {
     const el = root.current;
     if (!el) return;
-    const ro = new ResizeObserver(
-      ([e]) => e && setWidth(Math.max(0, e.contentRect.width - HEAD - GUTTER)),
-    );
+    const ro = new ResizeObserver(([e]) => e && setRootW(e.contentRect.width));
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+  const width = Math.max(0, rootW - HEAD - GUTTER);
 
   const tl = preview?.timeline;
-  const rows = useMemo(() => (project && tl ? timelineRows(project, tl) : []), [project, tl]);
+  const allRows = useMemo(() => (project && tl ? timelineRows(project, tl) : []), [project, tl]);
   if (!project || !tl) return <section className="timeline" ref={root} />;
+  // 精简时只留主轨（画面段落），字幕、标题等轨道展开后才显示
+  const rows = expanded ? allRows : allRows.filter((r) => r.kind === "main");
+  const aiBands = aiChanges(history, reviewedRev)
+    .pending.flatMap((e) => e.changed)
+    .filter((id, i, a) => a.indexOf(id) === i)
+    .flatMap((id) => {
+      const r = itemFrames(tl, id);
+      return r ? [{ id, ...r }] : [];
+    });
 
   const fps = tl.fps;
   const total = Math.max(1, tl.durationInFrames);
@@ -133,7 +149,7 @@ export function Timeline() {
 
   return (
     <section className="timeline" ref={root}>
-      <Toolbar frame={frame} fps={fps} />
+      <Toolbar frame={frame} fps={fps} total={total} />
       <div className="tl-grid" style={{ gridTemplateColumns: `${HEAD}px 1fr` }}>
         <div className="tl-corner" />
         <div
@@ -168,8 +184,32 @@ export function Timeline() {
           ))}
         </div>
 
+        {aiBands.length > 0 && (
+          <>
+            <div className="tl-head ai-head">AI 改动</div>
+            <div className="tl-lane ai-lane" onPointerDown={scrub}>
+              {aiBands.map((b) => (
+                <button
+                  type="button"
+                  key={b.id}
+                  className="ai-band"
+                  style={{ left: px(b.from), width: Math.max(4, px(b.to) - px(b.from)) }}
+                  title={`${b.id}：AI 改过，等你确认`}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={() => {
+                    select(b.id, { reveal: false });
+                    seek(b.from);
+                    useStore.getState().setSideTab("changes");
+                  }}
+                />
+              ))}
+            </div>
+          </>
+        )}
+
         {rows.map((row) => (
           <RowView
+            compact={!expanded}
             key={row.track.id}
             row={row}
             px={px}
@@ -203,7 +243,9 @@ function RowView({
   onScrub,
   ghost,
   onDragStart,
+  compact,
 }: {
+  compact: boolean;
   row: Row;
   px: (f: number) => number;
   fps: number;
@@ -226,32 +268,35 @@ function RowView({
     <>
       <div className={`tl-head ${track.hidden ? "is-hidden" : ""}`}>
         <span className="row-label" title={track.id}>
-          {row.label}
+          {compact ? "画面" : row.label}
+          {compact && track.locked && <Icon name="lock" size={11} className="lock-mark" />}
         </span>
-        <span className="row-tools">
-          <TrackToggle
-            on={track.locked}
-            icon={track.locked ? "lock" : "unlock"}
-            label={track.locked ? "解锁轨道" : "锁定轨道（AI 也不能改）"}
-            onClick={() =>
-              toggle("locked", track.locked ? "已解锁轨道" : "已锁定轨道，AI 也不能改动它")
-            }
-          />
-          <TrackToggle
-            on={track.hidden}
-            icon={track.hidden ? "eyeOff" : "eye"}
-            label={track.hidden ? "显示轨道" : "隐藏轨道"}
-            onClick={() => toggle("hidden", track.hidden ? "已显示轨道" : "已隐藏轨道")}
-          />
-          {audible && (
+        {!compact && (
+          <span className="row-tools">
             <TrackToggle
-              on={track.muted}
-              icon={track.muted ? "mute" : "volume"}
-              label={track.muted ? "取消静音" : "静音"}
-              onClick={() => toggle("muted", track.muted ? "已取消静音" : "已静音")}
+              on={track.locked}
+              icon={track.locked ? "lock" : "unlock"}
+              label={track.locked ? "解锁轨道" : "锁定轨道（AI 也不能改）"}
+              onClick={() =>
+                toggle("locked", track.locked ? "已解锁轨道" : "已锁定轨道，AI 也不能改动它")
+              }
             />
-          )}
-        </span>
+            <TrackToggle
+              on={track.hidden}
+              icon={track.hidden ? "eyeOff" : "eye"}
+              label={track.hidden ? "显示轨道" : "隐藏轨道"}
+              onClick={() => toggle("hidden", track.hidden ? "已显示轨道" : "已隐藏轨道")}
+            />
+            {audible && (
+              <TrackToggle
+                on={track.muted}
+                icon={track.muted ? "mute" : "volume"}
+                label={track.muted ? "取消静音" : "静音"}
+                onClick={() => toggle("muted", track.muted ? "已取消静音" : "已静音")}
+              />
+            )}
+          </span>
+        )}
       </div>
       <div
         className={[
@@ -396,11 +441,17 @@ function BlockView({
 
 type Ghost = { id: string; from: number; to: number; snapAt: number | null };
 
-/** 撤销 / 重做、分割、吸附开关和当前时间 */
-function Toolbar({ frame, fps }: { frame: number; fps: number }) {
+/**
+ * 时间线首行：左边撤销 / 重做、分割、吸附、展开轨道；中间播放控制（和画面中线对齐，
+ * 因为时间线和预览同宽）；右边时间和安全区开关
+ */
+function Toolbar({ frame, fps, total }: { frame: number; fps: number; total: number }) {
   const history = useStore((s) => s.history);
   const snap = useStore((s) => s.snap);
-  const { undo, splitAtPlayhead, toggleSnap } = useStore.getState();
+  const playing = useStore((s) => s.playing);
+  const expanded = useStore((s) => s.timelineExpanded);
+  const safeArea = useStore((s) => s.safeArea);
+  const st = useStore.getState();
   return (
     <div className="tl-toolbar">
       <div className="tl-tools">
@@ -408,24 +459,57 @@ function Toolbar({ frame, fps }: { frame: number; fps: number }) {
           icon="undo"
           label="撤销（⌘Z）"
           disabled={!history?.undo}
-          onClick={() => void undo("undo")}
+          onClick={() => void st.undo("undo")}
         />
         <ToolBtn
           icon="redo"
           label="重做（⇧⌘Z）"
           disabled={!history?.redo}
-          onClick={() => void undo("redo")}
+          onClick={() => void st.undo("redo")}
         />
         <span className="divider" aria-hidden="true" />
-        <ToolBtn icon="split" label="在播放头处分割（⌘B）" onClick={() => void splitAtPlayhead()} />
+        <ToolBtn
+          icon="split"
+          label="在播放头处分割（⌘B）"
+          onClick={() => void st.splitAtPlayhead()}
+        />
         <ToolBtn
           icon="magnet"
           label={snap ? "吸附：开（拖动时按住 ⌘ 临时关闭）" : "吸附：关"}
           on={snap}
-          onClick={toggleSnap}
+          onClick={st.toggleSnap}
+        />
+        <ToolBtn
+          icon="tracks"
+          label={expanded ? "收起轨道" : "展开全部轨道"}
+          on={expanded}
+          onClick={st.toggleTimeline}
         />
       </div>
-      <span className="tl-time mono">{timecode(frame, fps)}</span>
+      <div className="transport-center">
+        <ToolBtn icon="prev" label="上一帧（←）" onClick={() => st.seek(Math.max(0, frame - 1))} />
+        <button
+          type="button"
+          className="play-btn"
+          aria-label={playing ? "暂停" : "播放"}
+          title={playing ? "暂停（空格）" : "播放（空格）"}
+          onClick={() => st.setPlaying(!playing)}
+        >
+          <Icon name={playing ? "pause" : "play"} size={14} />
+        </button>
+        <ToolBtn
+          icon="next"
+          label="下一帧（→）"
+          onClick={() => st.seek(Math.min(total - 1, frame + 1))}
+        />
+      </div>
+      <div className="tl-tools end">
+        <span className="tl-time mono">
+          {timecode(frame, fps)}
+          <span className="timecode-total"> / {timecode(total, fps)}</span>
+        </span>
+        <ToolBtn icon="safe" label="显示平台安全区" on={safeArea} onClick={st.toggleSafeArea} />
+      </div>
     </div>
   );
 }
@@ -437,7 +521,7 @@ function ToolBtn({
   disabled = false,
   on = false,
 }: {
-  icon: "undo" | "redo" | "split" | "magnet";
+  icon: "undo" | "redo" | "split" | "magnet" | "tracks" | "prev" | "next" | "safe";
   label: string;
   onClick: () => void;
   disabled?: boolean;
