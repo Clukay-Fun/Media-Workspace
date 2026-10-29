@@ -10,7 +10,7 @@ import { DEFAULT_LAYOUT, useLayout } from "./lib/layout";
 import { useStore } from "./store";
 
 /**
- * 上面三栏：左栏素材 / 样式，中间预览（顶上章节条），右栏属性 / 批注 / AI 改动；
+ * 上面三栏：左栏素材 / 样式，中间预览，右栏属性 / 批注 / AI 改动；
  * 下面整宽时间线。断点按容器宽度（container query），嵌进别的应用时也对。
  */
 export function App() {
@@ -89,7 +89,7 @@ export function App() {
   );
 }
 
-/** 快捷键：空格播放，←/→ 逐帧（⇧ 一秒），⌘Z / ⇧⌘Z，⌘B 分割，C 写批注，Esc 取消选中。打字时不响应 */
+/** 快捷键：空格播放，←/→ 逐帧（⇧ 一秒），⌘Z / ⇧⌘Z，⌘B 分割，C 开启批注，Esc 取消。打字时不响应 */
 function useShortcuts() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -115,11 +115,11 @@ function useShortcuts() {
         s.seek(Math.min(total - 1, Math.max(0, s.frame + d)));
       } else if (!mod && e.key.toLowerCase() === "c") {
         e.preventDefault();
-        s.setPlaying(false);
-        s.focusComposer();
+        s.setAnnotating(true);
       } else if (e.key === "Escape") {
         s.select(null);
         s.setPin(null);
+        s.setAnnotating(false);
       }
     };
     window.addEventListener("keydown", onKey);

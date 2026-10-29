@@ -1,7 +1,9 @@
 import type React from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import type { EditorState } from "../../core/api";
 import { type DragMode, planDrag } from "../../core/edit";
 import type { Track } from "../../core/schema";
+import { frameToMs, sourceFrameAt } from "../../core/time";
 import { aiChanges } from "../lib/changes";
 import {
   type Block,
@@ -20,7 +22,7 @@ import { Icon, type IconName } from "./icons";
 /** 轨道头宽度：图标、按用途起的名字、锁定 / 隐藏按钮 */
 const HEAD = 150;
 /** .tl-grid 的右内边距 */
-const GUTTER = 16;
+const GUTTER = 12;
 
 const ROW_ICON: Record<Row["kind"], IconName> = {
   main: "film",
@@ -32,6 +34,8 @@ const ROW_ICON: Record<Row["kind"], IconName> = {
 
 export function Timeline() {
   const project = useStore((s) => s.project);
+  const name = useStore((s) => s.name);
+  const api = useStore((s) => s.api);
   const preview = useStore((s) => s.preview);
   const frame = useStore((s) => s.frame);
   const selected = useStore((s) => s.selected);
@@ -41,8 +45,15 @@ export function Timeline() {
   const peaks = useStore((s) => s.peaks);
   const { seek, select } = useStore.getState();
   const [ghost, setGhost] = useState<Ghost | null>(null);
+  const [zoomPps, setZoomPps] = useState<number | null>(null);
   const history = useStore((s) => s.history);
   const reviewedRev = useStore((s) => s.reviewedRev);
+  const dragSession = useRef<DragSession | null>(null);
+  const editorRef = useRef<EditorState | null>(null);
+  const saveEditorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const zoomTouched = useRef(false);
+  const zoomPpsRef = useRef<number | null>(null);
+  const zoomWheelAction = useRef<(event: WheelEvent) => void>(() => {});
 
   // 量整个时间线区域（数据没到之前也在），轨道区宽度 = 总宽 − 轨道头 − 右边距
   const root = useRef<HTMLElement>(null);
@@ -54,10 +65,87 @@ export function Timeline() {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  const width = Math.max(0, rootW - HEAD - GUTTER);
+  useEffect(() => {
+    const el = root.current;
+    if (!el) return;
+    const onWheel = (event: WheelEvent) => zoomWheelAction.current(event);
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+  useEffect(
+    () => () => {
+      const session = dragSession.current;
+      if (!session) return;
+      session.controller.abort();
+      if (session.target.hasPointerCapture(session.pointerId)) {
+        session.target.releasePointerCapture(session.pointerId);
+      }
+    },
+    [],
+  );
+  const viewportWidth = Math.max(0, rootW - HEAD - GUTTER);
 
   const tl = preview?.timeline;
+  const fps = tl?.fps ?? 30;
+  const total = Math.max(1, tl?.durationInFrames ?? 1);
+  const fitPps = viewportWidth > 0 ? (viewportWidth * fps) / total : 40;
+  const pps = zoomPps ?? fitPps;
+  const timelineWidth = Math.max(1, (total / fps) * pps);
+  const minPps = Math.min(fitPps, Math.max(0.02, Math.min(8, fitPps * 0.2)));
+  const maxPps = Math.max(320, fitPps * 6);
+  const px = (f: number) => (f / fps) * pps;
   const rows = useMemo(() => (project && tl ? timelineRows(project, tl) : []), [project, tl]);
+
+  useEffect(() => {
+    zoomTouched.current = false;
+    zoomPpsRef.current = null;
+    editorRef.current = null;
+    setZoomPps(null);
+    if (!name) return;
+    let cancelled = false;
+    void api
+      .editor()
+      .then(({ editor }) => {
+        if (cancelled) return;
+        editorRef.current = editor;
+        // 80px/s 是旧版 editor.json 的默认值，首次打开继续适配视口。
+        if (!zoomTouched.current && editor.timeline.pxPerSecond !== 80) {
+          const storedPps = Math.min(640, editor.timeline.pxPerSecond);
+          zoomPpsRef.current = storedPps;
+          setZoomPps(storedPps);
+          requestAnimationFrame(() => {
+            if (root.current && editor.timeline.scrollMs > 0) {
+              root.current.scrollLeft = (editor.timeline.scrollMs * storedPps) / 1000;
+            }
+          });
+        } else if (zoomTouched.current && zoomPpsRef.current !== null) {
+          const next = {
+            ...editor,
+            timeline: { ...editor.timeline, pxPerSecond: zoomPpsRef.current },
+          };
+          editorRef.current = next;
+          void api
+            .saveEditor(next)
+            .catch(() => useStore.getState().toast("时间线设置保存失败", "error"));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [api, name]);
+
+  useEffect(
+    () => () => {
+      if (saveEditorTimer.current) {
+        clearTimeout(saveEditorTimer.current);
+        const latest = editorRef.current;
+        if (latest) void api.saveEditor(latest).catch(() => {});
+      }
+    },
+    [api],
+  );
+
   if (!project || !tl) return <section className="timeline panel" ref={root} />;
   const aiBands = aiChanges(history, reviewedRev)
     .pending.flatMap((e) => e.changed)
@@ -67,21 +155,113 @@ export function Timeline() {
       return r ? [{ id, ...r }] : [];
     });
 
-  const fps = tl.fps;
-  const total = Math.max(1, tl.durationInFrames);
-  const px = (f: number) => (f / total) * width;
-  const step = tickStep((width / total) * fps);
-  const ticks: number[] = [];
-  for (let s = 0; s * fps < total; s += step) ticks.push(Math.round(s * fps));
+  const totalSeconds = total / fps;
+  let step = tickStep(pps);
+  while (totalSeconds / step > 500) step *= 2;
+  const subdivisions = Math.ceil(totalSeconds / (step / 4));
+  const ticks: { frame: number; kind: string; label: string | null }[] = [];
+  for (let index = 0; index <= subdivisions; index += 1) {
+    const seconds = index * (step / 4);
+    if (seconds > totalSeconds) break;
+    const frame = Math.min(total - 1, Math.round(seconds * fps));
+    if (ticks.at(-1)?.frame === frame) continue;
+    const kind = index % 4 === 0 ? "major" : index % 2 === 0 ? "mid" : "minor";
+    ticks.push({
+      frame,
+      kind,
+      label: kind === "major" ? timecode(frame, fps).replace(/\.\d$/, "") : null,
+    });
+  }
+
+  const scheduleEditorSave = (next: EditorState) => {
+    editorRef.current = next;
+    if (saveEditorTimer.current) clearTimeout(saveEditorTimer.current);
+    saveEditorTimer.current = setTimeout(() => {
+      void api
+        .saveEditor(next)
+        .catch(() => useStore.getState().toast("时间线设置保存失败", "error"));
+    }, 240);
+  };
 
   const frameAt = (clientX: number) => {
     const r = root.current?.getBoundingClientRect();
-    if (!r || width === 0) return 0;
-    return Math.max(0, Math.min(total - 1, ((clientX - r.left - HEAD) / width) * total));
+    if (!r || pps <= 0) return 0;
+    const contentX = clientX - r.left - HEAD + (root.current?.scrollLeft ?? 0);
+    return Math.max(0, Math.min(total - 1, (contentX / pps) * fps));
   };
   const scrub = (e: React.PointerEvent<HTMLDivElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
     seek(frameAt(e.clientX));
+  };
+  const dragPlayhead = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    seekPlayhead(e.clientX);
+  };
+  const movePlayhead = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.buttons === 1) seekPlayhead(e.clientX);
+  };
+
+  const seekPlayhead = (clientX: number) => {
+    const frame = frameAt(clientX);
+    const intervalFrames = step * fps;
+    const nearest = Math.min(total - 1, Math.round(frame / intervalFrames) * intervalFrames);
+    const snapped = Math.abs(px(frame) - px(nearest)) <= 5;
+    seek(snapped ? nearest : frame);
+  };
+
+  const zoomTo = (requestedPps: number, anchorClientX?: number) => {
+    const element = root.current;
+    if (!element) return;
+    const nextPps = Math.max(minPps, Math.min(maxPps, requestedPps));
+    const bounds = element.getBoundingClientRect();
+    const anchorX =
+      anchorClientX === undefined
+        ? Math.max(HEAD, Math.min(bounds.width, HEAD + px(frame) - element.scrollLeft))
+        : Math.max(HEAD, Math.min(bounds.width, anchorClientX - bounds.left));
+    const contentX = element.scrollLeft + anchorX - HEAD;
+    const nextScroll = Math.max(0, HEAD + contentX * (nextPps / pps) - anchorX);
+    zoomTouched.current = true;
+    zoomPpsRef.current = nextPps;
+    setZoomPps(nextPps);
+    requestAnimationFrame(() => {
+      const current = root.current;
+      if (!current) return;
+      current.scrollLeft = nextScroll;
+      const existing = editorRef.current;
+      if (existing) {
+        scheduleEditorSave({
+          ...existing,
+          timeline: {
+            ...existing.timeline,
+            pxPerSecond: nextPps,
+            scrollMs: (current.scrollLeft / nextPps) * 1000,
+          },
+        });
+      }
+    });
+  };
+
+  zoomWheelAction.current = (e) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    zoomTo(pps * Math.exp(-e.deltaY * 0.0015), e.clientX);
+  };
+
+  const onTimelineScroll = () => {
+    const current = root.current;
+    const existing = editorRef.current;
+    if (!current || !existing || pps <= 0) return;
+    scheduleEditorSave({
+      ...existing,
+      timeline: {
+        ...existing.timeline,
+        pxPerSecond: pps,
+        scrollMs: (current.scrollLeft / pps) * 1000,
+      },
+    });
   };
 
   const flashing = flash && Date.now() - flash.at < 2400 ? flash : null;
@@ -108,10 +288,23 @@ export function Timeline() {
   const startDrag = (e: React.PointerEvent, b: Block, mode: DragMode) => {
     const x0 = e.clientX;
     const target = e.currentTarget as HTMLElement;
-    target.setPointerCapture(e.pointerId);
+    const pointerId = e.pointerId;
+    const controller = new AbortController();
+    const previous = dragSession.current;
+    if (previous) {
+      previous.controller.abort();
+      if (previous.target.hasPointerCapture(previous.pointerId)) {
+        previous.target.releasePointerCapture(previous.pointerId);
+      }
+      dragSession.current = null;
+      setGhost(null);
+    }
+    target.setPointerCapture(pointerId);
     let plan: ReturnType<typeof planDrag> | null = null;
     let moved = false;
+    let finished = false;
     const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId || finished) return;
       const dx = ev.clientX - x0;
       if (!moved && Math.abs(dx) < 3) return;
       moved = true;
@@ -121,7 +314,7 @@ export function Timeline() {
         plan = planDrag(s.project, {
           id: b.id,
           mode,
-          deltaMs: msOfFrame((dx / width) * total, fps),
+          deltaMs: msOfFrame((dx / timelineWidth) * total, fps),
           snap: s.snap && !ev.metaKey,
           playheadMs: msOfFrame(s.frame, fps),
         });
@@ -135,35 +328,71 @@ export function Timeline() {
         plan = null;
       }
     };
-    const up = () => {
-      target.removeEventListener("pointermove", move);
-      target.removeEventListener("pointerup", up);
-      target.removeEventListener("pointercancel", up);
+    const finish = (commit: boolean) => {
+      if (finished) return;
+      finished = true;
+      controller.abort();
+      target.removeEventListener("lostpointercapture", onLostPointerCapture);
+      if (target.hasPointerCapture(pointerId)) target.releasePointerCapture(pointerId);
+      if (dragSession.current?.controller === controller) dragSession.current = null;
       setGhost(null);
-      if (moved && plan?.ops.length) {
+      if (commit && moved && plan?.ops.length) {
         const label = mode === "move" ? `移动了 ${b.id}` : `调整了 ${b.id} 的长度`;
         void useStore.getState().submit(plan.ops, label);
       }
     };
-    target.addEventListener("pointermove", move);
-    target.addEventListener("pointerup", up);
-    target.addEventListener("pointercancel", up);
+    const up = (ev: PointerEvent) => {
+      if (ev.pointerId === pointerId) finish(true);
+    };
+    const cancel = (ev: PointerEvent) => {
+      if (ev.pointerId === pointerId) finish(false);
+    };
+    const onLostPointerCapture = () => finish(false);
+    dragSession.current = { target, pointerId, controller };
+    window.addEventListener("pointermove", move, { capture: true, signal: controller.signal });
+    window.addEventListener("pointerup", up, { capture: true, signal: controller.signal });
+    window.addEventListener("pointercancel", cancel, {
+      capture: true,
+      signal: controller.signal,
+    });
+    target.addEventListener("lostpointercapture", onLostPointerCapture, {
+      once: true,
+      signal: controller.signal,
+    });
   };
 
   return (
-    <section className="timeline panel" ref={root}>
-      <Toolbar frame={frame} fps={fps} total={total} />
-      <div className="tl-grid" style={{ gridTemplateColumns: `${HEAD}px 1fr` }}>
+    <section className="timeline panel" ref={root} onScroll={onTimelineScroll}>
+      <Toolbar
+        zoomPercent={Math.round((pps / fitPps) * 100)}
+        canZoomOut={pps > minPps + 0.001}
+        canZoomIn={pps < maxPps - 0.001}
+        onZoomOut={() => zoomTo(pps / 1.2)}
+        onZoomIn={() => zoomTo(pps * 1.2)}
+        onZoomFit={() => zoomTo(fitPps)}
+      />
+      <div
+        className="tl-grid"
+        style={{
+          gridTemplateColumns: `${HEAD}px ${timelineWidth}px`,
+          width: `${HEAD + timelineWidth + 8}px`,
+        }}
+      >
         <div className="tl-corner" />
         <div
           className="tl-ruler"
           onPointerDown={scrub}
           onPointerMove={(e) => e.buttons === 1 && seek(frameAt(e.clientX))}
         >
-          {ticks.map((f) => (
-            <span key={f} className="tick" style={{ left: px(f) }}>
-              {timecode(f, fps).replace(/\.\d$/, "")}
-            </span>
+          {ticks.map((tick) => (
+            <Fragment key={tick.frame}>
+              <span className={`ruler-mark ${tick.kind}`} style={{ left: px(tick.frame) }} />
+              {tick.label && (
+                <span className="tick" style={{ left: px(tick.frame) }}>
+                  {tick.label}
+                </span>
+              )}
+            </Fragment>
           ))}
         </div>
 
@@ -230,13 +459,37 @@ export function Timeline() {
             flashIds={flashing?.ids ?? []}
             flashAt={flashing?.at ?? 0}
             peaks={peaks}
+            videoSrcs={preview?.srcs ?? {}}
             onScrub={scrub}
             ghost={ghost}
             onDragStart={startDrag}
           />
         ))}
       </div>
-      {width > 0 && <div className="playhead" style={{ left: HEAD + px(frame) }} />}
+      {viewportWidth > 0 && (
+        <>
+          <div className="playhead" style={{ left: HEAD + px(frame) }} aria-hidden="true" />
+          <div
+            className="playhead-grip"
+            role="slider"
+            aria-label="播放头"
+            aria-valuemin={0}
+            aria-valuemax={total - 1}
+            aria-valuenow={frame}
+            tabIndex={0}
+            style={{ left: HEAD + px(frame) }}
+            onPointerDown={dragPlayhead}
+            onPointerMove={movePlayhead}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+                e.preventDefault();
+                e.stopPropagation();
+                seek(Math.max(0, Math.min(total - 1, frame + (e.key === "ArrowLeft" ? -1 : 1))));
+              }
+            }}
+          />
+        </>
+      )}
       {ghost?.snapAt != null && (
         <div className="snap-line" style={{ left: HEAD + px(ghost.snapAt) }} />
       )}
@@ -252,6 +505,7 @@ function RowView({
   flashIds,
   flashAt,
   peaks,
+  videoSrcs,
   onScrub,
   ghost,
   onDragStart,
@@ -263,13 +517,13 @@ function RowView({
   flashIds: string[];
   flashAt: number;
   peaks: Record<string, { msPerPeak: number; peaks: number[] } | null>;
+  videoSrcs: Record<string, string>;
   onScrub: (e: React.PointerEvent<HTMLDivElement>) => void;
   ghost: Ghost | null;
   onDragStart: (e: React.PointerEvent, b: Block, mode: DragMode) => void;
 }) {
   const { track } = row;
-  const { submit, select, seek } = useStore.getState();
-  const frame = useStore((s) => s.frame);
+  const { submit, select } = useStore.getState();
   const toggle = (key: "locked" | "hidden" | "muted", label: string) =>
     void submit([{ op: "track.update", id: track.id, set: { [key]: !track[key] } }], label);
   const audible = track.kind === "video" || track.kind === "audio";
@@ -332,9 +586,10 @@ function RowView({
               selected={selected === b.id}
               flash={flashIds.includes(b.id) ? flashAt : 0}
               peaks={b.asset ? (peaks[b.asset] ?? null) : null}
+              videoSrc={b.mediaKind === "video" && b.asset ? videoSrcs[b.asset] : undefined}
+              thumbnailHeight={row.kind === "main" ? 36 : 26}
               onSelect={() => {
                 if (b.kind !== "outro") select(b.id);
-                if (frame < b.from || frame >= b.to) seek(b.from);
               }}
               track={track}
             />
@@ -377,6 +632,8 @@ function BlockView({
   selected,
   flash,
   peaks,
+  videoSrc,
+  thumbnailHeight,
   onSelect,
   dragging,
   editable,
@@ -389,6 +646,8 @@ function BlockView({
   selected: boolean;
   flash: number;
   peaks: { msPerPeak: number; peaks: number[] } | null;
+  videoSrc?: string;
+  thumbnailHeight: number;
   onSelect: () => void;
   track: Track;
   dragging: boolean;
@@ -397,15 +656,26 @@ function BlockView({
 }) {
   const columns = Math.floor(width / 3);
   const wave = useMemo(
-    () => (peaks && block.kind === "clip" ? waveform(block, peaks, fps, columns) : null),
+    () =>
+      peaks && block.kind === "clip" && block.mediaKind === "audio"
+        ? waveform(block, peaks, fps, columns)
+        : null,
     [peaks, block, fps, columns],
   );
+  const thumbnailCount =
+    block.kind === "clip" && block.mediaKind === "video"
+      ? Math.max(
+          1,
+          Math.min(block.to - block.from, 24, Math.ceil(width / (thumbnailHeight * (16 / 9)))),
+        )
+      : 0;
   return (
     <button
       type="button"
       className={[
         "block",
         block.kind,
+        block.mediaKind ?? "",
         selected ? "selected" : "",
         dragging ? "dragging" : "",
         editable ? "editable" : "",
@@ -434,6 +704,15 @@ function BlockView({
           {block.cut}
         </span>
       )}
+      {videoSrc && thumbnailCount > 0 && (
+        <VideoFilmstrip
+          src={videoSrc}
+          block={block}
+          fps={fps}
+          count={thumbnailCount}
+          tileHeight={thumbnailHeight}
+        />
+      )}
       {wave && (
         <svg
           className="wave"
@@ -452,14 +731,154 @@ function BlockView({
   );
 }
 
-type Ghost = { id: string; from: number; to: number; snapAt: number | null };
+function VideoFilmstrip({
+  src,
+  block,
+  fps,
+  count,
+  tileHeight,
+}: {
+  src: string;
+  block: Block;
+  fps: number;
+  count: number;
+  tileHeight: number;
+}) {
+  const [strip, setStrip] = useState<string | null>(null);
 
-/** 时间线首行：左边撤销 / 重做、分割、吸附；中间播放控制；右边时间和安全区开关 */
-function Toolbar({ frame, fps, total }: { frame: number; fps: number; total: number }) {
+  useEffect(() => {
+    setStrip(null);
+    const video = document.createElement("video");
+    video.crossOrigin = "anonymous";
+    video.preload = "metadata";
+    video.muted = true;
+    video.playsInline = true;
+    const canvas = document.createElement("canvas");
+    const tileWidth = Math.round((tileHeight * 16) / 9);
+    canvas.width = tileWidth * count;
+    canvas.height = tileHeight;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.imageSmoothingQuality = "medium";
+
+    const frames = Math.max(1, block.to - block.from);
+    const trim = block.trimBeforeFrames ?? 0;
+    const speed = block.speed ?? 1;
+    const sampleTimes = Array.from({ length: count }, (_, index) => {
+      const offset = Math.min(frames - 1, Math.floor(((index + 0.5) / count) * frames));
+      return frameToMs(sourceFrameAt(trim, speed, offset), fps) / 1000;
+    });
+    let stopped = false;
+    let index = 0;
+    let pendingSeek: (() => void) | null = null;
+
+    const drawFrame = () => {
+      if (stopped) return;
+      const sourceWidth = video.videoWidth;
+      const sourceHeight = video.videoHeight;
+      if (sourceWidth > 0 && sourceHeight > 0) {
+        const scale = Math.max(tileWidth / sourceWidth, tileHeight / sourceHeight);
+        const drawWidth = sourceWidth * scale;
+        const drawHeight = sourceHeight * scale;
+        const x = index * tileWidth;
+        context.save();
+        context.beginPath();
+        context.rect(x, 0, tileWidth, tileHeight);
+        context.clip();
+        context.drawImage(
+          video,
+          x + (tileWidth - drawWidth) / 2,
+          (tileHeight - drawHeight) / 2,
+          drawWidth,
+          drawHeight,
+        );
+        context.restore();
+      }
+      index += 1;
+      if (index >= count) {
+        try {
+          setStrip(canvas.toDataURL("image/jpeg", 0.72));
+        } catch {
+          setStrip(null);
+        }
+        return;
+      }
+      seekFrame();
+    };
+
+    const seekFrame = () => {
+      if (stopped) return;
+      const lastSafeTime = Number.isFinite(video.duration) ? Math.max(0, video.duration - 0.04) : 0;
+      const time = Math.min(sampleTimes[index] ?? 0, lastSafeTime);
+      if (Math.abs(video.currentTime - time) < 0.015) {
+        drawFrame();
+        return;
+      }
+      const onSeeked = () => {
+        pendingSeek = null;
+        drawFrame();
+      };
+      pendingSeek = onSeeked;
+      video.addEventListener("seeked", onSeeked, { once: true });
+      try {
+        video.currentTime = time;
+      } catch {
+        video.removeEventListener("seeked", onSeeked);
+        pendingSeek = null;
+        setStrip(null);
+      }
+    };
+    const onLoadedData = () => seekFrame();
+    const onLoadedMetadata = () => {
+      if ((sampleTimes[0] ?? 0) <= 0.015 && video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+        video.addEventListener("loadeddata", onLoadedData, { once: true });
+        return;
+      }
+      seekFrame();
+    };
+    const onError = () => setStrip(null);
+    video.addEventListener("loadedmetadata", onLoadedMetadata, { once: true });
+    video.addEventListener("error", onError, { once: true });
+    video.src = src;
+    video.load();
+
+    return () => {
+      stopped = true;
+      video.removeEventListener("loadedmetadata", onLoadedMetadata);
+      video.removeEventListener("loadeddata", onLoadedData);
+      video.removeEventListener("error", onError);
+      if (pendingSeek) video.removeEventListener("seeked", pendingSeek);
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    };
+  }, [src, block.from, block.to, block.trimBeforeFrames, block.speed, fps, count, tileHeight]);
+
+  return strip ? <img className="filmstrip" src={strip} alt="" draggable={false} /> : null;
+}
+
+type Ghost = { id: string; from: number; to: number; snapAt: number | null };
+type DragSession = { target: HTMLElement; pointerId: number; controller: AbortController };
+
+/** 时间线首行：撤销 / 重做、分割、吸附和批注 */
+function Toolbar({
+  zoomPercent,
+  canZoomOut,
+  canZoomIn,
+  onZoomOut,
+  onZoomIn,
+  onZoomFit,
+}: {
+  zoomPercent: number;
+  canZoomOut: boolean;
+  canZoomIn: boolean;
+  onZoomOut: () => void;
+  onZoomIn: () => void;
+  onZoomFit: () => void;
+}) {
   const history = useStore((s) => s.history);
   const snap = useStore((s) => s.snap);
-  const playing = useStore((s) => s.playing);
-  const safeArea = useStore((s) => s.safeArea);
+  const annotating = useStore((s) => s.annotating);
   const st = useStore.getState();
   return (
     <div className="tl-toolbar">
@@ -488,30 +907,39 @@ function Toolbar({ frame, fps, total }: { frame: number; fps: number; total: num
           on={snap}
           onClick={st.toggleSnap}
         />
-      </div>
-      <div className="transport-center">
-        <ToolBtn icon="prev" label="上一帧（←）" onClick={() => st.seek(Math.max(0, frame - 1))} />
-        <button
-          type="button"
-          className="play-btn"
-          aria-label={playing ? "暂停" : "播放"}
-          title={playing ? "暂停（空格）" : "播放（空格）"}
-          onClick={() => st.setPlaying(!playing)}
-        >
-          <Icon name={playing ? "pause" : "play"} size={14} />
-        </button>
+        <span className="divider" aria-hidden="true" />
         <ToolBtn
-          icon="next"
-          label="下一帧（→）"
-          onClick={() => st.seek(Math.min(total - 1, frame + 1))}
+          icon="comment"
+          label={annotating ? "点选画面元素（Esc 取消）" : "添加批注（C）"}
+          on={annotating}
+          onClick={() => st.setAnnotating(!annotating)}
         />
       </div>
-      <div className="tl-tools end">
-        <span className="tl-time mono">
-          {timecode(frame, fps)}
-          <span className="timecode-total"> / {timecode(total, fps)}</span>
-        </span>
-        <ToolBtn icon="safe" label="显示平台安全区" on={safeArea} onClick={st.toggleSafeArea} />
+      <div className="tl-zoom-controls" aria-label="时间线缩放">
+        <button
+          type="button"
+          className="icon-btn tl-zoom-step"
+          aria-label="缩小时间线"
+          title="缩小时间线"
+          disabled={!canZoomOut}
+          onClick={onZoomOut}
+        >
+          −
+        </button>
+        <span className="tl-zoom-percent">{zoomPercent}%</span>
+        <button
+          type="button"
+          className="icon-btn tl-zoom-step"
+          aria-label="放大时间线"
+          title="放大时间线"
+          disabled={!canZoomIn}
+          onClick={onZoomIn}
+        >
+          +
+        </button>
+        <button type="button" className="tl-zoom-fit" title="适配时间线宽度" onClick={onZoomFit}>
+          适合
+        </button>
       </div>
     </div>
   );
@@ -524,7 +952,7 @@ function ToolBtn({
   disabled = false,
   on = false,
 }: {
-  icon: "undo" | "redo" | "split" | "magnet" | "prev" | "next" | "safe";
+  icon: "undo" | "redo" | "split" | "magnet" | "comment";
   label: string;
   onClick: () => void;
   disabled?: boolean;
@@ -533,9 +961,12 @@ function ToolBtn({
   return (
     <button
       type="button"
-      className={on ? "icon-btn on" : "icon-btn"}
+      className={["icon-btn", on ? "on" : "", icon === "comment" ? "annotation-tool" : ""]
+        .filter(Boolean)
+        .join(" ")}
       aria-label={label}
       title={label}
+      aria-pressed={icon === "magnet" || icon === "comment" ? on : undefined}
       disabled={disabled}
       onClick={onClick}
     >

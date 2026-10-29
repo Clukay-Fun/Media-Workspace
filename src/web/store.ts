@@ -77,12 +77,14 @@ type State = {
   /** 人已经看过、确认过的版本；之后 AI 的改动算「待确认」 */
   reviewedRev: number | null;
   safeArea: boolean;
+  referenceGuides: { horizontal: boolean; vertical: boolean };
   /** 时间线拖动时吸附到字幕边界、播放头 */
   snap: boolean;
   /** 选中字幕时显示全部字幕列表 */
   captionList: boolean;
-  composerNonce: number;
-  /** 双击画面钉下的位置（画布像素），写批注时一起提交 */
+  /** 正在等待用户在预览画面中点选批注目标 */
+  annotating: boolean;
+  /** 点选画面目标时钉下的位置（画布像素），写批注时一起提交 */
   pin: { x: number; y: number } | null;
 
   init(): () => void;
@@ -105,9 +107,10 @@ type State = {
   setLeftOpen(open: boolean): void;
   confirmAiChanges(): void;
   toggleSafeArea(): void;
+  toggleReferenceGuide(axis: "horizontal" | "vertical"): void;
   setCaptionList(on: boolean): void;
   toggleSnap(): void;
-  focusComposer(): void;
+  setAnnotating(on: boolean): void;
   setPin(pin: State["pin"]): void;
   dismissAiChange(): void;
   toast(text: string, tone?: Toast["tone"]): void;
@@ -203,9 +206,10 @@ export const useStore = create<State>((set, get) => {
     sideOpen: false,
     reviewedRev: null,
     safeArea: false,
+    referenceGuides: { horizontal: false, vertical: false },
     captionList: false,
     snap: true,
-    composerNonce: 0,
+    annotating: false,
     pin: null,
     revealNonce: 0,
 
@@ -338,10 +342,17 @@ export const useStore = create<State>((set, get) => {
       saveReviewed(name, project.revision);
     },
     toggleSafeArea: () => set((s) => ({ safeArea: !s.safeArea })),
+    toggleReferenceGuide: (axis) =>
+      set((s) => ({
+        referenceGuides: { ...s.referenceGuides, [axis]: !s.referenceGuides[axis] },
+      })),
     setCaptionList: (captionList) => set({ captionList }),
     toggleSnap: () => set((s) => ({ snap: !s.snap })),
-    focusComposer: () =>
-      set((s) => ({ composerNonce: s.composerNonce + 1, sideOpen: true, leftOpen: false })),
+    setAnnotating: (annotating) =>
+      set((s) => ({
+        annotating,
+        ...(annotating ? { playing: false, pin: null } : {}),
+      })),
     setPin: (pin) => set({ pin }),
     dismissAiChange: () => set({ aiChange: null }),
     toast(text, tone = "info") {

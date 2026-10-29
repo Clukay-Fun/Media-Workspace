@@ -3,6 +3,8 @@ import {
   type CommentRequest,
   type CommentResponse,
   type CommentStatusRequest,
+  type EditorResponse,
+  type EditorState,
   type ExportStarted,
   type HistoryResponse,
   type LintResponse,
@@ -24,6 +26,8 @@ export type Api = {
   history(): Promise<HistoryResponse>;
   lint(): Promise<LintResponse>;
   review(): Promise<ReviewResponse>;
+  editor(): Promise<EditorResponse>;
+  saveEditor(editor: EditorState): Promise<void>;
   peaks(assetId: string): Promise<PeaksResponse | null>;
   ops(req: OpsRequest): Promise<OpsResponse>;
   undo(direction: "undo" | "redo", baseRevision: number): Promise<OpsResponse>;
@@ -68,6 +72,10 @@ export const httpApi: Api = {
   history: () => request(ROUTES.history),
   lint: () => request(ROUTES.lint),
   review: () => request(ROUTES.comments),
+  editor: () => request(ROUTES.editor),
+  saveEditor: async (editor) => {
+    await request<{ ok: true }>(ROUTES.editor, { method: "PUT", body: editor });
+  },
   peaks: (id) => request<PeaksResponse>(ROUTES.peaks(id)).catch(() => null),
   ops: (req) => request(ROUTES.ops, { body: req }),
   undo: (direction, baseRevision) => request(ROUTES[direction], { body: { baseRevision } }),

@@ -1,4 +1,4 @@
-import type { HistoryEntry, ServerEvent } from "../../core/api";
+import { EditorState, type HistoryEntry, type ServerEvent } from "../../core/api";
 import { compile } from "../../core/compile";
 import { MwError } from "../../core/errors";
 import { lintProject } from "../../core/lint";
@@ -141,6 +141,7 @@ export function createMockApi(): Api {
     },
   ];
   let review = Review.parse({});
+  let editor = EditorState.parse({});
   const listeners = new Set<(e: LiveEvent) => void>();
   const emit = (e: ServerEvent) => {
     for (const fn of listeners) fn(e);
@@ -216,6 +217,10 @@ export function createMockApi(): Api {
       noFaceData: ["outro"],
     }),
     review: async () => ({ ok: true, review }),
+    editor: async () => ({ ok: true, editor }),
+    saveEditor: async (next) => {
+      editor = EditorState.parse(next);
+    },
     // 假波形：有起伏的说话声，句子之间安静
     peaks: async () => ({
       ok: true,

@@ -3,13 +3,8 @@ import { frameOfMs } from "../lib/timeline";
 import { useStore } from "../store";
 import { Icon } from "./icons";
 
-/** 嵌进别的应用时（地址带 ?embed），宿主已经显示了工程名，这里不再重复 */
-const EMBED = new URLSearchParams(location.search).has("embed");
-
 export function TopBar() {
-  const name = useStore((s) => s.name);
   const project = useStore((s) => s.project);
-  const live = useStore((s) => s.live);
   const history = useStore((s) => s.history);
   const lint = useStore((s) => s.lint);
   const review = useStore((s) => s.review);
@@ -17,13 +12,12 @@ export function TopBar() {
   const exportJob = useStore((s) => s.exportJob);
   const sideOpen = useStore((s) => s.sideOpen);
   const leftOpen = useStore((s) => s.leftOpen);
-  const { undo, startExport, setSideTab, setSideOpen, setLeftOpen, dismissAiChange, select, seek } =
+  const { startExport, setSideTab, setSideOpen, setLeftOpen, select, seek, undo, dismissAiChange } =
     useStore.getState();
 
   const open = review?.comments.filter((c) => c.status === "open").length ?? 0;
   const issues = lint?.issues ?? [];
   const exporting = exportJob !== null && !exportJob.done;
-  // 只有这次 AI 修改还是最新一版时，「撤销」才是撤销它
   const canUndoAi = aiChange && aiChange.revision === project?.revision && history?.undo;
 
   const jumpToIssue = () => {
@@ -46,16 +40,6 @@ export function TopBar() {
         >
           <Icon name="list" />
         </button>
-        <span className="project-name" title={name} hidden={EMBED}>
-          {name || "载入中…"}
-        </span>
-        {project && <span className="revision">第 {project.revision} 版</span>}
-        <span
-          className={live ? "live on" : "live"}
-          title={live ? "实时同步中" : "连接已断开，正在重连"}
-        >
-          {live ? "同步中" : "已断开"}
-        </span>
       </div>
 
       <div className="topbar-center">
@@ -101,7 +85,7 @@ export function TopBar() {
           title={issues[0]?.message ?? "质检没有发现问题"}
         >
           <Icon name="warn" size={14} />
-          质检 {issues.length}
+          {issues.length}
         </button>
         <button
           type="button"
@@ -110,7 +94,7 @@ export function TopBar() {
           onClick={() => setSideTab("comments")}
         >
           <Icon name="comment" size={14} />
-          待处理 {open}
+          {open}
         </button>
         <button
           type="button"

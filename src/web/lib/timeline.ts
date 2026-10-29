@@ -12,6 +12,7 @@ export type Block = {
   to: number;
   label: string;
   kind: "clip" | "caption" | "overlay" | "image" | "outro";
+  mediaKind?: "video" | "audio";
   asset?: string;
   /** 主轨片段：素材里的起点和倍速，画波形用 */
   trimBeforeFrames?: number;
@@ -48,6 +49,7 @@ export function timelineRows(project: Project, tl: ResolvedTimeline): Row[] {
         to: v.from + v.durationInFrames,
         label: fileName(v.asset),
         kind: "clip",
+        mediaKind: v.kind,
         asset: v.asset,
         trimBeforeFrames: v.trimBeforeFrames,
         speed: v.speed,
