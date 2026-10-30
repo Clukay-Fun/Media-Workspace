@@ -1,5 +1,8 @@
+import { transformAt } from "../../../core/animate";
+import { planTransform } from "../../../core/edit";
 import type { ImageItem, Transform } from "../../../core/schema";
 import type { Anim } from "../../../core/text-style";
+import { msOfFrame } from "../../lib/timeline";
 import { useStore } from "../../store";
 import {
   Field,
@@ -16,20 +19,27 @@ export function ImageInspector(props: InspectorProps) {
   const { project, id, ref_ } = props;
   const image = ref_.item as ImageItem;
   const resolved = useStore((s) => s.preview?.timeline.images.find((i) => i.id === id));
-  const shown = resolved?.transform ?? {
-    x: project.canvas.width / 2,
-    y: project.canvas.height / 2,
-    scale: 1,
-    rotation: 0,
-    opacity: 1,
-    radius: 0,
-  };
+  const frame = useStore((s) => s.frame);
+  // 有关键帧时显示此刻插值后的值，改动也写进播放头处的关键帧（docs/decisions/0017）
+  const local = resolved ? frame - resolved.from : 0;
+  const keyed = Boolean(resolved?.keyframes.length);
+  const shown = resolved
+    ? transformAt(resolved.transform, resolved.keyframes, local)
+    : {
+        x: project.canvas.width / 2,
+        y: project.canvas.height / 2,
+        scale: 1,
+        rotation: 0,
+        opacity: 1,
+        radius: 0,
+      };
   const locked = ref_.track.locked;
 
   // 只写改过的字段：其它值继续跟着槽位 / 默认值走，不会被一次编辑全部钉死
   const setTransform = (patch: Partial<Transform>, label: string) => {
-    const next = { ...(image.transform ?? {}), ...patch };
-    void useStore.getState().submit([{ op: "item.update", id, set: { transform: next } }], label);
+    const atMs = keyed ? msOfFrame(local, project.canvas.fps) : undefined;
+    const plan = planTransform(project, { id, transform: patch, snap: false, atMs });
+    void useStore.getState().submit(plan.ops, keyed ? `${label}（写进关键帧）` : label);
   };
 
   // 关闭动画不删字段：undefined 会在 HTTP 提交时被 JSON 丢掉，变成空修改；写入 none 才是真的关掉

@@ -1,7 +1,8 @@
+import { transformAt } from "./animate";
 import { compile, layoutMainTrack, mapTimelineMs, type ResolvedTimeline } from "./compile";
 import { MwError } from "./errors";
 import type { Op } from "./ops";
-import type { Caption, Project, Track, Transform } from "./schema";
+import type { Caption, Keyframe, Project, Track, Transform } from "./schema";
 import { canvasTargets, type SnapTarget, snapRange, snapValue, timelineTargets } from "./snap";
 import { frameToMs } from "./time";
 
@@ -267,6 +268,11 @@ export type TransformRequest = {
   thresholdPx?: number;
   /** 参考线（editor.json） */
   guides?: { axis: "h" | "v"; pos: number }[];
+  /**
+   * 播放头相对元素开始的毫秒数。元素有关键帧时 transform 不起作用，改动写进这个时间的关键帧
+   * （docs/decisions/0017）；不传时照旧写 transform
+   */
+  atMs?: number;
 };
 
 export type TransformPlan = {
@@ -292,11 +298,27 @@ export function planTransform(project: Project, req: TransformRequest): Transfor
   if (!("transform" in item) && track.kind === "caption")
     throw new MwError("INVALID_OP", "字幕的位置由样式决定，请修改字幕样式的 layout");
   const { width, height } = project.canvas;
-  const base = {
-    ...TRANSFORM_DEFAULT(width, height),
-    ...stripUndefined((item as { transform?: Transform }).transform ?? {}),
-  };
-  const next: Required<Transform> = { ...base, ...stripUndefined(req.transform) };
+  const own = (item as { transform?: Transform }).transform ?? {};
+  const kfs = (item as { keyframes?: Keyframe[] }).keyframes ?? [];
+  const keyed = req.atMs !== undefined && kfs.length > 0 ? req.atMs : null;
+  // 播放头离某个关键帧不到半帧，就算在这个关键帧上
+  const halfFrame = 500 / project.canvas.fps;
+  const onKf = keyed === null ? undefined : kfs.find((k) => Math.abs(k.atMs - keyed) < halfFrame);
+  const base = { ...TRANSFORM_DEFAULT(width, height), ...stripUndefined(own) };
+  // 有关键帧时，从画面上此刻的样子开始改，新加的关键帧不会跳
+  const current =
+    keyed === null
+      ? base
+      : transformAt(
+          base,
+          kfs.map((k) => ({
+            frame: k.atMs,
+            transform: { ...base, ...stripUndefined(k.transform) },
+            easing: k.easing,
+          })),
+          onKf?.atMs ?? keyed,
+        );
+  const next: Required<Transform> = { ...current, ...stripUndefined(req.transform) };
   const hits: TransformPlan["guides"] = [];
   if (req.snap) {
     const th = req.thresholdPx ?? 8;
@@ -325,12 +347,28 @@ export function planTransform(project: Project, req: TransformRequest): Transfor
     if (req.transform.x !== undefined) next.x = snapAxis(next.x, halfW, t.x, "v");
     if (req.transform.y !== undefined) next.y = snapAxis(next.y, halfH, t.y, "h");
   }
-  const set = stripUndefined({
-    ...(item as { transform?: Transform }).transform,
+  const patch = {
     ...req.transform,
     ...(req.transform.x !== undefined ? { x: Math.round(next.x) } : {}),
     ...(req.transform.y !== undefined ? { y: Math.round(next.y) } : {}),
-  });
+  };
+  if (keyed !== null) {
+    const transform = stripUndefined({ ...(onKf ? onKf.transform : current), ...patch });
+    return {
+      ops: [
+        {
+          op: "keyframe.set",
+          item: req.id,
+          atMs: onKf?.atMs ?? Math.round(keyed),
+          transform,
+          ...(onKf ? { easing: onKf.easing } : {}),
+        },
+      ],
+      preview: next,
+      guides: hits,
+    };
+  }
+  const set = stripUndefined({ ...own, ...patch });
   return {
     ops: [{ op: "item.update", id: req.id, set: { transform: set } }],
     preview: next,

@@ -2,6 +2,7 @@ import { Player, type PlayerRef } from "@remotion/player";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Main } from "../../composition/Main";
+import { transformAt } from "../../core/animate";
 import { compile } from "../../core/compile";
 import { planTransform } from "../../core/edit";
 import { applyOps, type Op } from "../../core/ops";
@@ -20,7 +21,16 @@ const KIND: Record<HitBox["kind"], string> = {
 };
 const EMBED = new URLSearchParams(location.search).has("embed");
 
-type Drag = { id: string; x0: number; y0: number; bx: number; by: number; ops: Op[] | null };
+type Drag = {
+  id: string;
+  x0: number;
+  y0: number;
+  bx: number;
+  by: number;
+  /** 元素有关键帧时，播放头相对元素开始的毫秒数 */
+  atMs: number | undefined;
+  ops: Op[] | null;
+};
 type AnnotationDraft = {
   target: string;
   point: { x: number; y: number };
@@ -168,12 +178,18 @@ export function Stage() {
     if (!hit || hit.locked || hit.kind === "caption" || hit.z < 0) return;
     const ref = findItem(project, hit.id);
     const t = ref && "transform" in ref.item ? ref.item.transform : undefined;
+    // 有关键帧的元素从此刻插值后的位置开始拖，改动写进播放头处的关键帧
+    const tl = useStore.getState().preview?.timeline;
+    const v = tl && [...tl.videos, ...tl.images].find((x) => x.id === hit.id);
+    const local = v ? useStore.getState().frame - v.from : 0;
+    const now = v?.keyframes.length ? transformAt(v.transform, v.keyframes, local) : undefined;
     drag.current = {
       id: hit.id,
       x0: p.x,
       y0: p.y,
-      bx: t?.x ?? W / 2,
-      by: t?.y ?? H / 2,
+      bx: now?.x ?? t?.x ?? W / 2,
+      by: now?.y ?? t?.y ?? H / 2,
+      atMs: now ? msOfFrame(local, fps) : undefined,
       ops: null,
     };
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -193,6 +209,7 @@ export function Stage() {
         id: d.id,
         transform: { x: d.bx + p.x - d.x0, y: d.by + p.y - d.y0 },
         snap: !e.metaKey,
+        atMs: d.atMs,
       });
       d.ops = plan.ops;
       st.setDraft({ timeline: compile(applyOps(project, plan.ops).project), guides: plan.guides });

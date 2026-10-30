@@ -1,3 +1,4 @@
+import { transformAt } from "../../core/animate";
 import type { FullTransform, ResolvedTimeline } from "../../core/compile";
 import { type Box, textBox } from "../../core/lint";
 import { BUILTIN_STYLES } from "../../core/presets";
@@ -98,7 +99,13 @@ export function hitBoxes(
     out.push({
       id: img.id,
       kind: "image",
-      box: transformBox(canvas, img.transform, width, height),
+      // 有关键帧时按此刻插值后的位置算，和画面一致
+      box: transformBox(
+        canvas,
+        transformAt(img.transform, img.keyframes, frame - img.from),
+        width,
+        height,
+      ),
       z: img.z,
       locked: img.locked,
     });
@@ -109,7 +116,14 @@ export function hitBoxes(
     out.push({
       id: v.id,
       kind: "video",
-      box: v.main ? canvas : transformBox(canvas, v.transform, width, height),
+      box: v.main
+        ? canvas
+        : transformBox(
+            canvas,
+            transformAt(v.transform, v.keyframes, frame - v.from),
+            width,
+            height,
+          ),
       z: v.main ? -1 : v.z,
       locked: v.locked,
     });

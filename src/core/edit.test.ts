@@ -3,7 +3,7 @@ import { compile } from "./compile";
 import { planDrag, planSplit, planTransform } from "./edit";
 import { MwError } from "./errors";
 import { applyOps } from "./ops";
-import { Project } from "./schema";
+import { type ImageItem, Project } from "./schema";
 
 // 30fps；主轨两段：c1 源 0–2000、c2 源 4000–6000（时间线 0–2000、2000–4000）
 const project = (opts: { locked?: boolean } = {}) =>
@@ -186,5 +186,48 @@ describe("planTransform", () => {
   it("不吸附时原样提交", () => {
     const r = planTransform(project(), { id: "i1", transform: { x: 545 }, snap: false });
     expect(r.ops[0]).toMatchObject({ set: { transform: { x: 545 } } });
+  });
+
+  // 画布 1080×1920，中心 (540, 960)
+  const keyed = () => {
+    const p = project();
+    const img = p.tracks
+      .flatMap((t) => t.items as { id: string }[])
+      .find((i) => i.id === "i1") as ImageItem;
+    img.keyframes = [
+      { atMs: 0, transform: { x: 100 }, easing: "linear" },
+      { atMs: 1000, transform: { x: 300, scale: 2 }, easing: "linear" },
+    ];
+    return p;
+  };
+
+  it("有关键帧时改动写进播放头处的关键帧；在两帧之间就从此刻的样子新加一个", () => {
+    const r = planTransform(keyed(), { id: "i1", transform: { y: 400 }, snap: false, atMs: 500 });
+    expect(r.ops).toEqual([
+      {
+        op: "keyframe.set",
+        item: "i1",
+        atMs: 500,
+        transform: { x: 200, y: 400, scale: 1.5, rotation: 0, opacity: 1, radius: 0 },
+      },
+    ]);
+  });
+
+  it("播放头离关键帧不到半帧就改那一帧，保留它原来的缓动", () => {
+    const r = planTransform(keyed(), { id: "i1", transform: { y: 400 }, snap: false, atMs: 1010 });
+    expect(r.ops).toEqual([
+      {
+        op: "keyframe.set",
+        item: "i1",
+        atMs: 1000,
+        transform: { x: 300, scale: 2, y: 400 },
+        easing: "linear",
+      },
+    ]);
+  });
+
+  it("没有关键帧时即使传了 atMs 也照旧写 transform", () => {
+    const r = planTransform(project(), { id: "i1", transform: { x: 545 }, snap: false, atMs: 0 });
+    expect(r.ops[0]).toMatchObject({ op: "item.update" });
   });
 });
