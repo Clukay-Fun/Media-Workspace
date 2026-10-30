@@ -3,6 +3,7 @@ import { compile } from "../../core/compile";
 import { BUILTIN_STYLES } from "../../core/presets";
 import { Project } from "../../core/schema";
 import { hitBoxes, pick, transformBox } from "./geometry";
+import { containBox } from "./pip";
 
 const project = (overlayTransform?: object) =>
   Project.parse({
@@ -119,5 +120,89 @@ describe("预览画面点选", () => {
       ),
     );
     expect(pick(boxes, 800, 500)?.id).toBe("p1");
+  });
+
+  it("横屏图片和画中画按 contain 后的内容框算，不按整幅画布", () => {
+    const p = Project.parse({
+      version: 5,
+      revision: 0,
+      canvas: {},
+      assets: {
+        img: {
+          kind: "image",
+          path: "/wide.png",
+          probe: { durationMs: 0, width: 1920, height: 1080 },
+        },
+        vid: {
+          kind: "video",
+          path: "/wide.mp4",
+          probe: { durationMs: 10_000, width: 1920, height: 1080 },
+        },
+      },
+      tracks: [
+        {
+          id: "main",
+          kind: "video",
+          main: true,
+          items: [{ id: "c1", type: "clip", asset: "vid", inMs: 0, outMs: 10_000 }],
+        },
+        {
+          id: "imgs",
+          kind: "video",
+          items: [
+            {
+              id: "img1",
+              type: "image",
+              asset: "img",
+              at: { ms: 0 },
+              durationMs: 3000,
+              transform: { x: 540, y: 960, scale: 1 },
+            },
+          ],
+        },
+        {
+          id: "pip",
+          kind: "video",
+          items: [
+            {
+              id: "p1",
+              type: "clip",
+              asset: "vid",
+              at: { ms: 0 },
+              inMs: 0,
+              outMs: 10_000,
+              transform: { x: 708, y: 303, scale: 0.333 },
+            },
+          ],
+        },
+      ],
+    });
+    const content = containBox(1080, 1920, 1920, 1080);
+    const boxes = hitBoxes(compile(p), BUILTIN_STYLES, 0, p.assets);
+    expect(boxes.find((h) => h.id === "img1")?.box).toEqual(
+      transformBox(
+        content,
+        { x: 540, y: 960, scale: 1, rotation: 0, opacity: 1, radius: 0 },
+        1080,
+        1920,
+      ),
+    );
+    expect(boxes.find((h) => h.id === "p1")?.box).toEqual(
+      transformBox(
+        content,
+        { x: 708, y: 303, scale: 0.333, rotation: 0, opacity: 1, radius: 0 },
+        1080,
+        1920,
+      ),
+    );
+    // 不传素材尺寸时退回整幅画布，兼容旧调用
+    expect(hitBoxes(compile(p), BUILTIN_STYLES, 0).find((h) => h.id === "img1")?.box).toEqual(
+      transformBox(
+        { x0: 0, y0: 0, x1: 1080, y1: 1920 },
+        { x: 540, y: 960, scale: 1, rotation: 0, opacity: 1, radius: 0 },
+        1080,
+        1920,
+      ),
+    );
   });
 });

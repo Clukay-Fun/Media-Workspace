@@ -2586,6 +2586,19 @@ textarea:focus-visible {
   gap: 6px;
 }
 
+/* 画中画的四角预设 / 数值面板 */
+.pip-corners {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.pip-numbers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
 .slot {
   display: grid;
   justify-items: center;

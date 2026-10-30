@@ -134,8 +134,8 @@ export function Stage() {
     [preview, draft],
   );
   const boxes = useMemo(
-    () => (timeline && preview ? hitBoxes(timeline, preview.styles, frame) : []),
-    [timeline, preview, frame],
+    () => (timeline && preview ? hitBoxes(timeline, preview.styles, frame, project?.assets) : []),
+    [timeline, preview, frame, project],
   );
   const selBox = boxes.find((b) => b.id === selected);
 

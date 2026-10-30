@@ -27,14 +27,40 @@ const roundScale = (v: number) => Math.round(v * 1000) / 1000;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 /**
- * 四个角的小窗位置：1/3 画面宽、按整幅画布缩放，中心点落在安全区内侧。
+ * 素材在画布上按 objectFit: contain 显示后的内容框（画布像素）。
+ * 渲染时图片和视频都铺满画布再 contain，所以宽高比不同时会上下或左右留黑边。
+ * 没有素材尺寸（或数据不合法）时退回整幅画布。
+ */
+export function containBox(
+  width: number,
+  height: number,
+  sourceWidth?: number,
+  sourceHeight?: number,
+): Box {
+  if (!sourceWidth || !sourceHeight || sourceWidth <= 0 || sourceHeight <= 0)
+    return { x0: 0, y0: 0, x1: width, y1: height };
+  const scale = Math.min(width / sourceWidth, height / sourceHeight);
+  const w = sourceWidth * scale;
+  const h = sourceHeight * scale;
+  return { x0: (width - w) / 2, y0: (height - h) / 2, x1: (width + w) / 2, y1: (height + h) / 2 };
+}
+
+/**
+ * 四个角的小窗位置：内容宽度占画幅的 1/3，内容框边缘离安全区再留画幅宽度的 2%。
  * 用 safeArea 而不是画布边缘，是为了避开平台按钮和标题。
  */
-export function cornerPlacement(corner: Corner, canvas: Project["canvas"]): Placement {
+export function cornerPlacement(
+  corner: Corner,
+  canvas: Project["canvas"],
+  sourceWidth?: number,
+  sourceHeight?: number,
+): Placement {
   const area = safeAreaFor(canvas.safeArea.preset, canvas.width, canvas.height);
+  const content = containBox(canvas.width, canvas.height, sourceWidth, sourceHeight);
   const scale = roundScale(SMALL_SCALE);
-  const w = canvas.width * scale;
-  const h = canvas.height * scale;
+  // 内容框按 contain 居中，缩放时中心不动，所以 1/3 后的内容尺寸直接乘 scale
+  const w = (content.x1 - content.x0) * scale;
+  const h = (content.y1 - content.y0) * scale;
   const margin = Math.round(canvas.width * MARGIN_RATIO);
   const left = area.left + w / 2 + margin;
   const right = canvas.width - area.right - w / 2 - margin;
@@ -143,7 +169,14 @@ export function placeAsset(
         at,
         inMs: 0,
         outMs,
-        transform: cornerPlacement("top-right", project.canvas),
+        // 画中画默认静音；属性面板的音量控件可以调回来
+        gainDb: -60,
+        transform: cornerPlacement(
+          "top-right",
+          project.canvas,
+          asset.probe?.width,
+          asset.probe?.height,
+        ),
       },
     });
   }

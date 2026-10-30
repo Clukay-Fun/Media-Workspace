@@ -54,8 +54,12 @@ export function PipInspector({
     }
   };
 
+  const probe = project.assets[item.asset]?.probe;
+  const placementFor = (c: Corner) =>
+    cornerPlacement(c, project.canvas, probe?.width, probe?.height);
+
   const active = CORNERS.find((c) => {
-    const p = cornerPlacement(c, project.canvas);
+    const p = placementFor(c);
     return (
       Math.abs(p.scale - t.scale) < 0.005 && Math.abs(p.x - t.x) < 2 && Math.abs(p.y - t.y) < 2
     );
@@ -64,7 +68,7 @@ export function PipInspector({
   return (
     <>
       <Field label="位置" note="小窗贴安全区四角">
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+        <div className="pip-corners">
           {CORNERS.map((c) => (
             <button
               key={c}
@@ -73,8 +77,7 @@ export function PipInspector({
               aria-pressed={active === c}
               disabled={locked}
               onClick={() => {
-                const p = cornerPlacement(c, project.canvas);
-                apply(p, `小窗移到${CORNER_LABEL[c]}`);
+                apply(placementFor(c), `小窗移到${CORNER_LABEL[c]}`);
               }}
             >
               <span className="slot-frame" aria-hidden="true">
@@ -95,7 +98,7 @@ export function PipInspector({
         </div>
       </Field>
       <Field label="缩放和外观">
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <div className="pip-numbers">
           <PipNumber
             label="缩放 %"
             value={Math.round(t.scale * 100)}

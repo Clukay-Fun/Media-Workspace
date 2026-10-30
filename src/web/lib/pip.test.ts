@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { MwError } from "../../core/errors";
 import { applyOps } from "../../core/ops";
 import { Project } from "../../core/schema";
-import { cornerPlacement, placeAsset, resizeFromCorner } from "./pip";
+import { containBox, cornerPlacement, placeAsset, resizeFromCorner } from "./pip";
 
 const canvas = Project.parse({ version: 5, revision: 0, canvas: {} }).canvas;
 
@@ -12,8 +12,21 @@ const videoProject = () =>
     revision: 0,
     canvas: {},
     assets: {
-      v1: { kind: "video", path: "/v.mp4", probe: { durationMs: 5000 } },
-      i1: { kind: "image", path: "/i.png", probe: { durationMs: 0 } },
+      v1: {
+        kind: "video",
+        path: "/v.mp4",
+        probe: { durationMs: 5000, width: 1080, height: 1920 },
+      },
+      v2: {
+        kind: "video",
+        path: "/wide.mp4",
+        probe: { durationMs: 5000, width: 1920, height: 1080 },
+      },
+      i1: {
+        kind: "image",
+        path: "/i.png",
+        probe: { durationMs: 0, width: 1200, height: 800 },
+      },
       a1: { kind: "audio", path: "/a.mp3", probe: { durationMs: 5000 } },
     },
     tracks: [
@@ -26,12 +39,65 @@ const videoProject = () =>
     ],
   });
 
+describe("contain 后的内容框", () => {
+  it("竖屏素材铺满画布；横屏素材上下留黑边", () => {
+    expect(containBox(1080, 1920, 1080, 1920)).toEqual({
+      x0: 0,
+      y0: 0,
+      x1: 1080,
+      y1: 1920,
+    });
+    expect(containBox(1080, 1920, 1920, 1080)).toEqual({
+      x0: 0,
+      y0: 656.25,
+      x1: 1080,
+      y1: 1263.75,
+    });
+  });
+
+  it("没有素材宽高时退回整幅画布", () => {
+    expect(containBox(1080, 1920)).toEqual({ x0: 0, y0: 0, x1: 1080, y1: 1920 });
+    expect(containBox(1080, 1920, 0, 0)).toEqual({ x0: 0, y0: 0, x1: 1080, y1: 1920 });
+  });
+});
+
 describe("四角小窗位置", () => {
-  it("1/3 画面宽，落在安全区里侧，四角不越界", () => {
+  it("竖屏素材：1/3 画面宽，落在安全区里侧，四角不越界", () => {
     expect(cornerPlacement("top-left", canvas)).toEqual({ scale: 0.333, x: 262, y: 522 });
     expect(cornerPlacement("top-right", canvas)).toEqual({ scale: 0.333, x: 708, y: 522 });
     expect(cornerPlacement("bottom-left", canvas)).toEqual({ scale: 0.333, x: 262, y: 1138 });
     expect(cornerPlacement("bottom-right", canvas)).toEqual({ scale: 0.333, x: 708, y: 1138 });
+  });
+
+  it("横屏素材：按 contain 后的 360×202 内容框贴角", () => {
+    expect(cornerPlacement("top-left", canvas, 1920, 1080)).toEqual({
+      scale: 0.333,
+      x: 262,
+      y: 303,
+    });
+    expect(cornerPlacement("top-right", canvas, 1920, 1080)).toEqual({
+      scale: 0.333,
+      x: 708,
+      y: 303,
+    });
+    expect(cornerPlacement("bottom-left", canvas, 1920, 1080)).toEqual({
+      scale: 0.333,
+      x: 262,
+      y: 1357,
+    });
+    expect(cornerPlacement("bottom-right", canvas, 1920, 1080)).toEqual({
+      scale: 0.333,
+      x: 708,
+      y: 1357,
+    });
+  });
+
+  it("没有素材尺寸时和竖屏退回一致", () => {
+    expect(cornerPlacement("top-left", canvas, undefined, undefined)).toEqual({
+      scale: 0.333,
+      x: 262,
+      y: 522,
+    });
   });
 });
 
@@ -82,7 +148,19 @@ describe("素材放到画面上", () => {
       at: { ms: 1200 },
       inMs: 0,
       outMs: 5000,
-      transform: cornerPlacement("top-right", canvas),
+      gainDb: -60,
+      transform: cornerPlacement("top-right", canvas, 1080, 1920),
+    });
+  });
+
+  it("横屏视频按内容框放到右上角", () => {
+    const project = videoProject();
+    const next = applyOps(project, placeAsset(project, "v2", 0).ops).project;
+    const item = next.tracks.find((t) => t.id === "pip")?.items[0];
+    expect(item).toMatchObject({
+      asset: "v2",
+      gainDb: -60,
+      transform: { scale: 0.333, x: 708, y: 303 },
     });
   });
 
