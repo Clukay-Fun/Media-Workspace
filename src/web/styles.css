@@ -1662,6 +1662,28 @@ textarea:focus-visible {
   opacity: 0.35;
 }
 
+.keyframe-marker {
+  position: absolute;
+  top: 50%;
+  z-index: 5;
+  width: 9px;
+  height: 9px;
+  border: 1px solid #fff;
+  border-radius: 1px;
+  background: var(--accent);
+  box-shadow: 0 1px 3px rgb(28 27 24 / 0.5);
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.keyframe-marker:focus-visible {
+  outline: 2px solid var(--ai);
+  outline-offset: 2px;
+}
+
+.tl-lane.is-hidden .keyframe-marker {
+  opacity: 0.35;
+}
+
 .block {
   position: absolute;
   top: 4px;
@@ -2497,6 +2519,82 @@ textarea:focus-visible {
   font-weight: 400;
   font-size: 11px;
   color: var(--text-3);
+}
+
+.keyframes-editor {
+  display: grid;
+  gap: 8px;
+}
+
+.keyframes-hint,
+.keyframes-range-note,
+.keyframes-empty,
+.keyframe-no-change {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.keyframes-add {
+  justify-content: center;
+}
+
+.keyframes-list {
+  display: grid;
+}
+
+.keyframe-entry {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.keyframe-jump {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+}
+
+.keyframe-time {
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.keyframe-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+.keyframe-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.keyframe-easing {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+.keyframe-easing .select {
+  flex: 1;
+  min-width: 0;
+}
+
+.keyframe-delete {
+  flex: none;
 }
 
 .style-grid {

@@ -5,6 +5,7 @@ import { type DragMode, planDrag } from "../../core/edit";
 import type { Track } from "../../core/schema";
 import { frameToMs, sourceFrameAt } from "../../core/time";
 import { aiChanges } from "../lib/changes";
+import { keyframeMarkerPositions } from "../lib/keyframes";
 import {
   type Block,
   frameOfMs,
@@ -523,7 +524,7 @@ function RowView({
   onDragStart: (e: React.PointerEvent, b: Block, mode: DragMode) => void;
 }) {
   const { track } = row;
-  const { submit, select } = useStore.getState();
+  const { submit, select, seek } = useStore.getState();
   const toggle = (key: "locked" | "hidden" | "muted", label: string) =>
     void submit([{ op: "track.update", id: track.id, set: { [key]: !track[key] } }], label);
   const audible = track.kind === "video" || track.kind === "audio";
@@ -574,25 +575,45 @@ function RowView({
           const from = g ? g.from : b.from;
           const to = g ? g.to : b.to;
           return (
-            <BlockView
-              key={b.key}
-              block={b}
-              left={px(from)}
-              width={Math.max(2, px(to) - px(from))}
-              dragging={g !== null}
-              editable={!track.locked && b.kind !== "outro"}
-              onDragStart={(e, mode) => onDragStart(e, b, mode)}
-              fps={fps}
-              selected={selected === b.id}
-              flash={flashIds.includes(b.id) ? flashAt : 0}
-              peaks={b.asset ? (peaks[b.asset] ?? null) : null}
-              videoSrc={b.mediaKind === "video" && b.asset ? videoSrcs[b.asset] : undefined}
-              thumbnailHeight={row.kind === "main" ? 36 : 26}
-              onSelect={() => {
-                if (b.kind !== "outro") select(b.id);
-              }}
-              track={track}
-            />
+            <Fragment key={b.key}>
+              <BlockView
+                block={b}
+                left={px(from)}
+                width={Math.max(2, px(to) - px(from))}
+                dragging={g !== null}
+                editable={!track.locked && b.kind !== "outro"}
+                onDragStart={(e, mode) => onDragStart(e, b, mode)}
+                fps={fps}
+                selected={selected === b.id}
+                flash={flashIds.includes(b.id) ? flashAt : 0}
+                peaks={b.asset ? (peaks[b.asset] ?? null) : null}
+                videoSrc={b.mediaKind === "video" && b.asset ? videoSrcs[b.asset] : undefined}
+                thumbnailHeight={row.kind === "main" ? 36 : 26}
+                onSelect={() => {
+                  if (b.kind !== "outro") select(b.id);
+                }}
+                track={track}
+              />
+              {keyframeMarkerPositions(b.keyframeFrames ?? [], b.to - b.from).map((marker) => {
+                const markerFrame = from + marker.frame;
+                return (
+                  <button
+                    type="button"
+                    className="keyframe-marker"
+                    key={marker.frame}
+                    style={{ left: px(markerFrame) }}
+                    title={"关键帧 " + timecode(markerFrame, fps)}
+                    aria-label={"跳到关键帧 " + timecode(markerFrame, fps)}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      select(b.id);
+                      seek(markerFrame);
+                    }}
+                  />
+                );
+              })}
+            </Fragment>
           );
         })}
       </div>

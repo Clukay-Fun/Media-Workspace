@@ -9,6 +9,7 @@ import {
   SlotPicker,
   TimingNudge,
 } from "./common";
+import { KeyframesInspector } from "./keyframes";
 import { useNumberDraft } from "./number-draft";
 
 /** 选中视频 / 音频片段：主轨片段、画中画、音频轨上的片段 */
@@ -47,6 +48,14 @@ export function ClipInspector(props: InspectorProps) {
         />
       )}
       {clip && <VolumeField id={id} gainDb={clip.gainDb} locked={track.locked} />}
+      {clip && track.kind === "video" && (
+        <KeyframesInspector
+          id={id}
+          fps={props.fps}
+          locked={track.locked}
+          keyframes={clip.keyframes}
+        />
+      )}
       {anchored && !track.locked && <TimingNudge project={project} id={id} />}
       <InspectorActions ref_={ref_} />
     </div>
