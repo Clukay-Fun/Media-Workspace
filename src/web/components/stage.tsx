@@ -1,0 +1,550 @@
+import { Player, type PlayerRef } from "@remotion/player";
+import type React from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Main } from "../../composition/Main";
+import { transformAt } from "../../core/animate";
+import { compile } from "../../core/compile";
+import { planTransform } from "../../core/edit";
+import { applyOps, type Op } from "../../core/ops";
+import { safeAreaFor } from "../../core/safe-area";
+import { type HitBox, hitBoxes, pick } from "../lib/geometry";
+import { findItem } from "../lib/project";
+import { frameOfMs, msOfFrame, timecode } from "../lib/timeline";
+import { useStore } from "../store";
+import { Icon } from "./icons";
+
+const KIND: Record<HitBox["kind"], string> = {
+  caption: "字幕",
+  overlay: "标题",
+  image: "图片",
+  video: "画面",
+};
+const EMBED = new URLSearchParams(location.search).has("embed");
+
+type Drag = {
+  id: string;
+  x0: number;
+  y0: number;
+  bx: number;
+  by: number;
+  /** 元素有关键帧时，播放头相对元素开始的毫秒数 */
+  atMs: number | undefined;
+  ops: Op[] | null;
+};
+type AnnotationDraft = {
+  target: string;
+  point: { x: number; y: number };
+  atMs: number;
+  left: number;
+  top: number;
+};
+
+export function Stage() {
+  const name = useStore((s) => s.name);
+  const project = useStore((s) => s.project);
+  const preview = useStore((s) => s.preview);
+  const draft = useStore((s) => s.draft);
+  const frame = useStore((s) => s.frame);
+  const seekNonce = useStore((s) => s.seekNonce);
+  const playing = useStore((s) => s.playing);
+  const annotating = useStore((s) => s.annotating);
+  const selected = useStore((s) => s.selected);
+  const safeArea = useStore((s) => s.safeArea);
+  const referenceGuides = useStore((s) => s.referenceGuides);
+  const flash = useStore((s) => s.flash);
+  const review = useStore((s) => s.review);
+  const lint = useStore((s) => s.lint);
+  const pin = useStore((s) => s.pin);
+  const loadError = useStore((s) => s.loadError);
+  const st = useStore.getState();
+
+  const player = useRef<PlayerRef>(null);
+  const area = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  const [hover, setHover] = useState<string | null>(null);
+  const [annotationDraft, setAnnotationDraft] = useState<AnnotationDraft | null>(null);
+  const [commentText, setCommentText] = useState("");
+  const [commentBusy, setCommentBusy] = useState(false);
+  const commentInput = useRef<HTMLInputElement>(null);
+  const drag = useRef<Drag | null>(null);
+
+  useEffect(() => {
+    if (annotationDraft) commentInput.current?.focus();
+  }, [annotationDraft]);
+
+  // 在时间线、列表里改选了别的元素，浮动批注框就收起
+  useEffect(() => {
+    if (annotationDraft && selected !== annotationDraft.target) {
+      setAnnotationDraft(null);
+      setCommentText("");
+    }
+  }, [selected, annotationDraft]);
+
+  useEffect(() => {
+    const el = area.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => {
+      if (e) setSize({ w: e.contentRect.width, h: e.contentRect.height });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const timeline = draft?.timeline ?? preview?.timeline ?? null;
+  const W = timeline?.width ?? 1080;
+  const H = timeline?.height ?? 1920;
+  const fps = timeline?.fps ?? 30;
+  const total = Math.max(1, timeline?.durationInFrames ?? 1);
+  const scale = size.w && size.h ? Math.min(size.w / W, size.h / H) : 0;
+  // Player 的帧号同步回界面；界面跳转时再推给 Player（播放中的帧变化不回推，避免互相触发）
+  useEffect(() => {
+    const p = player.current;
+    if (!p) return;
+    const onFrame = (e: { detail: { frame: number } }) => st.setFrame(e.detail.frame);
+    const onPlay = () => st.setPlaying(true);
+    const onPause = () => st.setPlaying(false);
+    p.addEventListener("frameupdate", onFrame);
+    p.addEventListener("play", onPlay);
+    p.addEventListener("pause", onPause);
+    return () => {
+      p.removeEventListener("frameupdate", onFrame);
+      p.removeEventListener("play", onPlay);
+      p.removeEventListener("pause", onPause);
+    };
+  }, [st, preview !== null]);
+  useEffect(() => {
+    player.current?.seekTo(Math.min(useStore.getState().frame, total - 1));
+  }, [seekNonce, total]);
+  useEffect(() => {
+    const p = player.current;
+    if (!p || p.isPlaying() === playing) return;
+    if (playing) p.play();
+    else p.pause();
+  }, [playing]);
+
+  const inputProps = useMemo(
+    () => (preview && draft ? { ...preview, timeline: draft.timeline } : preview),
+    [preview, draft],
+  );
+  const boxes = useMemo(
+    () => (timeline && preview ? hitBoxes(timeline, preview.styles, frame) : []),
+    [timeline, preview, frame],
+  );
+
+  const toCanvas = (e: React.PointerEvent | React.MouseEvent) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return { x: (e.clientX - r.left) / scale, y: (e.clientY - r.top) / scale };
+  };
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!project || e.button !== 0) return;
+    const p = toCanvas(e);
+    const hit = pick(boxes, p.x, p.y);
+    if (useStore.getState().annotating) {
+      // 不让按下鼠标把焦点从批注输入框抢走
+      e.preventDefault();
+      if (!hit) {
+        st.toast("点选画面中的元素来添加批注", "info");
+        return;
+      }
+      const bounds = area.current?.getBoundingClientRect();
+      if (!bounds) return;
+      const popupWidth = Math.max(1, Math.min(280, bounds.width - 24));
+      const left = Math.max(
+        12,
+        Math.min(bounds.width - popupWidth - 12, e.clientX - bounds.left - popupWidth / 2),
+      );
+      const popupHeight = 28;
+      const top = Math.max(
+        12,
+        Math.min(bounds.height - popupHeight - 12, e.clientY - bounds.top - popupHeight - 16),
+      );
+      const point = { x: Math.round(p.x), y: Math.round(p.y) };
+      st.select(hit.id);
+      st.setPin(point);
+      st.setAnnotating(false);
+      setCommentText("");
+      setAnnotationDraft({
+        target: hit.id,
+        point,
+        atMs: msOfFrame(useStore.getState().frame, fps),
+        left,
+        top,
+      });
+      return;
+    }
+    st.select(hit?.id ?? null);
+    // 字幕的位置由样式决定；主轨铺满画面（z < 0），都不能拖
+    if (!hit || hit.locked || hit.kind === "caption" || hit.z < 0) return;
+    const ref = findItem(project, hit.id);
+    const t = ref && "transform" in ref.item ? ref.item.transform : undefined;
+    // 有关键帧的元素从此刻插值后的位置开始拖，改动写进播放头处的关键帧
+    const tl = useStore.getState().preview?.timeline;
+    const v = tl && [...tl.videos, ...tl.images].find((x) => x.id === hit.id);
+    const local = v ? useStore.getState().frame - v.from : 0;
+    const now = v?.keyframes.length ? transformAt(v.transform, v.keyframes, local) : undefined;
+    drag.current = {
+      id: hit.id,
+      x0: p.x,
+      y0: p.y,
+      bx: now?.x ?? t?.x ?? W / 2,
+      by: now?.y ?? t?.y ?? H / 2,
+      atMs: now ? msOfFrame(local, fps) : undefined,
+      ops: null,
+    };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const p = toCanvas(e);
+    const d = drag.current;
+    if (!d || !project) {
+      setHover(pick(boxes, p.x, p.y)?.id ?? null);
+      return;
+    }
+    if (Math.hypot(p.x - d.x0, p.y - d.y0) < 3 / scale && !d.ops) return;
+    try {
+      // 按住 ⌘ 暂时关闭吸附（和时间线一致）
+      const plan = planTransform(project, {
+        id: d.id,
+        transform: { x: d.bx + p.x - d.x0, y: d.by + p.y - d.y0 },
+        snap: !e.metaKey,
+        atMs: d.atMs,
+      });
+      d.ops = plan.ops;
+      st.setDraft({ timeline: compile(applyOps(project, plan.ops).project), guides: plan.guides });
+    } catch (err) {
+      drag.current = null;
+      st.setDraft(null);
+      st.toast(err instanceof Error ? err.message : String(err), "error");
+    }
+  };
+
+  const onPointerUp = async () => {
+    const d = drag.current;
+    drag.current = null;
+    if (d?.ops) await st.submit(d.ops);
+    st.setDraft(null);
+  };
+
+  const dismissAnnotation = () => {
+    setAnnotationDraft(null);
+    setCommentText("");
+    st.setPin(null);
+  };
+
+  const addAnnotation = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const draft = annotationDraft;
+    const text = commentText.trim();
+    if (!draft || !text || commentBusy) return;
+    setCommentBusy(true);
+    await st.addComment({ text, atMs: draft.atMs, target: draft.target, point: draft.point });
+    setCommentBusy(false);
+    setAnnotationDraft(null);
+    setCommentText("");
+  };
+
+  const nowMs = msOfFrame(frame, fps);
+  const pins = (review?.comments ?? []).filter(
+    (c) =>
+      c.status === "open" && c.point && c.atMs !== undefined && Math.abs(c.atMs - nowMs) < 1500,
+  );
+  const safe = project ? safeAreaFor(project.canvas.safeArea.preset, W, H) : null;
+  const flashing = flash && Date.now() - flash.at < 2400 ? flash : null;
+  const selBox = boxes.find((b) => b.id === selected);
+  const selectedHasIssue = selBox && (lint?.issues ?? []).some((issue) => issue.id === selBox.id);
+  const hoverBox = hover && hover !== selected ? boxes.find((b) => b.id === hover) : undefined;
+
+  const rect = (b: HitBox["box"]): React.CSSProperties => ({
+    left: b.x0 * scale,
+    top: b.y0 * scale,
+    width: (b.x1 - b.x0) * scale,
+    height: (b.y1 - b.y0) * scale,
+  });
+
+  return (
+    <main className="stage panel">
+      <div className="stage-header">
+        <h1 className="stage-name" title={name} hidden={EMBED}>
+          {name || "载入中…"}
+        </h1>
+        <PreviewSettings />
+      </div>
+      <div className="stage-area" ref={area}>
+        {inputProps && scale > 0 ? (
+          <div className="canvas" style={{ width: W * scale, height: H * scale }}>
+            <Player
+              ref={player}
+              component={Main}
+              inputProps={inputProps}
+              durationInFrames={total}
+              compositionWidth={W}
+              compositionHeight={H}
+              fps={fps}
+              style={{ width: "100%", height: "100%" }}
+              clickToPlay={false}
+              doubleClickToFullscreen={false}
+              spaceKeyToPlayOrPause={false}
+              moveToBeginningWhenEnded={false}
+            />
+            <div
+              className={
+                annotating
+                  ? "hit-layer annotating"
+                  : drag.current
+                    ? "hit-layer dragging"
+                    : "hit-layer"
+              }
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={() => void onPointerUp()}
+              onPointerLeave={() => setHover(null)}
+            >
+              {referenceGuides.horizontal && <div className="center-guide horizontal" />}
+              {referenceGuides.vertical && <div className="center-guide vertical" />}
+              {safeArea && safe && (
+                <div
+                  className="safe-area"
+                  style={{
+                    left: safe.left * scale,
+                    top: safe.top * scale,
+                    right: safe.right * scale,
+                    bottom: safe.bottom * scale,
+                  }}
+                >
+                  <span>
+                    {project?.canvas.safeArea.preset === "all" ? "三平台安全区" : "安全区"}
+                  </span>
+                </div>
+              )}
+              {draft?.guides.map((g) => (
+                <div
+                  key={`${g.axis}-${g.pos}`}
+                  className={`snap-guide ${g.axis}`}
+                  style={g.axis === "h" ? { top: g.pos * scale } : { left: g.pos * scale }}
+                />
+              ))}
+              {hoverBox && hoverBox.kind !== "video" && (
+                <div className="box hover" style={rect(hoverBox.box)} />
+              )}
+              {flashing &&
+                boxes
+                  .filter((b) => flashing.ids.includes(b.id) && b.kind !== "video")
+                  .map((b) => (
+                    <div key={`${b.id}-${flashing.at}`} className="box flash" style={rect(b.box)} />
+                  ))}
+              {selBox && selBox.kind !== "video" && (
+                <div
+                  className={[
+                    "box selected",
+                    selBox.locked ? "locked" : "",
+                    // 贴着画面顶边时，标签放进框里，免得被裁掉
+                    selBox.box.y0 * scale < 24 ? "tag-inside" : "",
+                  ].join(" ")}
+                  style={rect(selBox.box)}
+                >
+                  <span className="box-tag">
+                    {selectedHasIssue && <Icon name="warn" size={11} className="box-warning" />}
+                    {selBox.locked && <Icon name="lock" size={11} />}
+                    {KIND[selBox.kind]} · {selBox.id}
+                  </span>
+                </div>
+              )}
+              {pins.map((c) => (
+                <button
+                  type="button"
+                  key={c.id}
+                  className="pin"
+                  title={c.text}
+                  style={{ left: (c.point?.x ?? 0) * scale, top: (c.point?.y ?? 0) * scale }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={() => {
+                    if (c.target) st.select(c.target, { reveal: false });
+                    st.setSideTab("comments");
+                  }}
+                >
+                  <span>{c.id.replace(/^k/, "")}</span>
+                </button>
+              ))}
+              {pin && (
+                <span className="pin draft" style={{ left: pin.x * scale, top: pin.y * scale }} />
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="canvas skeleton" style={{ aspectRatio: `${W} / ${H}` }}>
+            {loadError && (
+              <div className="load-error" role="alert">
+                <Icon name="warn" size={18} />
+                <p>预览加载失败</p>
+                <span>{loadError}</span>
+                <button type="button" className="chip" onClick={() => void st.refresh()}>
+                  重试
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+        {annotating && (
+          <div className="annotation-hint" role="status">
+            点选画面元素添加批注 <kbd>Esc</kbd>
+          </div>
+        )}
+        {annotationDraft && (
+          <form
+            className="floating-comment"
+            aria-label="添加批注"
+            style={{ left: annotationDraft.left, top: annotationDraft.top }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onSubmit={(e) => void addAnnotation(e)}
+          >
+            <span className="floating-comment-context">
+              <Icon name="target" size={12} />
+              <span className="mono">{timecode(frameOfMs(annotationDraft.atMs, fps), fps)}</span>
+              <span className="floating-comment-target">{annotationDraft.target}</span>
+            </span>
+            <input
+              ref={commentInput}
+              value={commentText}
+              placeholder="添加批注…"
+              aria-label="批注内容"
+              onChange={(e) => setCommentText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  dismissAnnotation();
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="floating-comment-close"
+              aria-label="取消批注"
+              onClick={dismissAnnotation}
+            >
+              <Icon name="close" size={11} />
+            </button>
+            <button
+              type="submit"
+              className="floating-comment-submit"
+              aria-label="确定批注"
+              title="确定"
+              disabled={!commentText.trim() || commentBusy}
+            >
+              <Icon name="check" size={12} />
+            </button>
+          </form>
+        )}
+      </div>
+      <PlayerFooter frame={frame} fps={fps} total={total} width={W} height={H} playing={playing} />
+    </main>
+  );
+}
+
+function PlayerFooter({
+  frame,
+  fps,
+  total,
+  width,
+  height,
+  playing,
+}: {
+  frame: number;
+  fps: number;
+  total: number;
+  width: number;
+  height: number;
+  playing: boolean;
+}) {
+  const st = useStore.getState();
+  return (
+    <footer className="player-footer" aria-label="播放器控制">
+      <div className="player-time mono">
+        {timecode(frame, fps)}
+        <span className="timecode-total"> / {timecode(total, fps)}</span>
+      </div>
+      <div className="player-transport">
+        <button
+          type="button"
+          className="icon-btn player-step"
+          aria-label="上一帧（←）"
+          title="上一帧（←）"
+          onClick={() => st.seek(Math.max(0, frame - 1))}
+        >
+          <Icon name="prev" />
+        </button>
+        <button
+          type="button"
+          className="play-btn"
+          aria-label={playing ? "暂停" : "播放"}
+          title={playing ? "暂停（空格）" : "播放（空格）"}
+          onClick={() => st.setPlaying(!playing)}
+        >
+          <Icon name={playing ? "pause" : "play"} size={14} />
+        </button>
+        <button
+          type="button"
+          className="icon-btn player-step"
+          aria-label="下一帧（→）"
+          title="下一帧（→）"
+          onClick={() => st.seek(Math.min(total - 1, frame + 1))}
+        >
+          <Icon name="next" />
+        </button>
+      </div>
+      <div className="player-status">
+        <span
+          className="player-resolution mono"
+          aria-label={`播放速度 1 倍，画布 ${width}×${height}`}
+        >
+          1× · {width}×{height}
+        </span>
+      </div>
+    </footer>
+  );
+}
+
+function PreviewSettings() {
+  const safeArea = useStore((s) => s.safeArea);
+  const referenceGuides = useStore((s) => s.referenceGuides);
+  const { toggleSafeArea, toggleReferenceGuide } = useStore.getState();
+  return (
+    <details className="preview-settings">
+      <summary className="icon-btn preview-settings-trigger" aria-label="预览设置" title="预览设置">
+        <Icon name="menu" />
+      </summary>
+      <div className="preview-settings-panel">
+        <strong>参考线</strong>
+        <label className="preview-setting">
+          <input
+            type="checkbox"
+            aria-label="平台安全区"
+            checked={safeArea}
+            onChange={toggleSafeArea}
+          />
+          <span>平台安全区</span>
+        </label>
+        <label className="preview-setting">
+          <input
+            type="checkbox"
+            aria-label="水平参考线"
+            checked={referenceGuides.horizontal}
+            onChange={() => toggleReferenceGuide("horizontal")}
+          />
+          <span>水平参考线</span>
+        </label>
+        <label className="preview-setting">
+          <input
+            type="checkbox"
+            aria-label="垂直参考线"
+            checked={referenceGuides.vertical}
+            onChange={() => toggleReferenceGuide("vertical")}
+          />
+          <span>垂直参考线</span>
+        </label>
+      </div>
+    </details>
+  );
+}

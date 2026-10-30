@@ -1,0 +1,77 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/dist",
+      "!fixtures/out",
+      "!pnpm-lock.yaml",
+      "!**/*.md"
+    ]
+  },
+  "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
+  "javascript": { "formatter": { "quoteStyle": "double" } },
+  "linter": {
+    "enabled": true,
+    "rules": { "preset": "none" }
+  },
+  "overrides": [
+    {
+      "includes": ["src/core/**", "src/templates/**", "src/composition/**", "src/web/**"],
+      "linter": { "rules": { "correctness": { "noNodejsModules": "error" } } }
+    },
+    {
+      "includes": ["src/core/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "**/templates/**",
+                      "**/composition/**",
+                      "**/node/**",
+                      "**/cli/**",
+                      "**/server/**",
+                      "**/mcp/**",
+                      "**/web/**",
+                      "react",
+                      "remotion",
+                      "@remotion/*"
+                    ],
+                    "message": "core 必须是纯 TS，不能依赖其他目录、React 或 Remotion"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["src/templates/**", "src/composition/**", "src/web/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["**/node/**", "**/cli/**", "**/server/**", "**/mcp/**"],
+                    "message": "浏览器侧代码不能依赖 Node 侧模块"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
