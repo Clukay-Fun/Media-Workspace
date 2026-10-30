@@ -8,7 +8,7 @@ const DEFAULT_TRANSITION_MS = 300;
 export type TransitionCut = {
   outgoingId: string;
   incomingId: string;
-  /** 硬切取片段交界；有转场时取重叠区中心。 */
+  /** 硬切取片段交界；主轨转场不占时间（0019），重叠恒为 0，也落在交界。 */
   frame: number;
   transition: ResolvedTransition | null;
 };
@@ -71,7 +71,7 @@ export function transitionPairFor(project: Project, incomingId: string): Transit
   };
 }
 
-/** 新增剪辑点时使用叠化；短片段按可重叠时长缩短默认值。 */
+/** 新增剪辑点时使用叠化；片段太短时按可用时长缩短默认值。 */
 export function defaultTransition(maxDurationMs: number): Transition {
   return { type: "fade", durationMs: Math.min(DEFAULT_TRANSITION_MS, maxDurationMs) };
 }

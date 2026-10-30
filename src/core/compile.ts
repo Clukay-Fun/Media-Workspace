@@ -143,8 +143,8 @@ export function layoutMainTrack(project: Project): MainSegment[] {
   let cursor = 0;
   for (const item of track.items) {
     if (!isMainClip(item)) continue;
-    const overlap = segments.length > 0 ? (item.transitionIn?.durationMs ?? 0) : 0;
-    const startMs = cursor - overlap;
+    // 主轨转场不占时间（docs/decisions/0019）：前一段停在最后一帧和这一段过渡，声音不重叠
+    const startMs = cursor;
     const endMs = startMs + clipTimelineMs(item);
     segments.push({ clip: item, index: segments.length, startMs, endMs });
     cursor = endMs;
@@ -246,7 +246,7 @@ export function compile(project: Project): ResolvedTimeline {
   for (const seg of segments) {
     const { clip } = seg;
     const trans = seg.index > 0 ? transition(clip.transitionIn) : null;
-    const from = prevEnd - (trans?.durationInFrames ?? 0);
+    const from = prevEnd;
     const end = f(seg.endMs);
     const t = full(clip.transform);
     videos.push({

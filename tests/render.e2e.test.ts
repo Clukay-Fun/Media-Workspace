@@ -246,24 +246,24 @@ describe("画面能力", () => {
   it("转场、画中画、图片动起来的帧：截图和导出一致", async () => {
     const p = await loadProject(vdir);
     const tl = compile(p);
-    // 4000ms - 500ms 重叠 = 3500ms → 105 帧；转场在第 45–60 帧
-    expect(tl.durationInFrames).toBe(105);
+    // 主轨转场不占时间（0019）：4000ms → 120 帧；转场在第 60–75 帧
+    expect(tl.durationInFrames).toBe(120);
     const out = join(root, "visual.mp4");
     await exportVideo(vdir, p, { out, concurrency: 2 });
-    // 第 20 帧：图片和画中画入场动画中；第 52 帧：转场中、画中画和图片在关键帧之间；第 80 帧：转场后
-    const frames = [20, 52, 80];
+    // 第 20 帧：图片和画中画入场动画中；第 66 帧：转场中、画中画和图片在关键帧之间；第 95 帧：转场后
+    const frames = [20, 66, 95];
     const stills = await renderStills(vdir, p, frames, join(root, "visual-stills"));
     frames.forEach((f, k) => {
       expect(psnr(out, stills[k] ?? "", f), `第 ${f} 帧`).toBeGreaterThan(35);
     });
     // 错一帧时明显对不上，说明上面比的确实是在动的画面
-    expect(psnr(out, stills[1] ?? "", 58)).toBeLessThan(psnr(out, stills[1] ?? "", 52));
+    expect(psnr(out, stills[1] ?? "", 72)).toBeLessThan(psnr(out, stills[1] ?? "", 66));
   });
 
   it("slide 和 push 画面不同：slide 的旧画面不动，push 的旧画面被推走", async () => {
     const pushDir = await build("push");
-    const [a] = await renderStills(vdir, await loadProject(vdir), [52], join(root, "s-slide"));
-    const [b] = await renderStills(pushDir, await loadProject(pushDir), [52], join(root, "s-push"));
+    const [a] = await renderStills(vdir, await loadProject(vdir), [66], join(root, "s-slide"));
+    const [b] = await renderStills(pushDir, await loadProject(pushDir), [66], join(root, "s-push"));
     const r = spawnSync(
       ffmpeg,
       ["-i", a ?? "", "-i", b ?? "", "-filter_complex", "psnr", "-f", "null", "-"],

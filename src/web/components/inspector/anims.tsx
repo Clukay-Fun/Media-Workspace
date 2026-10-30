@@ -52,8 +52,9 @@ export function VisualAnims({
         label="循环动画"
         anim={item.animLoop ?? null}
         presets={LOOPS}
-        // 呼吸：约 2.4 秒一个周期、幅度 ±3%（0017 第二批的调研结论）
+        // 呼吸：约 2.4 秒一个周期；幅度 ±6%（intensity 2）——验收时 ±3% 看不出来
         defaultMs={2400}
+        extra={{ intensity: 2 }}
         durationLabel="周期（毫秒）"
         locked={locked}
         onChange={(a) => set("animLoop", a)}
@@ -77,6 +78,7 @@ function AnimField({
   anim,
   presets = PRESETS,
   defaultMs = 300,
+  extra,
   durationLabel = "动画时长（毫秒）",
   locked,
   onChange,
@@ -85,6 +87,8 @@ function AnimField({
   anim: Anim | null;
   presets?: { value: Anim["preset"]; label: string }[];
   defaultMs?: number;
+  /** 新选一个预设时带上的默认参数（比如幅度） */
+  extra?: Partial<Anim>;
   durationLabel?: string;
   locked: boolean;
   onChange: (a: Anim) => void;
@@ -105,7 +109,7 @@ function AnimField({
             }
             const base = anim && anim.preset !== "none" ? anim : null;
             onChange({
-              ...(base ?? {}),
+              ...(base ?? extra ?? {}),
               preset,
               durationMs: base?.durationMs ?? defaultMs,
               easing: base?.easing ?? "ease-out",

@@ -68,7 +68,8 @@ export const Keyframe = z.strictObject({
 
 /**
  * 主轨两段之间的转场。slide：新画面滑进来盖住旧画面；push：新画面把旧画面推走；fade：交叉淡化。
- * direction 是画面往哪边走，durationMs 是两段重叠的时长（总时长相应变短）
+ * direction 是画面往哪边走，durationMs 是过渡的时长。主轨转场不占时间：前一段停在最后一帧和后一段过渡，
+ * 声音硬切（docs/decisions/0019）；接片尾的转场两段重叠，总时长变短
  */
 export const Transition = z.strictObject({
   type: z.enum(["slide", "push", "fade"]),

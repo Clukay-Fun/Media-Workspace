@@ -217,7 +217,7 @@ describe("compile：分割、剪切、转场", () => {
     ]);
   });
 
-  it("转场让后一个片段提前开始，总时长变短", () => {
+  it("主轨转场不占时间：后一段照常接在前一段后面，总时长不变（0019）", () => {
     const tl = compile(
       make({
         tracks: [
@@ -237,9 +237,9 @@ describe("compile：分割、剪切、转场", () => {
     );
     expect(tl.videos.map((v) => [v.from, v.durationInFrames])).toEqual([
       [0, 30],
-      [18, 30],
+      [30, 30],
     ]);
-    expect(tl.mainEndFrame).toBe(48);
+    expect(tl.mainEndFrame).toBe(60);
     expect(tl.videos[1]?.transitionIn).toEqual({
       type: "slide",
       direction: "up",

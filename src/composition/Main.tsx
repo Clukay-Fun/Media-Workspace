@@ -1,11 +1,8 @@
 import { loadFont } from "@remotion/fonts";
 import { Video } from "@remotion/media";
-import { linearTiming, type TransitionPresentation, TransitionSeries } from "@remotion/transitions";
-import { fade } from "@remotion/transitions/fade";
-import { slide } from "@remotion/transitions/slide";
 import type React from "react";
-import { AbsoluteFill, Img, Sequence, useCurrentFrame } from "remotion";
-import { type AnimState, elementState, transformAt } from "../core/animate";
+import { AbsoluteFill, Freeze, Img, Sequence, useCurrentFrame } from "remotion";
+import { type AnimState, ease, elementState, outwardDirection, transformAt } from "../core/animate";
 import type { PreviewProps } from "../core/api";
 import type {
   FullTransform,
@@ -17,7 +14,7 @@ import type {
   ResolvedVideo,
 } from "../core/compile";
 import { BUILTIN_STYLES } from "../core/presets";
-import type { TextStyle } from "../core/text-style";
+import type { Anim, TextStyle } from "../core/text-style";
 import { TEMPLATES } from "../templates";
 import { TextBlock } from "./TextBlock";
 
@@ -46,6 +43,30 @@ function cssTransform(t: FullTransform, width: number, height: number): React.CS
     borderRadius: t.radius,
     overflow: t.radius > 0 ? "hidden" : undefined,
   };
+}
+
+/**
+ * 图片和视频的动画状态：滑动从画面外进出（位移取画面宽高），没写方向时从最近的边缘进出
+ */
+function visualState(
+  v: Pick<ResolvedImage, "animIn" | "animOut" | "animLoop" | "durationInFrames">,
+  t: FullTransform,
+  frame: number,
+  fps: number,
+  width: number,
+  height: number,
+): AnimState {
+  const outward = (a: Anim | null): Anim | null =>
+    a?.preset === "slide" && !a.direction
+      ? { ...a, direction: outwardDirection(t.x, t.y, width, height) }
+      : a;
+  return elementState(
+    { in: outward(v.animIn), out: outward(v.animOut), loop: v.animLoop },
+    (frame * 1000) / fps,
+    (v.durationInFrames * 1000) / fps,
+    Math.min(width, height) * 0.2,
+    (dir) => (dir === "left" || dir === "right" ? width : height),
+  );
 }
 
 /** 图片和视频共用：变换（含关键帧）上再叠入场 / 出场 / 循环动画的位移、缩放、旋转、透明度、模糊 */
@@ -81,12 +102,7 @@ const VideoLayer: React.FC<{
 }> = ({ v, src, fps, width, height }) => {
   const frame = useCurrentFrame();
   const t = transformAt(v.transform, v.keyframes, frame);
-  const anim = elementState(
-    { in: v.animIn, out: v.animOut, loop: v.animLoop },
-    (frame * 1000) / fps,
-    (v.durationInFrames * 1000) / fps,
-    Math.min(width, height) * 0.2,
-  );
+  const anim = visualState(v, t, frame, fps, width, height);
   if (v.kind === "audio") {
     return v.muted ? null : (
       <Video
@@ -130,12 +146,7 @@ const ImageLayer: React.FC<{
 }> = ({ img, src, width, height, fps }) => {
   const frame = useCurrentFrame();
   const t = transformAt(img.transform, img.keyframes, frame);
-  const a = elementState(
-    { in: img.animIn, out: img.animOut, loop: img.animLoop },
-    (frame * 1000) / fps,
-    (img.durationInFrames * 1000) / fps,
-    Math.min(width, height) * 0.2,
-  );
+  const a = visualState(img, t, frame, fps, width, height);
   return (
     <AbsoluteFill style={animatedStyle(t, a, width, height)}>
       <Img src={src} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
@@ -192,22 +203,100 @@ const OverlayLayer: React.FC<{
   );
 };
 
-function presentation(t: ResolvedTransition): TransitionPresentation<Record<string, unknown>> {
-  if (t.type === "fade") return fade() as TransitionPresentation<Record<string, unknown>>;
-  // 方向是「画面往哪边走」：往上走 = 新画面从下面进来
-  const from = {
-    up: "from-bottom",
-    down: "from-top",
-    left: "from-right",
-    right: "from-left",
-  } as const;
-  // push：旧画面被新画面推走（Remotion 的 slide 本身就是这样）；
-  // slide：旧画面不动，新画面滑进来盖住它（docs/decisions/0017）
-  const exitStyle = t.type === "slide" ? { transform: "none" } : undefined;
-  return slide({ direction: from[t.direction], exitStyle }) as TransitionPresentation<
-    Record<string, unknown>
-  >;
+/**
+ * 转场时两层的样式，新画面在上面；direction 是画面往哪边走（往左走 = 新画面从右边进来）。
+ * fade：新画面渐显；slide：新画面滑进来盖住旧画面；push：新画面把旧画面推走。
+ */
+function transitionStyles(
+  t: ResolvedTransition,
+  p: number,
+  width: number,
+  height: number,
+): { enter: React.CSSProperties; exit: React.CSSProperties } {
+  const e = ease("ease-in-out", Math.min(1, Math.max(0, p)));
+  if (t.type === "fade") return { enter: { opacity: e }, exit: {} };
+  const DIR = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] } as const;
+  const [dx, dy] = DIR[t.direction];
+  const shift = (k: number): React.CSSProperties => ({
+    transform: `translate(${dx * k * width}px, ${dy * k * height}px)`,
+  });
+  return { enter: shift(e - 1), exit: t.type === "push" ? shift(e) : {} };
 }
+
+/**
+ * 主轨的一段。转场不占时间（docs/decisions/0019）：前一段播完，这一段开头的几帧里，
+ * 底下垫着前一段停住的最后一帧（静音），按转场的样式过渡；声音直接硬切，一个字都不丢。
+ * 接片尾时片尾盖上来，这一段的最后几帧按 exit 样式走。
+ */
+const MainClipLayer: React.FC<{
+  v: ResolvedVideo;
+  prev: ResolvedVideo | null;
+  exit: ResolvedTransition | null;
+  srcs: Record<string, string>;
+  width: number;
+  height: number;
+  fps: number;
+}> = ({ v, prev, exit, srcs, width, height, fps }) => {
+  const frame = useCurrentFrame();
+  const tin = prev ? v.transitionIn : null;
+  const enter =
+    tin && frame < tin.durationInFrames
+      ? transitionStyles(tin, frame / tin.durationInFrames, width, height)
+      : null;
+  const left = v.durationInFrames - frame;
+  const leave =
+    exit && left <= exit.durationInFrames
+      ? transitionStyles(exit, 1 - left / exit.durationInFrames, width, height)
+      : null;
+  const src = srcs[v.asset];
+  const prevSrc = prev ? srcs[prev.asset] : undefined;
+  return (
+    <AbsoluteFill>
+      {enter && prev && prevSrc ? (
+        <AbsoluteFill style={enter.exit}>
+          <Freeze frame={prev.durationInFrames - 1}>
+            <VideoLayer
+              v={{ ...prev, muted: true }}
+              src={prevSrc}
+              width={width}
+              height={height}
+              fps={fps}
+            />
+          </Freeze>
+        </AbsoluteFill>
+      ) : null}
+      {src ? (
+        <AbsoluteFill style={{ ...enter?.enter, ...leave?.exit }}>
+          <VideoLayer v={v} src={src} width={width} height={height} fps={fps} />
+        </AbsoluteFill>
+      ) : null}
+    </AbsoluteFill>
+  );
+};
+
+const OutroLayer: React.FC<{
+  outro: NonNullable<ResolvedTimeline["outro"]>;
+  src: string;
+  width: number;
+  height: number;
+}> = ({ outro, src, width, height }) => {
+  const frame = useCurrentFrame();
+  const t = outro.transitionIn;
+  const style =
+    t && frame < t.durationInFrames
+      ? transitionStyles(t, frame / t.durationInFrames, width, height).enter
+      : undefined;
+  return (
+    <AbsoluteFill style={style}>
+      <Video
+        src={src}
+        volume={dbToGain(outro.gainDb)}
+        objectFit="contain"
+        style={{ width: "100%", height: "100%" }}
+      />
+    </AbsoluteFill>
+  );
+};
 
 export const Main: React.FC<MainProps> = ({ timeline, styles, srcs, fonts }) => {
   useFonts(fonts);
@@ -220,61 +309,49 @@ export const Main: React.FC<MainProps> = ({ timeline, styles, srcs, fonts }) => 
   const mainZ = mains[0]?.z ?? 0;
   const layers: { z: number; key: string; node: React.ReactNode }[] = [];
 
-  // 主轨和片尾放在同一个 TransitionSeries 里，转场的重叠由它处理（和 compile 的帧计算一致）
-  const series: React.ReactNode[] = [];
-  mains.forEach((v) => {
-    if (v.transitionIn) {
-      series.push(
-        <TransitionSeries.Transition
-          key={`${v.id}-t`}
-          presentation={presentation(v.transitionIn)}
-          timing={linearTiming({ durationInFrames: v.transitionIn.durationInFrames })}
-        />,
-      );
-    }
-    series.push(
-      <TransitionSeries.Sequence key={v.id} durationInFrames={v.durationInFrames}>
-        {srcs[v.asset] ? (
-          <VideoLayer v={v} src={srcs[v.asset] ?? ""} width={width} height={height} fps={fps} />
-        ) : null}
-      </TransitionSeries.Sequence>,
-    );
-  });
   const outro = timeline.outro;
-  if (outro) {
-    if (mains.length === 0 && outro.from > 0) {
-      series.push(
-        <TransitionSeries.Sequence key="gap" durationInFrames={outro.from}>
-          {null}
-        </TransitionSeries.Sequence>,
-      );
-    }
-    if (outro.transitionIn) {
-      series.push(
-        <TransitionSeries.Transition
-          key="outro-t"
-          presentation={presentation(outro.transitionIn)}
-          timing={linearTiming({ durationInFrames: outro.transitionIn.durationInFrames })}
-        />,
-      );
-    }
-    series.push(
-      <TransitionSeries.Sequence key="outro" durationInFrames={outro.durationInFrames}>
-        <AbsoluteFill>
-          <Video
-            src={srcs[outro.asset] ?? ""}
-            volume={dbToGain(outro.gainDb)}
-            objectFit="contain"
-          />
-        </AbsoluteFill>
-      </TransitionSeries.Sequence>,
-    );
-  }
-  if (series.length > 0) {
+  const premount = Math.round(fps);
+  mains.forEach((v, i) => {
+    const last = i === mains.length - 1;
     layers.push({
       z: mainZ,
-      key: "main",
-      node: <TransitionSeries key="main">{series}</TransitionSeries>,
+      key: v.id,
+      node: (
+        <Sequence
+          key={v.id}
+          from={v.from}
+          durationInFrames={v.durationInFrames}
+          premountFor={premount}
+        >
+          <MainClipLayer
+            v={v}
+            prev={mains[i - 1] ?? null}
+            exit={last ? (outro?.transitionIn ?? null) : null}
+            srcs={srcs}
+            width={width}
+            height={height}
+            fps={fps}
+          />
+        </Sequence>
+      ),
+    });
+  });
+  const outroSrc = outro ? srcs[outro.asset] : undefined;
+  if (outro && outroSrc) {
+    layers.push({
+      // 片尾盖在主轨上面（转场时和主轨最后一段重叠），其它轨道之下
+      z: mainZ + 0.5,
+      key: "outro",
+      node: (
+        <Sequence
+          key="outro"
+          from={outro.from}
+          durationInFrames={outro.durationInFrames}
+          premountFor={premount}
+        >
+          <OutroLayer outro={outro} src={outroSrc} width={width} height={height} />
+        </Sequence>
+      ),
     });
   }
 
@@ -286,7 +363,12 @@ export const Main: React.FC<MainProps> = ({ timeline, styles, srcs, fonts }) => 
       z: v.z,
       key: v.id,
       node: (
-        <Sequence key={v.id} from={v.from} durationInFrames={v.durationInFrames}>
+        <Sequence
+          key={v.id}
+          from={v.from}
+          durationInFrames={v.durationInFrames}
+          premountFor={premount}
+        >
           <VideoLayer v={v} src={src} width={width} height={height} fps={fps} />
         </Sequence>
       ),
@@ -299,7 +381,12 @@ export const Main: React.FC<MainProps> = ({ timeline, styles, srcs, fonts }) => 
       z: img.z,
       key: img.id,
       node: (
-        <Sequence key={img.id} from={img.from} durationInFrames={img.durationInFrames}>
+        <Sequence
+          key={img.id}
+          from={img.from}
+          durationInFrames={img.durationInFrames}
+          premountFor={premount}
+        >
           <ImageLayer img={img} src={src} width={width} height={height} fps={fps} />
         </Sequence>
       ),
