@@ -6,7 +6,7 @@ import { frameOfMs, itemFrames, timecode } from "../lib/timeline";
 import { type SideTab, useStore } from "../store";
 import { CommentCard } from "./comment-card";
 import { Icon } from "./icons";
-import { SelectionCard } from "./selection";
+import { SelectionCard } from "./inspector";
 
 /**
  * 右栏：属性 / 批注 / AI 改动。属性页给选中元素能直接点的选项，点不出来的在底部输入框告诉 AI。
