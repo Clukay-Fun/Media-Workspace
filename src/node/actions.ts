@@ -18,6 +18,7 @@ import { PROJECT_FORMAT_VERSION } from "../core/version";
 import { overlayAssets, overlayBounds, TEMPLATE_NAMES, TEMPLATES } from "../templates";
 import { alignCaptions } from "./asr";
 import { detectFaces, readFaces } from "./faces";
+import { getDefaultOutro } from "./library";
 import { importMedia } from "./media";
 import { projectFiles } from "./paths";
 import { exportVideo, renderStills } from "./render";
@@ -73,6 +74,71 @@ export async function importAsset(
         }
       : {}),
   };
+}
+
+/**
+ * 接上片尾：不给文件时用默认片尾（mw outro-default）。同一个文件已经导入过就直接用那个素材，
+ * 否则先导入（素材 ID 优先用 outro）。fadeMs 不写时用默认片尾的设置，0 = 硬切
+ */
+export async function attachOutro(
+  dir: string,
+  o: Actor & { file?: string; fadeMs?: number; onLog?: (s: string) => void },
+) {
+  const def = o.file === undefined ? await getDefaultOutro() : null;
+  if (o.file === undefined && !def) {
+    throw new MwError("NOT_FOUND", "还没有设置默认片尾", {
+      hint: "用 mw outro-default <视频文件> 设置一个，或者直接给出片尾文件",
+    });
+  }
+  const file = resolve(o.file ?? def?.file ?? "");
+  let p = await loadProject(dir);
+  let asset = Object.entries(p.assets).find(([, a]) => resolve(dir, a.path) === file)?.[0];
+  if (!asset) {
+    const r = await importAsset(dir, file, {
+      ...(p.assets.outro ? {} : { id: "outro" }),
+      source: o.source,
+      actor: o.actor,
+      onLog: o.onLog,
+    });
+    asset = r.asset;
+    p = await loadProject(dir);
+  }
+  const transitionIn =
+    o.fadeMs === undefined
+      ? def
+        ? def.transitionIn
+        : { type: "fade" as const, durationMs: 300 }
+      : o.fadeMs > 0
+        ? { type: "fade" as const, durationMs: o.fadeMs }
+        : null;
+  const res = await applyToProject(dir, {
+    ops: [
+      {
+        op: "outro.set",
+        outro: {
+          asset,
+          ...(transitionIn ? { transitionIn } : {}),
+          ...(def ? { gainDb: def.gainDb } : {}),
+        },
+      },
+    ],
+    baseRevision: p.revision,
+    source: o.source,
+    actor: o.actor,
+    ...templateOpts,
+  });
+  return { ...res, outro: asset, file, usedDefault: def !== null };
+}
+
+export async function removeOutro(dir: string, o: Actor) {
+  const p = await loadProject(dir);
+  return applyToProject(dir, {
+    ops: [{ op: "outro.remove" }],
+    baseRevision: p.revision,
+    source: o.source,
+    actor: o.actor,
+    ...templateOpts,
+  });
 }
 
 /** 质检（docs/decisions/0007）：字号、安全区、字幕行数、遮挡、挡脸。都是警告，不阻止导出 */
@@ -444,6 +510,8 @@ export function guideInfo() {
       "图片和画中画可以加循环动画 animLoop（v6）：只有 breathe（呼吸），durationMs 是周期，默认 2400、intensity 2（±6%，±3% 看不出来）；一条视频里别多处同时呼吸",
       "关键帧（keyframe.set，atMs 相对元素开始）：元素有关键帧后 transform 不再起作用，以关键帧为准；推近 1.5–2.5 秒、幅度 10–20%（4 秒以上显得拖）",
       "卡片：先看 templates 的 useFor / sizes / example 选模板；卡片必须写 size（v7）：small 金句 / 数字 / 人名 / 提示，half 要点 / 截图 / 长金句（主画面自动上移），full 只给整段原文（盖住标题条）；有卡时字幕自动隐藏；30 秒 0–2 张、60 秒不超过 4 张；字数守住 schema 的上限",
+      "「第 N 个观点」按章节定位：开场之后的第 N 章（没分章先 chapters.set），卡片锚在亮出观点的那句字幕上，内容只从这一章的字幕里提炼",
+      "片尾：人说接上默认片尾时用 outro（不给 file 用默认片尾，默认叠化 300ms，fadeMs: 0 硬切）；没设置默认片尾会报 NOT_FOUND，请人用 mw outro-default <视频文件> 设置",
       "封面：cover.update 写 atMs（1 秒以后、表情好的一帧）和 title: { template, style, props }，再跑 cover；封面只有主画面和封面标题",
       "提交后跑 lint：字太小、出安全区、字幕放不下、互相遮挡、挡脸；导入新视频时看一眼 subtitleCheck，原片已有字幕会重影",
     ],

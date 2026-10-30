@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { compile } from "../src/core/compile";
 import { coverView } from "../src/core/cover";
 import { BUILTIN_STYLES } from "../src/core/presets";
-import { coverProject } from "../src/node/actions";
+import { attachOutro, coverProject, removeOutro } from "../src/node/actions";
 import { importMedia } from "../src/node/media";
 import { exportVideo, renderStills } from "../src/node/render";
 import { applyToProject, initProject, loadProject } from "../src/node/store";
@@ -407,4 +407,31 @@ describe("卡片和封面", () => {
     // 完整画面在第 45 帧有字幕和半屏卡，下半屏明显不同
     expect(crop(r.file, full ?? "", "crop=540:480:0:480")).toBeLessThan(25);
   }, 180_000);
+
+  it("接片尾：导入文件、叠化接在主轨后面；再接一次复用同一个素材", async () => {
+    const file = join(root, "outro-src.mp4");
+    execFileSync(ffmpeg, [
+      "-v",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "smptebars=size=540x960:rate=30:duration=1",
+      "-pix_fmt",
+      "yuv420p",
+      file,
+    ]);
+    const who = { source: "cli" as const, actor: "test" };
+    const r = await attachOutro(d, { ...who, file });
+    expect(r.outro).toBe("outro");
+    const tl = compile(await loadProject(d));
+    // 主轨 90 帧，片尾 30 帧，叠化 300ms（9 帧）重叠
+    expect(tl.outro).toMatchObject({ asset: "outro", from: 81 });
+    expect(tl.durationInFrames).toBe(111);
+    expect((await attachOutro(d, { ...who, file, fadeMs: 0 })).outro).toBe("outro");
+    expect(Object.keys((await loadProject(d)).assets)).toEqual(["m", "outro"]);
+    await removeOutro(d, who);
+    expect((await loadProject(d)).outro).toBeNull();
+  }, 120_000);
 });

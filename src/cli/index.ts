@@ -7,6 +7,7 @@ import { BUILTIN_STYLES } from "../core/presets";
 import { runMcpStdio } from "../mcp/server";
 import {
   alignProject,
+  attachOutro,
   commentsInfo,
   coverProject,
   exportProject,
@@ -16,13 +17,23 @@ import {
   inspectProject,
   lintDir,
   previewProject,
+  removeOutro,
   restoreCut,
   templateOpts,
   templatesInfo,
   validateDir,
 } from "../node/actions";
 import { ASR_MODEL, asrModelDir, fetchAsrModel, hasAsrModel } from "../node/asr";
-import { listStyles, removeStyle, saveStyle, textStylesDir, useStyle } from "../node/library";
+import {
+  getDefaultOutro,
+  listStyles,
+  outroDefaultFile,
+  removeStyle,
+  saveStyle,
+  setDefaultOutro,
+  textStylesDir,
+  useStyle,
+} from "../node/library";
 import { resolveProjectDir } from "../node/paths";
 import {
   clearServing,
@@ -366,6 +377,43 @@ cli
   .action(
     act(async (proj: string, o: { out?: string }) => {
       out(await coverProject(resolveProjectDir(proj), { out: o.out, onLog: log }));
+    }),
+  );
+
+cli
+  .command("outro <proj> [file]", "接上片尾：不给文件时用默认片尾（mw outro-default）")
+  .option("--fade <ms>", "叠化时长，0 = 硬切；不写时用默认片尾的设置（300ms）")
+  .option("--remove", "去掉片尾")
+  .action(
+    act(async (proj: string, file: string | undefined, o: { fade?: number; remove?: boolean }) => {
+      const dir = resolveProjectDir(proj);
+      const who = { source: "cli" as const, actor: "user" };
+      if (o.remove) return out(await removeOutro(dir, who));
+      out(
+        await attachOutro(dir, {
+          ...who,
+          ...(file === undefined ? {} : { file }),
+          ...(o.fade === undefined ? {} : { fadeMs: Number(o.fade) }),
+          onLog: log,
+        }),
+      );
+    }),
+  );
+
+cli
+  .command("outro-default [file]", "查看 / 设置默认片尾（只记路径，不复制文件）")
+  .option("--fade <ms>", "接上时的叠化时长，0 = 硬切（默认 300）")
+  .option("--gain <db>", "片尾音量（dB，默认 0）")
+  .action(
+    act(async (file: string | undefined, o: { fade?: number; gain?: number }) => {
+      if (file === undefined) {
+        return out({ ok: true, file: outroDefaultFile(), outro: await getDefaultOutro() });
+      }
+      const outro = await setDefaultOutro(file, {
+        ...(o.fade === undefined ? {} : { fadeMs: Number(o.fade) }),
+        ...(o.gain === undefined ? {} : { gainDb: Number(o.gain) }),
+      });
+      out({ ok: true, file: outroDefaultFile(), outro });
     }),
   );
 

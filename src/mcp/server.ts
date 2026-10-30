@@ -5,6 +5,7 @@ import { z } from "zod";
 import { MwError } from "../core/errors";
 import {
   alignProject,
+  attachOutro,
   commentsInfo,
   coverProject,
   exportProject,
@@ -14,6 +15,7 @@ import {
   inspectProject,
   lintDir,
   previewProject,
+  removeOutro,
   restoreCut,
   templateOpts,
   templatesInfo,
@@ -313,6 +315,32 @@ export function createMcpServer(): McpServer {
       inputSchema: { project, out: z.string().optional() },
     },
     ({ project: p, out }) => call(() => coverProject(dirOf(p), { out })),
+  );
+
+  server.registerTool(
+    "outro",
+    {
+      description:
+        "接上片尾：不给 file 时用用户设置的默认片尾（没设置会报 NOT_FOUND，请用户用 mw outro-default 设置）；remove 去掉片尾。fadeMs 叠化时长，0 = 硬切",
+      inputSchema: {
+        project,
+        file: z.string().optional(),
+        fadeMs: z.number().int().min(0).max(5000).optional(),
+        remove: z.boolean().optional(),
+        actor,
+      },
+    },
+    ({ project: p, file, fadeMs, remove, actor: a }) =>
+      call(() =>
+        remove
+          ? removeOutro(dirOf(p), { source: "mcp", actor: a })
+          : attachOutro(dirOf(p), {
+              source: "mcp",
+              actor: a,
+              ...(file === undefined ? {} : { file }),
+              ...(fadeMs === undefined ? {} : { fadeMs }),
+            }),
+      ),
   );
 
   server.registerTool(

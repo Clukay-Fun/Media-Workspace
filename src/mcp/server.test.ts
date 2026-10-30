@@ -55,6 +55,7 @@ describe("MCP", () => {
         "import",
         "inspect",
         "lint",
+        "outro",
         "preview",
         "redo",
         "resolve",

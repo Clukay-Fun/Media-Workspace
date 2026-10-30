@@ -5,8 +5,7 @@
 
 | 事项 | 谁在做 | 目录 / 分支 | 状态 | 下一步 / 卡在哪 |
 |---|---|---|---|---|
-| 阶段 E：卡片框架、封面、默认片尾、编排规则（0021） | Claude | `media-workspace` / dev | 卡片框架和干净封面已完成（0022，格式 v7） | 默认片尾、卡片编排规则；Grok 调研出来后调半屏参数 |
-| 阶段 E：口播卡片调研（0021） | Grok | `media-workspace/local/notes/2026-10-30-mg-cards/`，不用分支 | 待开工 | — |
+| 阶段 E：卡片框架、封面、默认片尾、编排规则（0021） | Claude | `media-workspace` / dev | 卡片框架和干净封面（0022，格式 v7，已按 Grok 调研调整）、默认片尾（0023）已完成 | 卡片编排规则；合并 Codex、DeepSeek 的模板；最后验收 |
 | 阶段 E：模板 金句 / 要点列表 / 大数字（0021） | Codex | `media-workspace-codex` / `feat/cards-text` | 开工 | 写法见 `docs/template-guide.md` |
 | 阶段 E：模板 人名条 / 截图卡片，封面入口（0021） | DeepSeek | `media-workspace-deepseek` / `feat/cards-media` | 开工 | 写法见 `docs/template-guide.md` |
 | 声音分离可行性实验（0015 第 6 条） | Grok | `media-workspace/local/notes/`，不用分支 | 实验做完，结论：先不做 | 这段样片没有背景音乐，测不出分离效果；要有带背景音乐的样片再复测 |
