@@ -1,5 +1,5 @@
 import type { FullTransform, ResolvedKeyframe } from "./compile";
-import type { Anim, Easing } from "./text-style";
+import type { Anim, Direction, Easing } from "./text-style";
 
 // 动画的纯计算：缓动、关键帧插值、动画预设、文字逐字 / 逐词的状态。
 // 模板组件只把这里算出的数值写进 style，保证预览和导出一致，也方便单元测试。
@@ -85,12 +85,18 @@ export const IDLE: AnimState = {
 /**
  * 入场动画在进度 p（0 = 刚开始，1 = 结束）时的状态。出场动画用 1 - p 反着播放。
  * size 是元素的参考尺寸（文字用字号），位移幅度按它换算，换字号时动画观感不变。
+ * reach 给出时，slide 从画面外滑进来：位移取 reach(方向)（图片、画中画用画面宽高），不再按 size 只挪一小段。
  */
-export function enterState(anim: Anim, p: number, size: number): AnimState {
+export function enterState(
+  anim: Anim,
+  p: number,
+  size: number,
+  reach?: (dir: Direction) => number,
+): AnimState {
   const k = anim.intensity ?? 1;
   const e = ease(anim.easing, p);
   const dir = anim.direction ?? "up";
-  const off = (1 - e) * size * 0.6 * k;
+  const off = (1 - e) * (reach ? reach(dir) : size * 0.6 * k);
   const slide = {
     dx: dir === "left" ? off : dir === "right" ? -off : 0,
     dy: dir === "up" ? off : dir === "down" ? -off : 0,
@@ -103,7 +109,7 @@ export function enterState(anim: Anim, p: number, size: number): AnimState {
     case "fade-up":
       return { ...IDLE, opacity: e, dy: (1 - e) * size * 0.4 * k };
     case "slide":
-      return { ...IDLE, opacity: Math.min(1, e * 2), ...slide };
+      return { ...IDLE, opacity: reach ? 1 : Math.min(1, e * 2), ...slide };
     case "pop":
       return { ...IDLE, opacity: Math.min(1, p * 3), scale: 0.6 + 0.4 * ease("spring", p) };
     case "scale-punch":
@@ -169,19 +175,34 @@ export function elementState(
   ms: number,
   durationMs: number,
   size: number,
+  reach?: (dir: Direction) => number,
 ): AnimState {
   let s = IDLE;
-  if (anims.in) s = combine(s, enterState(anims.in, ms / anims.in.durationMs, size));
+  if (anims.in) s = combine(s, enterState(anims.in, ms / anims.in.durationMs, size, reach));
   if (anims.out) {
     const left = durationMs - ms;
     if (left < anims.out.durationMs)
-      s = combine(s, enterState(anims.out, left / anims.out.durationMs, size));
+      s = combine(s, enterState(anims.out, left / anims.out.durationMs, size, reach));
   }
   if (anims.loop) {
     const p = (ms % anims.loop.durationMs) / anims.loop.durationMs;
     s = combine(s, enterState(anims.loop, p, size));
   }
   return s;
+}
+
+/**
+ * 画面元素没写滑动方向时，从离它最近的画面边缘进出：右上角的小窗从右边滑进来、往右边滑出去。
+ * 返回的是运动方向（从右边进来 = 往左走）。
+ */
+export function outwardDirection(x: number, y: number, width: number, height: number): Direction {
+  const edges: [number, Direction][] = [
+    [x, "right"],
+    [width - x, "left"],
+    [y, "down"],
+    [height - y, "up"],
+  ];
+  return edges.reduce((a, b) => (b[0] < a[0] ? b : a))[1];
 }
 
 // ---------- 文字单位 ----------

@@ -4,7 +4,7 @@ import { Project } from "./schema";
 import { sourceFrameAt } from "./time";
 
 const base = {
-  version: 5,
+  version: 6,
   revision: 0,
   canvas: {},
   assets: {
@@ -217,7 +217,7 @@ describe("compile：分割、剪切、转场", () => {
     ]);
   });
 
-  it("转场让后一个片段提前开始，总时长变短", () => {
+  it("主轨转场不占时间：后一段照常接在前一段后面，总时长不变（0019）", () => {
     const tl = compile(
       make({
         tracks: [
@@ -237,9 +237,9 @@ describe("compile：分割、剪切、转场", () => {
     );
     expect(tl.videos.map((v) => [v.from, v.durationInFrames])).toEqual([
       [0, 30],
-      [18, 30],
+      [30, 30],
     ]);
-    expect(tl.mainEndFrame).toBe(48);
+    expect(tl.mainEndFrame).toBe(60);
     expect(tl.videos[1]?.transitionIn).toEqual({
       type: "slide",
       direction: "up",
@@ -387,5 +387,33 @@ describe("schema", () => {
     });
     const item = p.tracks[0]?.items[0];
     expect(item && "at" in item).toBe(true);
+  });
+
+  it("画中画的循环动画（v6）传到时间线；只开放呼吸", () => {
+    const pip = (preset: string) => ({
+      tracks: [
+        {
+          id: "pip",
+          kind: "video",
+          items: [
+            {
+              id: "p1",
+              type: "clip",
+              asset: "a1",
+              at: { ms: 0 },
+              inMs: 0,
+              outMs: 1000,
+              animLoop: { preset, durationMs: 2400 },
+            },
+          ],
+        },
+      ],
+    });
+    const tl = compile(make(pip("breathe")));
+    expect(tl.videos.find((v) => v.id === "p1")?.animLoop).toMatchObject({
+      preset: "breathe",
+      durationMs: 2400,
+    });
+    expect(Project.safeParse({ ...base, ...pip("pop") }).success).toBe(false);
   });
 });

@@ -61,6 +61,11 @@ export async function getBundle(onLog?: (s: string) => void): Promise<string> {
   await bundle({ entryPoint: ENTRY, outDir: tmp });
   await rm(out, { recursive: true, force: true });
   await rename(tmp, out);
+  // 只留最新一份：每份约 35MB，源码每改一次就多一份。别的进程正在打的包（.tmp-）不动
+  for (const name of await readdir(BUNDLE_CACHE)) {
+    if (name !== key && !name.includes(".tmp-"))
+      await rm(join(BUNDLE_CACHE, name), { recursive: true, force: true });
+  }
   return out;
 }
 

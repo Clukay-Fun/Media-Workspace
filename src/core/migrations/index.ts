@@ -15,6 +15,8 @@ const STEPS: Record<number, (p: Raw) => Raw> = {
   3: (p) => ({ ...p, version: 4 }),
   // 4 → 5：文本样式新增可选的渐变、发光、下划线、当前词色块（docs/decisions/0012），旧样式不用改
   4: (p) => ({ ...p, version: 5 }),
+  // 5 → 6：图片和视频片段新增可选的循环动画 animLoop（docs/decisions/0018），旧数据不用改
+  5: (p) => ({ ...p, version: 6 }),
 };
 
 export function migrate(data: unknown): unknown {

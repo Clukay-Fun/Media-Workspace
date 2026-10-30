@@ -51,6 +51,7 @@ export type ResolvedVideo = Flags & {
   transitionIn: ResolvedTransition | null;
   animIn: Anim | null;
   animOut: Anim | null;
+  animLoop: Anim | null;
   /** 主轨片段前面剪掉的内容的理由（MainClip.cutBefore） */
   cutBefore: string | null;
 };
@@ -64,6 +65,7 @@ export type ResolvedImage = Flags & {
   keyframes: ResolvedKeyframe[];
   animIn: Anim | null;
   animOut: Anim | null;
+  animLoop: Anim | null;
 };
 
 export type ResolvedCaption = Flags & {
@@ -141,8 +143,8 @@ export function layoutMainTrack(project: Project): MainSegment[] {
   let cursor = 0;
   for (const item of track.items) {
     if (!isMainClip(item)) continue;
-    const overlap = segments.length > 0 ? (item.transitionIn?.durationMs ?? 0) : 0;
-    const startMs = cursor - overlap;
+    // 主轨转场不占时间（docs/decisions/0019）：前一段停在最后一帧和这一段过渡，声音不重叠
+    const startMs = cursor;
     const endMs = startMs + clipTimelineMs(item);
     segments.push({ clip: item, index: segments.length, startMs, endMs });
     cursor = endMs;
@@ -244,7 +246,7 @@ export function compile(project: Project): ResolvedTimeline {
   for (const seg of segments) {
     const { clip } = seg;
     const trans = seg.index > 0 ? transition(clip.transitionIn) : null;
-    const from = prevEnd - (trans?.durationInFrames ?? 0);
+    const from = prevEnd;
     const end = f(seg.endMs);
     const t = full(clip.transform);
     videos.push({
@@ -270,6 +272,7 @@ export function compile(project: Project): ResolvedTimeline {
       transitionIn: trans,
       animIn: clip.animIn ?? null,
       animOut: clip.animOut ?? null,
+      animLoop: clip.animLoop ?? null,
       cutBefore: clip.cutBefore ?? null,
     });
     clipFrames.set(clip.id, from);
@@ -440,6 +443,7 @@ export function compile(project: Project): ResolvedTimeline {
             keyframes: keyframes(t, item.keyframes),
             animIn: item.animIn ?? null,
             animOut: item.animOut ?? null,
+            animLoop: item.animLoop ?? null,
           });
           return;
         }
@@ -463,6 +467,7 @@ export function compile(project: Project): ResolvedTimeline {
           transitionIn: null,
           animIn: clip.animIn ?? null,
           animOut: clip.animOut ?? null,
+          animLoop: clip.animLoop ?? null,
           cutBefore: null,
         });
       });

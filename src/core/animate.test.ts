@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   ease,
+  enterState,
   highlightAt,
   highlightMask,
   markerProgress,
+  outwardDirection,
   splitUnits,
   sweepProgress,
   transformAt,
@@ -140,5 +142,26 @@ describe("卡拉 OK 扫色和荧光笔", () => {
     expect(markerProgress(mask, units, starts, 200, 300)).toEqual([0, 0, 0, 0]);
     expect(markerProgress(mask, units, starts, 275, 300)).toEqual([0, 0, 0.5, 0]);
     expect(markerProgress(mask, units, starts, 500, 300)).toEqual([0, 0, 1, 1]);
+  });
+});
+
+describe("画面元素从画面外滑进来", () => {
+  it("没写方向时从最近的边缘进出", () => {
+    expect(outwardDirection(900, 600, 1080, 1920)).toBe("left");
+    expect(outwardDirection(150, 900, 1080, 1920)).toBe("right");
+    expect(outwardDirection(540, 1800, 1080, 1920)).toBe("up");
+  });
+
+  it("给了 reach 时 slide 的起点在画面外、不透明；没给时按字号只挪一小段", () => {
+    const slide = {
+      preset: "slide",
+      durationMs: 400,
+      easing: "ease-out",
+      direction: "left",
+    } as const;
+    const far = enterState(slide, 0, 84, (d) => (d === "left" || d === "right" ? 1080 : 1920));
+    expect(far).toMatchObject({ dx: 1080, opacity: 1 });
+    expect(enterState(slide, 0, 84).dx).toBeCloseTo(84 * 0.6);
+    expect(enterState(slide, 1, 84, () => 1080).dx).toBe(0);
   });
 });

@@ -5,10 +5,10 @@
 
 | 事项 | 谁在做 | 目录 / 分支 | 状态 | 下一步 / 卡在哪 |
 |---|---|---|---|---|
-| 阶段 A–C 合到 main | Claude | `media-workspace` / dev → main | PR #2 已开，待用户合并 | 合并后删掉这一行 |
-| 阶段 D：关键帧冲突、点选框、push 转场、导出测试、AI 说明（0017） | Claude | `media-workspace` / dev | 进行中 | — |
-| 阶段 D：关键帧界面（0017） | Codex | `media-workspace-codex` / `feat/keyframe-ui` | 待开工 | — |
-| 阶段 D：画中画、素材放到画面上（0017） | DeepSeek | `media-workspace-deepseek` / `feat/pip` | 待开工 | — |
-| 阶段 D：转场和图片循环动画调研（0017） | Grok | `media-workspace/local/notes/2026-10-30-transitions/`，不用分支 | 待开工 | 结论出来后定第二批（转场界面、循环动画） |
+| 阶段 D 合到 main | Claude | `media-workspace` / dev → main | 用户已验收（0020），PR #3 已开，待用户合并 | 合并后删掉这一行 |
+| 阶段 E：卡片框架、封面、默认片尾、编排规则（0021） | Claude | `media-workspace` / dev | 进行中 | 框架合进 dev 后 Codex、DeepSeek 开工 |
+| 阶段 E：口播卡片调研（0021） | Grok | `media-workspace/local/notes/2026-10-30-mg-cards/`，不用分支 | 待开工 | — |
+| 阶段 E：模板 金句 / 要点列表 / 大数字（0021） | Codex | 待建 | 等框架 | — |
+| 阶段 E：模板 人名条 / 截图卡片，封面入口（0021） | DeepSeek | 待建 | 等框架 | — |
 | 声音分离可行性实验（0015 第 6 条） | Grok | `media-workspace/local/notes/`，不用分支 | 实验做完，结论：先不做 | 这段样片没有背景音乐，测不出分离效果；要有带背景音乐的样片再复测 |
 | 审查、合并各分支，跑全部测试 | Claude | `media-workspace` / dev | 持续 | 各分支做完后通知 |

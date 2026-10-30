@@ -14,10 +14,16 @@ describe("migrate", () => {
     expect(migrate(v3)).toEqual({ ...v3, version: PROJECT_FORMAT_VERSION });
   });
 
-  it("v4 工程升到 v5，样式原样保留（新字段都是可选的）", () => {
+  it("v4 工程升到当前版本，样式原样保留（新字段都是可选的）", () => {
     const style = { font: { family: "X", size: 40 }, fill: "#FFFFFF" };
     const v4 = { version: 4, revision: 2, styles: { s: style } };
-    expect(migrate(v4)).toEqual({ ...v4, version: 5 });
+    expect(migrate(v4)).toEqual({ ...v4, version: PROJECT_FORMAT_VERSION });
+  });
+
+  it("v5 工程升到 v6，图片和片段原样保留（循环动画是可选的）", () => {
+    const img = { id: "i", type: "image", asset: "a", at: { ms: 0 }, durationMs: 1000 };
+    const v5 = { version: 5, revision: 4, tracks: [{ id: "v", kind: "video", items: [img] }] };
+    expect(migrate(v5)).toEqual({ ...v5, version: 6 });
   });
 
   it("当前版本原样返回", () => {

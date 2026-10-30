@@ -66,6 +66,11 @@ export const Keyframe = z.strictObject({
   easing: Easing.default("ease-in-out"),
 });
 
+/**
+ * 主轨两段之间的转场。slide：新画面滑进来盖住旧画面；push：新画面把旧画面推走；fade：交叉淡化。
+ * direction 是画面往哪边走，durationMs 是过渡的时长。主轨转场不占时间：前一段停在最后一帧和后一段过渡，
+ * 声音硬切（docs/decisions/0019）；接片尾的转场两段重叠，总时长变短
+ */
 export const Transition = z.strictObject({
   type: z.enum(["slide", "push", "fade"]),
   direction: Direction.optional(),
@@ -85,11 +90,15 @@ export const Anchor = z.union([
 
 export const Slot = z.enum(["top", "upper-third", "center", "lower-third", "caption"]);
 
+/** 图片、画中画的循环动画：只开放呼吸（v6，docs/decisions/0018）；durationMs 是一个周期 */
+export const LoopAnim = Anim.extend({ preset: z.enum(["none", "breathe"]) });
+
 const Visual = {
   transform: Transform.optional(),
   keyframes: z.array(Keyframe).default([]),
   animIn: Anim.optional(),
   animOut: Anim.optional(),
+  animLoop: LoopAnim.optional(),
 };
 
 /** 主轨片段：首尾相连，不写 at */

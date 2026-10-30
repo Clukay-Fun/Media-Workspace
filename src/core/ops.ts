@@ -433,7 +433,12 @@ function run(ctx: Ctx, op: Op): void {
       ) {
         delete item.charStartMs;
       }
-      Object.assign(item, op.set);
+      // null 表示去掉这个字段（条目上没有可以为 null 的字段）：HTTP 提交时 undefined 会被 JSON 丢掉，
+      // 只能用 null 表达「去掉转场、去掉变换」
+      for (const [k, v] of Object.entries(op.set)) {
+        if (v === null) delete (item as Record<string, unknown>)[k];
+        else (item as Record<string, unknown>)[k] = v;
+      }
       ctx.changed.add(op.id);
       return;
     }

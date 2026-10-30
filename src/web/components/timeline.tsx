@@ -2,9 +2,10 @@ import type React from "react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { EditorState } from "../../core/api";
 import { type DragMode, planDrag } from "../../core/edit";
-import type { Track } from "../../core/schema";
+import type { Project, Track } from "../../core/schema";
 import { frameToMs, sourceFrameAt } from "../../core/time";
 import { aiChanges } from "../lib/changes";
+import { keyframeMarkerPositions } from "../lib/keyframes";
 import {
   type Block,
   frameOfMs,
@@ -16,8 +17,10 @@ import {
   timelineRows,
   waveform,
 } from "../lib/timeline";
+import { type TransitionCut, transitionCutMarkers, transitionPairFor } from "../lib/transitions";
 import { useStore } from "../store";
 import { Icon, type IconName } from "./icons";
+import { TransitionEditor } from "./transition-editor";
 
 /** 轨道头宽度：图标、按用途起的名字、锁定 / 隐藏按钮 */
 const HEAD = 150;
@@ -46,6 +49,7 @@ export function Timeline() {
   const { seek, select } = useStore.getState();
   const [ghost, setGhost] = useState<Ghost | null>(null);
   const [zoomPps, setZoomPps] = useState<number | null>(null);
+  const [openTransitionId, setOpenTransitionId] = useState<string | null>(null);
   const history = useStore((s) => s.history);
   const reviewedRev = useStore((s) => s.reviewedRev);
   const dragSession = useRef<DragSession | null>(null);
@@ -88,6 +92,7 @@ export function Timeline() {
   const tl = preview?.timeline;
   const fps = tl?.fps ?? 30;
   const total = Math.max(1, tl?.durationInFrames ?? 1);
+  const transitionCuts = useMemo(() => (tl ? transitionCutMarkers(tl.videos) : []), [tl]);
   const fitPps = viewportWidth > 0 ? (viewportWidth * fps) / total : 40;
   const pps = zoomPps ?? fitPps;
   const timelineWidth = Math.max(1, (total / fps) * pps);
@@ -453,6 +458,7 @@ export function Timeline() {
           <RowView
             key={row.track.id}
             row={row}
+            project={project}
             px={px}
             fps={fps}
             selected={selected}
@@ -463,6 +469,9 @@ export function Timeline() {
             onScrub={scrub}
             ghost={ghost}
             onDragStart={startDrag}
+            transitionCuts={row.kind === "main" ? transitionCuts : []}
+            openTransitionId={openTransitionId}
+            setOpenTransitionId={setOpenTransitionId}
           />
         ))}
       </div>
@@ -499,6 +508,7 @@ export function Timeline() {
 
 function RowView({
   row,
+  project,
   px,
   fps,
   selected,
@@ -509,8 +519,12 @@ function RowView({
   onScrub,
   ghost,
   onDragStart,
+  transitionCuts,
+  openTransitionId,
+  setOpenTransitionId,
 }: {
   row: Row;
+  project: Project;
   px: (f: number) => number;
   fps: number;
   selected: string | null;
@@ -521,9 +535,12 @@ function RowView({
   onScrub: (e: React.PointerEvent<HTMLDivElement>) => void;
   ghost: Ghost | null;
   onDragStart: (e: React.PointerEvent, b: Block, mode: DragMode) => void;
+  transitionCuts: TransitionCut[];
+  openTransitionId: string | null;
+  setOpenTransitionId: (id: string | null) => void;
 }) {
   const { track } = row;
-  const { submit, select } = useStore.getState();
+  const { submit, select, seek } = useStore.getState();
   const toggle = (key: "locked" | "hidden" | "muted", label: string) =>
     void submit([{ op: "track.update", id: track.id, set: { [key]: !track[key] } }], label);
   const audible = track.kind === "video" || track.kind === "audio";
@@ -574,27 +591,67 @@ function RowView({
           const from = g ? g.from : b.from;
           const to = g ? g.to : b.to;
           return (
-            <BlockView
-              key={b.key}
-              block={b}
-              left={px(from)}
-              width={Math.max(2, px(to) - px(from))}
-              dragging={g !== null}
-              editable={!track.locked && b.kind !== "outro"}
-              onDragStart={(e, mode) => onDragStart(e, b, mode)}
-              fps={fps}
-              selected={selected === b.id}
-              flash={flashIds.includes(b.id) ? flashAt : 0}
-              peaks={b.asset ? (peaks[b.asset] ?? null) : null}
-              videoSrc={b.mediaKind === "video" && b.asset ? videoSrcs[b.asset] : undefined}
-              thumbnailHeight={row.kind === "main" ? 36 : 26}
-              onSelect={() => {
-                if (b.kind !== "outro") select(b.id);
-              }}
-              track={track}
-            />
+            <Fragment key={b.key}>
+              <BlockView
+                block={b}
+                left={px(from)}
+                width={Math.max(2, px(to) - px(from))}
+                dragging={g !== null}
+                editable={!track.locked && b.kind !== "outro"}
+                onDragStart={(e, mode) => onDragStart(e, b, mode)}
+                fps={fps}
+                selected={selected === b.id}
+                flash={flashIds.includes(b.id) ? flashAt : 0}
+                peaks={b.asset ? (peaks[b.asset] ?? null) : null}
+                videoSrc={b.mediaKind === "video" && b.asset ? videoSrcs[b.asset] : undefined}
+                thumbnailHeight={row.kind === "main" ? 36 : 26}
+                onSelect={() => {
+                  if (b.kind !== "outro") select(b.id);
+                }}
+                track={track}
+              />
+              {keyframeMarkerPositions(b.keyframeFrames ?? [], b.to - b.from).map((marker) => {
+                const markerFrame = from + marker.frame;
+                return (
+                  <button
+                    type="button"
+                    className="keyframe-marker"
+                    key={marker.frame}
+                    style={{ left: px(markerFrame) }}
+                    title={"关键帧 " + timecode(markerFrame, fps)}
+                    aria-label={"跳到关键帧 " + timecode(markerFrame, fps)}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      select(b.id);
+                      seek(markerFrame);
+                    }}
+                  />
+                );
+              })}
+            </Fragment>
           );
         })}
+        {row.kind === "main" &&
+          transitionCuts.map((cut) => {
+            const pair = transitionPairFor(project, cut.incomingId);
+            if (!pair) return null;
+            return (
+              <TransitionEditor
+                key={`transition-${cut.incomingId}`}
+                pair={pair}
+                locked={track.locked}
+                variant="timeline"
+                left={px(cut.frame)}
+                open={openTransitionId === cut.incomingId}
+                onOpenChange={(open) => setOpenTransitionId(open ? cut.incomingId : null)}
+                onOpen={() => {
+                  select(cut.incomingId);
+                  seek(cut.frame);
+                }}
+              />
+            );
+          })}
       </div>
     </>
   );

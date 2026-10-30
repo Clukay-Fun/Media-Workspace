@@ -188,3 +188,4 @@ export const TextStyle = z.strictObject({
 export type TextStyle = z.infer<typeof TextStyle>;
 export type Anim = z.infer<typeof Anim>;
 export type Easing = z.infer<typeof Easing>;
+export type Direction = z.infer<typeof Direction>;
