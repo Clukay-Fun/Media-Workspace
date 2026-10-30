@@ -650,13 +650,31 @@ function ColorControl({
     const next = draftRef.current;
     if (next.toLowerCase() === committed.current.toLowerCase()) return;
     committed.current = next;
-    onCommit(next);
+    onCommitRef.current(next);
   };
+  const onCommitRef = useRef(onCommit);
+  onCommitRef.current = onCommit;
+  const commitRef = useRef(commit);
+  commitRef.current = commit;
+  const input = useRef<HTMLInputElement>(null);
+
+  // React 的 onChange 是拖动中每一下都触发的 input 事件；原生 change 在取色器关上时才触发一次，
+  // 这时提交，不用等点别处失焦。切走选中元素时组件卸载，也把没提交的颜色补交上。
+  useEffect(() => {
+    const el = input.current;
+    const onNativeChange = () => commitRef.current();
+    el?.addEventListener("change", onNativeChange);
+    return () => {
+      el?.removeEventListener("change", onNativeChange);
+      commitRef.current();
+    };
+  }, []);
 
   return (
     <label style={control}>
       <span>{label}</span>
       <input
+        ref={input}
         type="color"
         value={pickerColor}
         disabled={disabled}
