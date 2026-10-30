@@ -89,11 +89,15 @@ export const Anchor = z.union([
 
 export const Slot = z.enum(["top", "upper-third", "center", "lower-third", "caption"]);
 
+/** 图片、画中画的循环动画：只开放呼吸（v6，docs/decisions/0018）；durationMs 是一个周期 */
+export const LoopAnim = Anim.extend({ preset: z.enum(["none", "breathe"]) });
+
 const Visual = {
   transform: Transform.optional(),
   keyframes: z.array(Keyframe).default([]),
   animIn: Anim.optional(),
   animOut: Anim.optional(),
+  animLoop: LoopAnim.optional(),
 };
 
 /** 主轨片段：首尾相连，不写 at */

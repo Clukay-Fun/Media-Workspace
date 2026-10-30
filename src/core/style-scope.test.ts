@@ -6,7 +6,7 @@ import { styleEditOps } from "./style-scope";
 
 const project = () =>
   Project.parse({
-    version: 5,
+    version: 6,
     revision: 1,
     canvas: {},
     assets: { a1: { kind: "video", path: "/raw.mov", probe: { durationMs: 20_000 } } },

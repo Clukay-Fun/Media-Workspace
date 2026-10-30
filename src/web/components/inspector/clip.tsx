@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { FloatClip, MainClip } from "../../../core/schema";
 import { useStore } from "../../store";
+import { VisualAnims } from "./anims";
 import { Field, InspectorActions, InspectorHead, type InspectorProps, TimingNudge } from "./common";
 import { KeyframesInspector } from "./keyframes";
 import { useNumberDraft } from "./number-draft";
@@ -34,6 +35,7 @@ export function ClipInspector(props: InspectorProps) {
         </p>
       )}
       {pip && <PipInspector project={project} id={id} item={pip} locked={track.locked} />}
+      {pip && <VisualAnims id={id} item={pip} locked={track.locked} />}
       {clip && (
         <SpeedField
           id={id}

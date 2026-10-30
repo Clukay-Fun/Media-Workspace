@@ -43,7 +43,7 @@ function demoProject(): Project {
   });
   const at = (i: number) => captions[i] ?? { startMs: 0, endMs: 0 };
   return Project.parse({
-    version: 5,
+    version: 6,
     revision: 0,
     canvas: { background: "#1a1b1f" },
     assets: {

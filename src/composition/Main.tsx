@@ -5,7 +5,7 @@ import { fade } from "@remotion/transitions/fade";
 import { slide } from "@remotion/transitions/slide";
 import type React from "react";
 import { AbsoluteFill, Img, Sequence, useCurrentFrame } from "remotion";
-import { elementState, transformAt } from "../core/animate";
+import { type AnimState, elementState, transformAt } from "../core/animate";
 import type { PreviewProps } from "../core/api";
 import type {
   FullTransform,
@@ -48,6 +48,30 @@ function cssTransform(t: FullTransform, width: number, height: number): React.CS
   };
 }
 
+/** 图片和视频共用：变换（含关键帧）上再叠入场 / 出场 / 循环动画的位移、缩放、旋转、透明度、模糊 */
+function animatedStyle(
+  t: FullTransform,
+  a: AnimState,
+  width: number,
+  height: number,
+): React.CSSProperties {
+  return {
+    ...cssTransform(
+      {
+        ...t,
+        x: t.x + a.dx,
+        y: t.y + a.dy,
+        scale: t.scale * a.scale,
+        rotation: t.rotation + a.rotation,
+      },
+      width,
+      height,
+    ),
+    opacity: t.opacity * a.opacity,
+    filter: a.blur > 0 ? `blur(${a.blur}px)` : undefined,
+  };
+}
+
 const VideoLayer: React.FC<{
   v: ResolvedVideo;
   src: string;
@@ -58,7 +82,7 @@ const VideoLayer: React.FC<{
   const frame = useCurrentFrame();
   const t = transformAt(v.transform, v.keyframes, frame);
   const anim = elementState(
-    { in: v.animIn, out: v.animOut, loop: null },
+    { in: v.animIn, out: v.animOut, loop: v.animLoop },
     (frame * 1000) / fps,
     (v.durationInFrames * 1000) / fps,
     Math.min(width, height) * 0.2,
@@ -78,8 +102,7 @@ const VideoLayer: React.FC<{
   return (
     <AbsoluteFill
       style={{
-        ...cssTransform(t, width, height),
-        opacity: t.opacity * anim.opacity,
+        ...animatedStyle(t, anim, width, height),
         visibility: v.hidden ? "hidden" : "visible",
       }}
     >
@@ -108,23 +131,13 @@ const ImageLayer: React.FC<{
   const frame = useCurrentFrame();
   const t = transformAt(img.transform, img.keyframes, frame);
   const a = elementState(
-    { in: img.animIn, out: img.animOut, loop: null },
+    { in: img.animIn, out: img.animOut, loop: img.animLoop },
     (frame * 1000) / fps,
     (img.durationInFrames * 1000) / fps,
     Math.min(width, height) * 0.2,
   );
   return (
-    <AbsoluteFill
-      style={{
-        ...cssTransform(
-          { ...t, scale: t.scale * a.scale, x: t.x + a.dx, y: t.y + a.dy },
-          width,
-          height,
-        ),
-        opacity: t.opacity * a.opacity,
-        filter: a.blur > 0 ? `blur(${a.blur}px)` : undefined,
-      }}
-    >
+    <AbsoluteFill style={animatedStyle(t, a, width, height)}>
       <Img src={src} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
     </AbsoluteFill>
   );

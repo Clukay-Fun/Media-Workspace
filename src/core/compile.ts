@@ -51,6 +51,7 @@ export type ResolvedVideo = Flags & {
   transitionIn: ResolvedTransition | null;
   animIn: Anim | null;
   animOut: Anim | null;
+  animLoop: Anim | null;
   /** 主轨片段前面剪掉的内容的理由（MainClip.cutBefore） */
   cutBefore: string | null;
 };
@@ -64,6 +65,7 @@ export type ResolvedImage = Flags & {
   keyframes: ResolvedKeyframe[];
   animIn: Anim | null;
   animOut: Anim | null;
+  animLoop: Anim | null;
 };
 
 export type ResolvedCaption = Flags & {
@@ -270,6 +272,7 @@ export function compile(project: Project): ResolvedTimeline {
       transitionIn: trans,
       animIn: clip.animIn ?? null,
       animOut: clip.animOut ?? null,
+      animLoop: clip.animLoop ?? null,
       cutBefore: clip.cutBefore ?? null,
     });
     clipFrames.set(clip.id, from);
@@ -440,6 +443,7 @@ export function compile(project: Project): ResolvedTimeline {
             keyframes: keyframes(t, item.keyframes),
             animIn: item.animIn ?? null,
             animOut: item.animOut ?? null,
+            animLoop: item.animLoop ?? null,
           });
           return;
         }
@@ -463,6 +467,7 @@ export function compile(project: Project): ResolvedTimeline {
           transitionIn: null,
           animIn: clip.animIn ?? null,
           animOut: clip.animOut ?? null,
+          animLoop: clip.animLoop ?? null,
           cutBefore: null,
         });
       });

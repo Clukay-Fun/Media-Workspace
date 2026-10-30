@@ -199,6 +199,9 @@ describe("画面能力", () => {
             outMs: 3000,
             gainDb: -60,
             transform: { scale: 0.4 },
+            // 视频的入场动画要有位移和缩放（不只是透明度）；循环呼吸（v6）
+            animIn: { preset: "pop", durationMs: 800 },
+            animLoop: { preset: "breathe", durationMs: 1000, intensity: 3 },
             keyframes: [
               { atMs: 0, transform: { x: 150, y: 200 } },
               { atMs: 3000, transform: { x: 390, y: 760, radius: 24 } },
@@ -247,7 +250,7 @@ describe("画面能力", () => {
     expect(tl.durationInFrames).toBe(105);
     const out = join(root, "visual.mp4");
     await exportVideo(vdir, p, { out, concurrency: 2 });
-    // 第 20 帧：图片入场动画中；第 52 帧：转场中、画中画和图片在关键帧之间；第 80 帧：转场后
+    // 第 20 帧：图片和画中画入场动画中；第 52 帧：转场中、画中画和图片在关键帧之间；第 80 帧：转场后
     const frames = [20, 52, 80];
     const stills = await renderStills(vdir, p, frames, join(root, "visual-stills"));
     frames.forEach((f, k) => {
