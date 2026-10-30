@@ -558,6 +558,7 @@ function NumberControl({
 }) {
   const [draft, setDraft] = useState(String(value));
   const committed = useRef(value);
+  const cancelOnBlur = useRef(false);
 
   useEffect(() => {
     setDraft(String(value));
@@ -592,8 +593,17 @@ function NumberControl({
         max={max}
         step={step}
         disabled={disabled}
+        onFocus={() => {
+          cancelOnBlur.current = false;
+        }}
         onChange={(e) => setDraft(e.currentTarget.value)}
-        onBlur={commit}
+        onBlur={() => {
+          if (cancelOnBlur.current) {
+            cancelOnBlur.current = false;
+            return;
+          }
+          commit();
+        }}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();
@@ -601,6 +611,7 @@ function NumberControl({
             e.currentTarget.blur();
           }
           if (e.key === "Escape") {
+            cancelOnBlur.current = true;
             setDraft(String(committed.current));
             e.currentTarget.blur();
           }
@@ -621,10 +632,27 @@ function ColorControl({
   disabled: boolean;
   onCommit: (value: string) => void;
 }) {
-  const pickerColor = /^#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?$/.test(value)
-    ? value.slice(0, 7)
+  const [draft, setDraft] = useState(value);
+  const draftRef = useRef(value);
+  const committed = useRef(value);
+
+  useEffect(() => {
+    draftRef.current = value;
+    committed.current = value;
+    setDraft(value);
+  }, [value]);
+
+  const pickerColor = /^#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?$/.test(draft)
+    ? draft.slice(0, 7)
     : "#000000";
-  const alpha = /^#[0-9a-fA-F]{8}$/.test(value) ? value.slice(7) : "";
+  const alpha = /^#[0-9a-fA-F]{8}$/.test(draft) ? draft.slice(7) : "";
+  const commit = () => {
+    const next = draftRef.current;
+    if (next.toLowerCase() === committed.current.toLowerCase()) return;
+    committed.current = next;
+    onCommit(next);
+  };
+
   return (
     <label style={control}>
       <span>{label}</span>
@@ -633,7 +661,12 @@ function ColorControl({
         value={pickerColor}
         disabled={disabled}
         style={colorInput}
-        onChange={(e) => onCommit(`${e.currentTarget.value}${alpha}`)}
+        onChange={(e) => {
+          const next = `${e.currentTarget.value}${alpha}`;
+          draftRef.current = next;
+          setDraft(next);
+        }}
+        onBlur={commit}
       />
     </label>
   );
