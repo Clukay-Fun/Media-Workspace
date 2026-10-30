@@ -44,6 +44,8 @@ export type ExportJob = { progress: number; done: boolean; file?: string; error?
 type State = {
   api: Api;
   name: string;
+  /** 工程目录的绝对路径（右栏项目概览用）；mock 模式没有服务端，所以是 null */
+  dir: string | null;
   project: Project | null;
   preview: PreviewProps | null;
   history: HistoryResponse | null;
@@ -183,6 +185,7 @@ export const useStore = create<State>((set, get) => {
   return {
     api: undefined as unknown as Api,
     name: "",
+    dir: null,
     project: null,
     preview: null,
     history: null,
@@ -230,6 +233,7 @@ export const useStore = create<State>((set, get) => {
         ]);
         set({
           name: p.name,
+          dir: p.dir ?? null,
           project: p.project,
           preview: v.props,
           history: h,

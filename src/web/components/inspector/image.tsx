@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import type { ImageItem, Transform } from "../../../core/schema";
 import type { Anim } from "../../../core/text-style";
 import { useStore } from "../../store";
@@ -10,6 +9,7 @@ import {
   SlotPicker,
   TimingNudge,
 } from "./common";
+import { useNumberDraft } from "./number-draft";
 
 /** 选中图片：位置和大小、入场 / 出场动画、出现时间 */
 export function ImageInspector(props: InspectorProps) {
@@ -32,13 +32,11 @@ export function ImageInspector(props: InspectorProps) {
     void useStore.getState().submit([{ op: "item.update", id, set: { transform: next } }], label);
   };
 
-  const setAnim = (key: "animIn" | "animOut", anim: Anim | null) => {
-    void useStore
-      .getState()
-      .submit(
-        [{ op: "item.update", id, set: { [key]: anim ?? undefined } }],
-        anim ? (key === "animIn" ? "已加入场动画" : "已加出场动画") : "已关闭动画",
-      );
+  // 关闭动画不删字段：undefined 会在 HTTP 提交时被 JSON 丢掉，变成空修改；写入 none 才是真的关掉
+  const setAnim = (key: "animIn" | "animOut", anim: Anim) => {
+    const label =
+      anim.preset === "none" ? "已关闭动画" : key === "animIn" ? "已加入场动画" : "已加出场动画";
+    void useStore.getState().submit([{ op: "item.update", id, set: { [key]: anim } }], label);
   };
 
   return (
@@ -128,17 +126,12 @@ function NumField({
   disabled: boolean;
   onCommit: (v: number) => void;
 }) {
-  const [draft, setDraft] = useState(String(value));
-  useEffect(() => setDraft(String(value)), [value]);
-
+  const num = useNumberDraft(value);
   const commit = (raw: string) => {
-    const n = Number(raw);
-    if (!Number.isFinite(n)) {
-      setDraft(String(value));
-      return;
-    }
+    const n = num.parse(raw);
+    if (n === null) return;
     const v = clamp(n, min ?? -Infinity, max ?? Infinity);
-    setDraft(String(v));
+    num.setDraft(String(v));
     if (v !== value) onCommit(v);
   };
 
@@ -151,21 +144,12 @@ function NumField({
         min={min}
         max={max}
         step={step}
-        value={draft}
+        value={num.draft}
         disabled={disabled}
         aria-label={label}
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={(e) => num.change(e.target.value)}
         onBlur={(e) => commit(e.currentTarget.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            e.currentTarget.blur();
-          }
-          if (e.key === "Escape") {
-            setDraft(String(value));
-            e.currentTarget.blur();
-          }
-        }}
+        onKeyDown={num.keyDown}
       />
     </label>
   );
@@ -180,7 +164,7 @@ const PRESETS: { value: Anim["preset"]; label: string }[] = [
   { value: "slide", label: "滑动" },
 ];
 
-/** 入场 / 出场动画：先选预设，再调时长；选「无」就是把字段去掉 */
+/** 入场 / 出场动画：先选预设，再调时长；「无」也是一条合法动画（preset: none） */
 function AnimField({
   label,
   anim,
@@ -190,7 +174,7 @@ function AnimField({
   label: string;
   anim: Anim | null;
   locked: boolean;
-  onChange: (a: Anim | null) => void;
+  onChange: (a: Anim) => void;
 }) {
   return (
     <Field label={label}>
@@ -203,13 +187,15 @@ function AnimField({
           onChange={(e) => {
             const preset = e.target.value as Anim["preset"];
             if (preset === "none") {
-              onChange(null);
+              onChange({ preset: "none", durationMs: 300, easing: "ease-out" });
               return;
             }
+            const base = anim && anim.preset !== "none" ? anim : null;
             onChange({
-              ...(anim ?? { preset, durationMs: 300, easing: "ease-out" }),
+              ...(base ?? {}),
               preset,
-              durationMs: anim?.durationMs ?? 300,
+              durationMs: base?.durationMs ?? 300,
+              easing: base?.easing ?? "ease-out",
             });
           }}
         >
@@ -219,7 +205,9 @@ function AnimField({
             </option>
           ))}
         </select>
-        {anim && <AnimDuration anim={anim} locked={locked} onChange={onChange} />}
+        {anim && anim.preset !== "none" && (
+          <AnimDuration anim={anim} locked={locked} onChange={onChange} />
+        )}
       </div>
     </Field>
   );
@@ -234,17 +222,12 @@ function AnimDuration({
   locked: boolean;
   onChange: (a: Anim) => void;
 }) {
-  const [draft, setDraft] = useState(String(anim.durationMs));
-  useEffect(() => setDraft(String(anim.durationMs)), [anim.durationMs]);
-
+  const num = useNumberDraft(anim.durationMs);
   const commit = (raw: string) => {
-    const n = Number(raw);
-    if (!Number.isFinite(n)) {
-      setDraft(String(anim.durationMs));
-      return;
-    }
+    const n = num.parse(raw);
+    if (n === null) return;
     const v = clamp(Math.round(n), 50, 10_000);
-    setDraft(String(v));
+    num.setDraft(String(v));
     if (v !== anim.durationMs) onChange({ ...anim, durationMs: v });
   };
 
@@ -256,21 +239,12 @@ function AnimDuration({
         min={50}
         max={10_000}
         step={50}
-        value={draft}
+        value={num.draft}
         disabled={locked}
         aria-label="动画时长（毫秒）"
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={(e) => num.change(e.target.value)}
         onBlur={(e) => commit(e.currentTarget.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            e.currentTarget.blur();
-          }
-          if (e.key === "Escape") {
-            setDraft(String(anim.durationMs));
-            e.currentTarget.blur();
-          }
-        }}
+        onKeyDown={num.keyDown}
         style={{ width: 92 }}
       />
       <span className="field-note">毫秒</span>

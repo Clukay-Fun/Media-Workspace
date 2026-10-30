@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { FloatClip, MainClip } from "../../../core/schema";
 import { useStore } from "../../store";
 import {
@@ -9,6 +9,7 @@ import {
   SlotPicker,
   TimingNudge,
 } from "./common";
+import { useNumberDraft } from "./number-draft";
 
 /** 选中视频 / 音频片段：主轨片段、画中画、音频轨上的片段 */
 export function ClipInspector(props: InspectorProps) {
@@ -59,11 +60,10 @@ function SpeedField({
   sourceMs: number;
   locked: boolean;
 }) {
-  const [draft, setDraft] = useState(formatSpeed(speed));
+  const num = useNumberDraft(speed);
   const lastSent = useRef<number | null>(null);
 
   useEffect(() => {
-    setDraft(formatSpeed(speed));
     lastSent.current = null;
   }, [speed]);
 
@@ -79,17 +79,17 @@ function SpeedField({
   };
 
   const commit = (raw: string) => {
-    const n = Number(raw);
-    if (!Number.isFinite(n) || n <= 0) {
-      setDraft(formatSpeed(speed));
+    const n = num.parse(raw);
+    if (n === null || n <= 0) {
+      num.setDraft(formatSpeed(speed));
       return;
     }
     const v = clamp(Math.round(n * 100) / 100, 0.1, 10);
-    setDraft(formatSpeed(v));
+    num.setDraft(formatSpeed(v));
     setSpeed(v);
   };
 
-  const typed = Number(draft);
+  const typed = Number(num.draft);
   const shown = Number.isFinite(typed) && typed > 0 ? clamp(typed, 0.1, 10) : speed;
   const seconds = (sourceMs / 1000 / shown).toFixed(1);
 
@@ -117,21 +117,12 @@ function SpeedField({
           min={0.1}
           max={10}
           step={0.01}
-          value={draft}
+          value={num.draft}
           disabled={locked}
           aria-label="变速倍数"
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => num.change(e.target.value)}
           onBlur={(e) => commit(e.currentTarget.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              e.currentTarget.blur();
-            }
-            if (e.key === "Escape") {
-              setDraft(formatSpeed(speed));
-              e.currentTarget.blur();
-            }
-          }}
+          onKeyDown={num.keyDown}
           style={{ width: 84 }}
         />
         <span className="field-note">倍 · 变速后 {seconds} 秒</span>
@@ -142,21 +133,16 @@ function SpeedField({
 
 /** 音量：滑杆和数值输入共用一份草稿，松手 / 回车时才提交一次 */
 function VolumeField({ id, gainDb, locked }: { id: string; gainDb: number; locked: boolean }) {
-  const [draft, setDraft] = useState(String(gainDb));
+  const num = useNumberDraft(gainDb);
   const lastSent = useRef<number | null>(null);
 
   useEffect(() => {
-    setDraft(String(gainDb));
     lastSent.current = null;
   }, [gainDb]);
 
   const commit = (raw: number) => {
-    if (!Number.isFinite(raw)) {
-      setDraft(String(gainDb));
-      return;
-    }
     const v = clamp(Math.round(raw), -60, 20);
-    setDraft(String(v));
+    num.setDraft(String(v));
     if (v === gainDb || v === lastSent.current) return;
     lastSent.current = v;
     void useStore
@@ -167,7 +153,13 @@ function VolumeField({ id, gainDb, locked }: { id: string; gainDb: number; locke
       });
   };
 
-  const typed = Number(draft);
+  const commitTyped = (raw: string) => {
+    const n = num.parse(raw);
+    if (n === null) return;
+    commit(n);
+  };
+
+  const typed = Number(num.draft);
   const sliderValue = Number.isFinite(typed) ? clamp(typed, -60, 20) : gainDb;
 
   return (
@@ -181,7 +173,7 @@ function VolumeField({ id, gainDb, locked }: { id: string; gainDb: number; locke
           value={sliderValue}
           disabled={locked}
           aria-label="音量"
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => num.change(e.target.value)}
           onPointerUp={(e) => commit(Number(e.currentTarget.value))}
           onKeyUp={(e) => commit(Number(e.currentTarget.value))}
           onBlur={(e) => commit(Number(e.currentTarget.value))}
@@ -193,21 +185,12 @@ function VolumeField({ id, gainDb, locked }: { id: string; gainDb: number; locke
           min={-60}
           max={20}
           step={1}
-          value={draft}
+          value={num.draft}
           disabled={locked}
           aria-label="音量分贝"
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={(e) => commit(Number(e.currentTarget.value))}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              e.currentTarget.blur();
-            }
-            if (e.key === "Escape") {
-              setDraft(String(gainDb));
-              e.currentTarget.blur();
-            }
-          }}
+          onChange={(e) => num.change(e.target.value)}
+          onBlur={(e) => commitTyped(e.currentTarget.value)}
+          onKeyDown={num.keyDown}
           style={{ width: 78 }}
         />
         <span className="field-note">dB</span>
