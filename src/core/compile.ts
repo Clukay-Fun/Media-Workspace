@@ -644,6 +644,18 @@ export function mainLiftAt(tl: Pick<ResolvedTimeline, "mainShifts" | "height">, 
   return mainShiftAt(tl.mainShifts, frame) * HALF_CARD_SHIFT * tl.height;
 }
 
+/**
+ * 主画面上移时同时以顶边为原点放大 (H + lift) / H，底边留在原处，不会露出黑边（阶段 E 验收：
+ * 主画面没放大的工程，半屏卡下面露出一条 180px 的黑边）。y → y × k − lift，x 以画面中线为原点放大
+ */
+export function mainLiftTransform(
+  tl: Pick<ResolvedTimeline, "mainShifts" | "height">,
+  frame: number,
+): { lift: number; scale: number } {
+  const lift = mainLiftAt(tl, frame);
+  return { lift, scale: (tl.height + lift) / tl.height };
+}
+
 /** 第 frame 帧主画面上移了多少（0–1，乘 HALF_CARD_SHIFT × 画面高度）：进出都用缓入缓出 */
 export function mainShiftAt(shifts: ResolvedShift[], frame: number): number {
   const s = shifts.find((x) => frame >= x.from && frame < x.to);

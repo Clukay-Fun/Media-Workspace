@@ -8,7 +8,7 @@ import {
   cardShownAt,
   type FrameSpan,
   type FullTransform,
-  mainLiftAt,
+  mainLiftTransform,
   type ResolvedCaption,
   type ResolvedImage,
   type ResolvedOverlay,
@@ -285,9 +285,15 @@ const MainShift: React.FC<{
   tl: Pick<ResolvedTimeline, "mainShifts" | "height">;
   children: React.ReactNode;
 }> = ({ tl, children }) => {
-  const lift = mainLiftAt(tl, useCurrentFrame());
+  const { lift, scale } = mainLiftTransform(tl, useCurrentFrame());
   return (
-    <AbsoluteFill style={lift > 0 ? { transform: `translateY(${-lift}px)` } : undefined}>
+    <AbsoluteFill
+      style={
+        lift > 0
+          ? { transform: `translateY(${-lift}px) scale(${scale})`, transformOrigin: "50% 0" }
+          : undefined
+      }
+    >
       {children}
     </AbsoluteFill>
   );

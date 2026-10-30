@@ -124,3 +124,34 @@ function finish(
   });
   return out;
 }
+
+/**
+ * 按响度找这一段里最后一处在说话的时刻（毫秒，和 fromMs 同一时间轴），只看 [fromMs, toMs)。
+ * 用 20ms 一窗的 RMS，阈值取这段峰值的 12%（再不低于 0.004，免得把底噪当成说话）；没有声音时返回 null。
+ * SRT 常把句间停顿算进上一句（结束时间 = 下一句开始），按这个时刻收回结束时间，停顿才剪得掉（阶段 E 验收发现）
+ */
+export function speechEndMs(
+  samples: Float32Array,
+  sampleRate: number,
+  startMs: number,
+  fromMs: number,
+  toMs: number,
+): number | null {
+  const win = Math.max(1, Math.round(sampleRate * 0.02));
+  const at = (ms: number) => Math.round(((ms - startMs) / 1000) * sampleRate);
+  const a = Math.max(0, at(fromMs));
+  const b = Math.min(samples.length, at(toMs));
+  const rms: number[] = [];
+  for (let i = a; i + win <= b; i += win) {
+    let sum = 0;
+    for (let j = i; j < i + win; j++) sum += (samples[j] ?? 0) ** 2;
+    rms.push(Math.sqrt(sum / win));
+  }
+  const peak = Math.max(0, ...rms);
+  const threshold = Math.max(peak * 0.12, 0.004);
+  if (peak < threshold) return null;
+  for (let k = rms.length - 1; k >= 0; k--) {
+    if ((rms[k] ?? 0) >= threshold) return startMs + ((a + (k + 1) * win) / sampleRate) * 1000;
+  }
+  return null;
+}

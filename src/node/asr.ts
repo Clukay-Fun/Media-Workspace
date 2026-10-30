@@ -4,7 +4,7 @@ import { mkdir, rename, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { isAbsolute, join, resolve } from "node:path";
 import { Readable } from "node:stream";
-import { type AsrToken, alignChars, speechOnsetMs } from "../core/align";
+import { type AsrToken, alignChars, speechEndMs, speechOnsetMs } from "../core/align";
 import { MwError } from "../core/errors";
 import type { Op } from "../core/ops";
 import type { Caption, Project } from "../core/schema";
@@ -151,12 +151,18 @@ export type AlignReport = {
   match: number;
   /** 真正开口比字幕早，开始时间往前挪了多少毫秒（0 = 没挪） */
   startMovedMs: number;
+  /** 念完比字幕结束早，结束时间往前收了多少毫秒（0 = 没收） */
+  endMovedMs: number;
 };
 
 /** 开始时间挪到开口之前多少：识音给的是字的大致起点，留一点余量，别把声母切掉 */
 const ONSET_LEAD_MS = 60;
 /** 挪的时候和上一句最后一个字至少隔开这么久，避免把上一句的尾音划进这一句 */
 const PREV_TAIL_MS = 150;
+/** 结束时间收到念完之后多少：留住尾音 */
+const END_TAIL_MS = 150;
+/** 念完到结束时间的空白超过这么久才收回，免得一点点换气也动 */
+const END_GAP_MS = 200;
 
 /**
  * 给字幕识音，生成写入逐字时间的 ops（caption.update）。
@@ -229,14 +235,25 @@ export async function alignCaptions(
     }
     if (startMs < cap.startMs) {
       set(cap.id, { startMs });
-      if (prev && prev.endMs > startMs) {
+      const prevEnd = (prevSet?.endMs as number | undefined) ?? prev?.endMs ?? 0;
+      if (prev && prevEnd > startMs) {
         set(prev.id, {
           endMs: startMs,
           ...(prevStarts ? { charStartMs: prevStarts.map((v) => Math.min(v, startMs - 1)) } : {}),
         });
       }
     }
-    const charStartMs = alignChars(cap.text, tokens, startMs, cap.endMs);
+    // 结束时间收到念完为止：SRT 常把句间停顿算进上一句，不收回的话 cut.removePauses 找不到空隙
+    let endMs = cap.endMs;
+    const spoke = speechEndMs(samples, SAMPLE_RATE, from, startMs, cap.endMs);
+    if (spoke !== null && cap.endMs - spoke > END_GAP_MS) {
+      endMs = Math.max(startMs + 1, Math.round(spoke + END_TAIL_MS));
+      set(cap.id, { endMs });
+    }
+    // 识音偶尔把字标在念完之后的静音里：不晚于念完的时刻
+    const charStartMs = alignChars(cap.text, tokens, startMs, endMs).map((v) =>
+      spoke === null ? v : Math.min(v, Math.max(startMs, Math.round(spoke) - 1)),
+    );
     set(cap.id, { charStartMs });
     report.push({
       id: cap.id,
@@ -244,6 +261,7 @@ export async function alignCaptions(
       heard: r.text,
       match: matchRatio(cap.text, r.text),
       startMovedMs: cap.startMs - startMs,
+      endMovedMs: cap.endMs - endMs,
     });
     opts.onLog?.(`识音 ${i + 1}/${caps.length} ${cap.id}：${r.text}`);
   }

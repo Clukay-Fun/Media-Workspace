@@ -300,6 +300,8 @@ export async function alignProject(
     check: report.filter((x) => x.match < 0.8),
     // 真正开口比字幕早、开始时间往前挪过的句子
     moved: report.filter((x) => x.startMovedMs > 0).map((x) => ({ id: x.id, ms: x.startMovedMs })),
+    // 念完比字幕结束早、结束时间收回过的句子：之后 cut.removePauses 才找得到句间停顿
+    trimmed: report.filter((x) => x.endMovedMs > 0).map((x) => ({ id: x.id, ms: x.endMovedMs })),
   };
 }
 
@@ -496,6 +498,7 @@ export function guideInfo() {
       "字段名拼错会返回 UNKNOWN_FIELD，不会被悄悄忽略；item.update 的 set 里写 null 表示去掉这个字段（比如去掉转场 transitionIn: null）",
       "逐字节奏默认用剪映的前快后慢（stagger: { fraction: 0.75 } + inSlot），不看语音；要严格跟着念的速度出字时改用 spread 并跑 align，改了字幕文字后需要重新 align",
       "加标题、卡片之前先列方案（哪句话 → 加什么画面 → 用哪个模板 → 什么时间），给用户确认后再 apply",
+      "剪句间停顿：先 align（字幕起止收到开口和念完，SRT 常把停顿算进上一句），再 cut.removePauses 用 minGapMs: 150、keepMs: 40；没 align 时默认值几乎剪不到",
       "删句（cut.removeCaptions）之前先跑 align：它会把字幕开始时间挪到真正开口的地方，否则下一句的第一个字可能被剪掉一半",
       "剪错了用 uncut 恢复那一刀（片段 ID 是剪辑点后面那段），字幕会从历史里找回；不要整体 undo，会把后面的修改一起撤掉",
       "粗剪时在主轨片段的 cutBefore 写上前面剪掉的是什么（口误、重复、停顿，16 字以内），审片台会标在时间线上",

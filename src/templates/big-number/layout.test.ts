@@ -37,11 +37,14 @@ describe("bigNumberLayout", () => {
   });
 
   it("uses the researched 1080px type sizes when the small card has room", () => {
-    const layout = bigNumberLayout(props, style, 1080, 1920, "small");
-    // 调研字号 × CARD_TEXT_SCALE（1.5）
-    expect(layout.number.font.size).toBe(180);
-    expect(layout.suffix?.font.size).toBe(54);
-    expect(layout.label.font.size).toBe(60);
+    const short = { ...props, from: 0, to: 98, prefix: undefined };
+    const layout = bigNumberLayout(short, style, 1080, 1920, "small");
+    // 调研字号 × CARD_TEXT_SCALE（1.5）= 180 / 54 / 60；小卡放不下时三者等比收紧
+    const n = layout.number.font.size;
+    expect(n).toBeGreaterThan(150);
+    expect(n).toBeLessThanOrEqual(180);
+    expect(layout.suffix?.font.size).toBeCloseTo((n * 36) / 120);
+    expect(layout.label.font.size).toBeCloseTo((n * 40) / 120);
   });
 
   it("enforces unit and description character limits in the schema", () => {

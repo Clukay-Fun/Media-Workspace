@@ -3,7 +3,8 @@ import {
   compile,
   type FrameSpan,
   layoutMainTrack,
-  mainLiftAt,
+  mainLiftTransform,
+  mainShiftAt,
   mapTimelineMs,
   type ResolvedOverlay,
 } from "./compile";
@@ -135,6 +136,8 @@ type Placed = {
   shapes: Box[];
   /** 全屏卡：本来就要盖住画面，不算遮挡、挡脸 */
   full?: boolean;
+  /** 半屏卡：主画面上移到位之后才算挡脸（上移的 400ms 里卡片还在淡入） */
+  half?: boolean;
 };
 
 export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
@@ -198,6 +201,7 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
       style: st,
       ...b,
       full: o.size === "full",
+      half: o.size === "half",
     });
   }
 
@@ -348,12 +352,19 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
     const covering = [
       ...placed
         .filter((p) => !p.full)
-        .map((p) => ({ id: p.id, from: p.from, to: p.to, boxes: [...p.text, ...p.shapes] })),
-      ...visuals.map((v) => ({ id: v.id, from: v.from, to: v.to, boxes: [v.box] })),
+        .map((p) => ({
+          id: p.id,
+          from: p.from,
+          to: p.to,
+          half: p.half === true,
+          boxes: [...p.text, ...p.shapes],
+        })),
+      ...visuals.map((v) => ({ id: v.id, from: v.from, to: v.to, half: false, boxes: [v.box] })),
     ];
     for (const p of covering) {
       const boxes = p.boxes;
       for (let f = p.from; f < p.to; f += step) {
+        if (p.half && mainShiftAt(tl.mainShifts, f) < 1) continue;
         const src = mapTimelineMs(segs, frameToMs(f, fps));
         if (!src) continue;
         const track = opts.faces[src.asset];
@@ -368,11 +379,11 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
         const k = Math.min(width / sw, height / sh);
         const ox = (width - sw * k) / 2;
         const oy = (height - sh * k) / 2;
-        // 半屏卡出现时主画面整体上移（v7）
-        const lift = mainLiftAt(tl, f);
+        // 半屏卡出现时主画面整体上移并略放大（v7，见 mainLiftTransform）
+        const m = mainLiftTransform(tl, f);
         const toCanvas = (nx: number, ny: number) => ({
-          x: t.x + t.scale * (ox + nx * sw * k - width / 2),
-          y: t.y + t.scale * (oy + ny * sh * k - height / 2) - lift,
+          x: width / 2 + m.scale * (t.x + t.scale * (ox + nx * sw * k - width / 2) - width / 2),
+          y: m.scale * (t.y + t.scale * (oy + ny * sh * k - height / 2)) - m.lift,
         });
         for (const fb of sample.boxes) {
           const a0 = toCanvas(fb.x, fb.y);

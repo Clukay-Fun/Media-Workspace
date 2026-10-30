@@ -3,12 +3,13 @@ import type { CardSize } from "../core/schema";
 import type { TextStyle } from "../core/text-style";
 
 // 卡片的占位（docs/decisions/0022）。比例按 9:16 竖屏定，横屏也按比例缩放。
+// 小卡、半屏卡的文字要在「全平台」安全区里（下沿 440、右边 170，1080×1920），阶段 E 验收时四个工程都超出了下沿。
 // 有卡时字幕隐藏（core/compile 的 cardSpans）。半屏卡在下半屏，出现时主画面上移 HALF_CARD_SHIFT；
 // 全屏卡盖住整个画面和标题条，底板要不透明。
 
 const BOXES: Record<CardSize, [number, number, number, number]> = {
-  small: [0.06, 0.64, 0.94, 0.84],
-  half: [0.05, 0.52, 0.95, 0.92],
+  small: [0.1, 0.6, 0.9, 0.77],
+  half: [0.1, 0.47, 0.9, 0.79],
   full: [0, 0, 1, 1],
 };
 

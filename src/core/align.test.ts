@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alignChars, speechOnsetMs } from "./align";
+import { alignChars, speechEndMs, speechOnsetMs } from "./align";
 
 const tok = (s: string, times: number[]) =>
   [...s].map((text, i) => ({ text, startMs: times[i] ?? 0 }));
@@ -61,5 +61,24 @@ describe("speechOnsetMs", () => {
 
   it("什么都没对上时为 null", () => {
     expect(speechOnsetMs("涉及", [], 2000)).toBeNull();
+  });
+});
+
+describe("speechEndMs", () => {
+  // 16k：0–1000ms 有声音（正弦），之后 1000ms 静音，再加一点底噪
+  const rate = 16_000;
+  const samples = new Float32Array(rate * 2).map((_, i) =>
+    i < rate ? 0.3 * Math.sin(i / 5) : 0.001 * Math.sin(i),
+  );
+
+  it("找到最后一处说话的时刻（按 20ms 一窗）", () => {
+    const end = speechEndMs(samples, rate, 500, 500, 2500);
+    expect(end).toBeGreaterThanOrEqual(1480);
+    expect(end).toBeLessThanOrEqual(1520);
+  });
+
+  it("只看给定的范围；全是静音时返回 null", () => {
+    expect(speechEndMs(samples, rate, 500, 1600, 2500)).toBeNull();
+    expect(speechEndMs(new Float32Array(rate), rate, 0, 0, 1000)).toBeNull();
   });
 });

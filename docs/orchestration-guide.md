@@ -21,7 +21,8 @@
    之后删句才不会把下一句的第一个字剪掉。改了字幕文字要重新 `align`。
 3. **粗剪**：
    - 口误、重复的句子：`cut.removeCaptions`（画面和字幕一起剪掉）；
-   - 句间停顿：`cut.removePauses`（默认空隙 ≥ 400ms 才剪，两边各留 120ms）；
+   - 句间停顿：`cut.removePauses`。跑过 `align` 后，字幕的起止已经收到开口和念完（两头已留余量），用 `minGapMs: 150, keepMs: 40`；
+     没跑 align 时用默认值（空隙 ≥ 400ms 才剪，两边各留 120ms）。SRT 常把停顿算进上一句，不 align 基本剪不到；
    - 合并、拆分字幕：`caption.merge` / `caption.split`；
    - 每处剪辑在主轨片段的 `cutBefore` 写上剪掉了什么（16 字以内），审片台会标在时间线上。
    - 剪错了：`uncut`（CLI `mw uncut <工程> <片段>`）把这个片段前面剪掉的画面接回来，
