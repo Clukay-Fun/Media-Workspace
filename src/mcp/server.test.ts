@@ -59,6 +59,7 @@ describe("MCP", () => {
         "redo",
         "resolve",
         "revert",
+        "styles",
         "undo",
         "validate",
       ].sort(),
@@ -96,6 +97,29 @@ describe("MCP", () => {
     expect(locked).toMatchObject({ isError: true, data: { code: "TRACK_LOCKED" } });
     const conflict = await call("apply", { project: dir, ops: [asset], baseRevision: 0 });
     expect(conflict.data.code).toBe("CONFLICT");
+  });
+
+  it("styles：存进库，再套用到工程", async () => {
+    const oldHome = process.env.MW_HOME;
+    process.env.MW_HOME = root;
+    try {
+      const saved = await call("styles", {
+        action: "save",
+        project: dir,
+        name: "caption-word-yellow",
+        as: "lib-cap",
+      });
+      expect(saved).toMatchObject({ isError: false, data: { ok: true, saved: "lib-cap" } });
+      const list = await call("styles");
+      expect(list.data.styles.map((s: { name: string }) => s.name)).toContain("lib-cap");
+      const used = await call("styles", { action: "use", project: dir, name: "lib-cap" });
+      expect(used.data).toMatchObject({ ok: true, revision: 1, style: "lib-cap" });
+      const missing = await call("styles", { action: "use", name: "lib-cap" });
+      expect(missing).toMatchObject({ isError: true, data: { code: "USAGE" } });
+    } finally {
+      if (oldHome === undefined) delete process.env.MW_HOME;
+      else process.env.MW_HOME = oldHome;
+    }
   });
 
   it("guide 返回操作的 JSON Schema", async () => {

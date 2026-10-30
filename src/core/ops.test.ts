@@ -6,7 +6,7 @@ import { type MainClip, Project } from "./schema";
 
 const project = (locked = false) =>
   Project.parse({
-    version: 4,
+    version: 5,
     revision: 3,
     canvas: {},
     assets: { a1: { kind: "video", path: "/raw.mov", probe: { durationMs: 20_000 } } },

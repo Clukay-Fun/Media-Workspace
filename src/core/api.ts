@@ -127,6 +127,25 @@ export type HistoryResponse = {
 
 export type ExportStarted = { ok: true; jobId: string };
 
+/** 样式模板库里的一项（跨工程共用；内置样式不能覆盖或删除） */
+export type LibraryStyle = {
+  name: string;
+  description: string;
+  builtin: boolean;
+  savedAt: string | null;
+  style: TextStyle;
+};
+export type LibraryStylesResponse = { ok: true; styles: LibraryStyle[]; skipped: string[] };
+
+/** 把工程里的样式存进模板库；套用模板就是提交 style.add，走 ops */
+export const SaveLibraryStyleRequest = z.strictObject({
+  style: z.string().min(1),
+  as: z.string().min(1).optional(),
+  description: z.string().max(200).optional(),
+  overwrite: z.boolean().default(false),
+});
+export type SaveLibraryStyleRequest = z.input<typeof SaveLibraryStyleRequest>;
+
 /** 质检结果（GET /api/lint）：界面可以在时间线上标出 atMs 的位置 */
 export type LintResponse = {
   ok: true;
@@ -181,6 +200,7 @@ export const ROUTES = {
   comments: "/api/comments",
   comment: (id: string) => `/api/comments/${encodeURIComponent(id)}`,
   events: "/api/events",
+  libraryStyles: "/api/library/styles",
 } as const;
 
 /** 错误码 → HTTP 状态 */

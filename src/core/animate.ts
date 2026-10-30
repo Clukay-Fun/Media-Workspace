@@ -242,11 +242,22 @@ export function splitUnits(
  */
 export function unitStarts(
   units: TextUnit[],
-  stagger: "spread" | { eachMs: number } | { totalMs: number },
+  stagger: "spread" | { eachMs: number } | { totalMs: number } | { fraction: number },
   durationMs: number,
   inMs: number,
   charStartMs?: number[] | null,
 ): number[] {
+  const voiced = units.filter((u) => !u.silent);
+  if (typeof stagger === "object" && "fraction" in stagger) {
+    // 剪映的节奏：出现进度按二次缓出走（前快后慢），第 k 个单位在进度到 k/n 时出现。
+    // 样片 1029 三句话逐帧量过，和这条曲线的误差在 1 帧以内
+    const total = durationMs * stagger.fraction;
+    let k = -1;
+    return units.map((u) => {
+      if (!u.silent || k < 0) k += 1;
+      return voiced.length > 0 ? total * (1 - Math.sqrt(1 - Math.max(0, k) / voiced.length)) : 0;
+    });
+  }
   if (charStartMs) {
     let prev = 0;
     return units.map((u) => {
@@ -254,7 +265,6 @@ export function unitStarts(
       return prev;
     });
   }
-  const voiced = units.filter((u) => !u.silent);
   if (stagger === "spread") {
     const weight = (u: TextUnit) => (u.silent ? 0 : [...u.text].length);
     const total = voiced.reduce((n, u) => n + weight(u), 0);
@@ -270,7 +280,13 @@ export function unitStarts(
     });
   }
   const step =
-    voiced.length <= 1 ? 0 : "eachMs" in stagger ? stagger.eachMs : stagger.totalMs / voiced.length;
+    voiced.length <= 1
+      ? 0
+      : "eachMs" in stagger
+        ? stagger.eachMs
+        : "totalMs" in stagger
+          ? stagger.totalMs / voiced.length
+          : 0;
   let beat = -1;
   return units.map((u) => {
     if (!u.silent || beat < 0) beat += 1;

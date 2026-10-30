@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { MwError } from "../core/errors";
 import {
   alignProject,
   commentsInfo,
@@ -17,6 +18,7 @@ import {
   templatesInfo,
   validateDir,
 } from "../node/actions";
+import { listStyles, removeStyle, saveStyle, useStyle } from "../node/library";
 import { resolveProjectDir } from "../node/paths";
 import {
   applyToProject,
@@ -80,6 +82,46 @@ export function createMcpServer(): McpServer {
     },
     ({ project: p, view }) =>
       call(async () => (view === "templates" ? templatesInfo() : inspectProject(dirOf(p), view))),
+  );
+
+  server.registerTool(
+    "styles",
+    {
+      description:
+        "样式模板库（跨工程共用）：list 列出内置和保存过的样式；save 把工程里的样式存进库（name 是样式 ID，as 是库里的名字）；use 把库里的样式复制进工程（name 是模板名，as 是工程里的样式 ID）；remove 删除库里的样式",
+      inputSchema: {
+        action: z.enum(["list", "save", "use", "remove"]).default("list"),
+        project: project.optional(),
+        name: z.string().optional(),
+        as: z.string().optional(),
+        description: z.string().optional(),
+        overwrite: z.boolean().default(false),
+        baseRevision: base.optional(),
+        actor,
+      },
+    },
+    ({ action, project: p, name, as, description, overwrite, baseRevision, actor: a }) =>
+      call(async () => {
+        if (action === "list") return { ok: true, ...(await listStyles()) };
+        if (!name) throw new MwError("USAGE", `${action} 需要 name`);
+        if (action === "remove") return removeStyle(name);
+        if (!p) throw new MwError("USAGE", `${action} 需要 project`);
+        const opt = as === undefined ? {} : { as };
+        if (action === "save") {
+          const s = await saveStyle(dirOf(p), name, {
+            ...opt,
+            overwrite,
+            ...(description === undefined ? {} : { description }),
+          });
+          return { ok: true, saved: s.name };
+        }
+        return useStyle(dirOf(p), name, {
+          ...opt,
+          ...(baseRevision === undefined ? {} : { baseRevision }),
+          source: "mcp",
+          actor: a,
+        });
+      }),
   );
 
   server.registerTool(

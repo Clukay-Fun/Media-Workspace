@@ -1,4 +1,9 @@
-import { EditorState, type HistoryEntry, type ServerEvent } from "../../core/api";
+import {
+  EditorState,
+  type HistoryEntry,
+  type LibraryStyle,
+  type ServerEvent,
+} from "../../core/api";
 import { compile } from "../../core/compile";
 import { MwError } from "../../core/errors";
 import { lintProject } from "../../core/lint";
@@ -38,7 +43,7 @@ function demoProject(): Project {
   });
   const at = (i: number) => captions[i] ?? { startMs: 0, endMs: 0 };
   return Project.parse({
-    version: 4,
+    version: 5,
     revision: 0,
     canvas: { background: "#1a1b1f" },
     assets: {
@@ -142,6 +147,29 @@ export function createMockApi(): Api {
   ];
   let review = Review.parse({});
   let editor = EditorState.parse({});
+  // 模板库：内置样式 + 一个「之前存过的」样式，演示跨工程套用
+  const library: LibraryStyle[] = [
+    ...Object.entries(BUILTIN_STYLES).map(([name, style]) => ({
+      name,
+      description: "内置",
+      builtin: true,
+      savedAt: null,
+      style,
+    })),
+    {
+      name: "caption-box-white",
+      description: "白底黑字圆角框，适合知识讲解",
+      builtin: false,
+      savedAt: "2026-10-20T08:00:00.000Z",
+      style: {
+        ...BUILTIN_STYLES["caption-word-yellow"],
+        fill: "#111111",
+        stroke: null,
+        box: { color: "#FFFFFFEE", radius: 18, padding: [10, 22] },
+        highlight: null,
+      },
+    },
+  ];
   const listeners = new Set<(e: LiveEvent) => void>();
   const emit = (e: ServerEvent) => {
     for (const fn of listeners) fn(e);
@@ -220,6 +248,26 @@ export function createMockApi(): Api {
     editor: async () => ({ ok: true, editor }),
     saveEditor: async (next) => {
       editor = EditorState.parse(next);
+    },
+    libraryStyles: async () => ({ ok: true, styles: [...library], skipped: [] }),
+    saveLibraryStyle: async (req) => {
+      const name = req.as ?? req.style;
+      const style = current().styles[req.style];
+      if (!style) throw new ApiFailure("NOT_FOUND", `工程里没有样式「${req.style}」`);
+      const at = library.findIndex((x) => x.name === name);
+      if (at >= 0 && (library[at]?.builtin || !req.overwrite)) {
+        throw new ApiFailure("DUPLICATE_ID", `模板库里已经有「${name}」`);
+      }
+      const entry = {
+        name,
+        description: req.description ?? "",
+        builtin: false,
+        savedAt: new Date().toISOString(),
+        style,
+      };
+      if (at >= 0) library[at] = entry;
+      else library.push(entry);
+      return { ok: true, saved: name };
     },
     // 假波形：有起伏的说话声，句子之间安静
     peaks: async () => ({

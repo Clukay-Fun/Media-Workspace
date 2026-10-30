@@ -9,9 +9,15 @@ describe("migrate", () => {
     expect(migrate(v1)).toEqual({ ...v1, version: PROJECT_FORMAT_VERSION });
   });
 
-  it("v3 工程升到 v4，内容不变（章节、剪辑理由都是可选的）", () => {
+  it("v3 工程升到当前版本，内容不变（章节、剪辑理由都是可选的）", () => {
     const v3 = { version: 3, revision: 1, tracks: [] };
-    expect(migrate(v3)).toEqual({ ...v3, version: 4 });
+    expect(migrate(v3)).toEqual({ ...v3, version: PROJECT_FORMAT_VERSION });
+  });
+
+  it("v4 工程升到 v5，样式原样保留（新字段都是可选的）", () => {
+    const style = { font: { family: "X", size: 40 }, fill: "#FFFFFF" };
+    const v4 = { version: 4, revision: 2, styles: { s: style } };
+    expect(migrate(v4)).toEqual({ ...v4, version: 5 });
   });
 
   it("当前版本原样返回", () => {
