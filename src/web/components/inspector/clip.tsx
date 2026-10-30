@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import type { FloatClip, MainClip } from "../../../core/schema";
+import { transitionPairFor } from "../../lib/transitions";
 import { useStore } from "../../store";
+import { TransitionEditor } from "../transition-editor";
 import { VisualAnims } from "./anims";
 import { Field, InspectorActions, InspectorHead, type InspectorProps, TimingNudge } from "./common";
 import { KeyframesInspector } from "./keyframes";
@@ -14,6 +16,8 @@ export function ClipInspector(props: InspectorProps) {
   const anchored = "at" in item;
   const clip = "outMs" in item ? (item as MainClip | FloatClip) : null;
   const pip = clip && track.kind === "video" && "at" in clip ? clip : null;
+  const transitionPair =
+    track.kind === "video" && track.main ? transitionPairFor(project, id) : null;
   const cut = "cutBefore" in item ? (item.cutBefore as string | undefined) : undefined;
   return (
     <div className="selection">
@@ -45,6 +49,11 @@ export function ClipInspector(props: InspectorProps) {
         />
       )}
       {clip && <VolumeField id={id} gainDb={clip.gainDb} locked={track.locked} />}
+      {transitionPair && (
+        <Field label="转场" note="本段入场">
+          <TransitionEditor pair={transitionPair} locked={track.locked} variant="inspector" />
+        </Field>
+      )}
       {clip && track.kind === "video" && (
         <KeyframesInspector
           id={id}

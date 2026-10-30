@@ -2,7 +2,7 @@ import type React from "react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { EditorState } from "../../core/api";
 import { type DragMode, planDrag } from "../../core/edit";
-import type { Track } from "../../core/schema";
+import type { Project, Track } from "../../core/schema";
 import { frameToMs, sourceFrameAt } from "../../core/time";
 import { aiChanges } from "../lib/changes";
 import { keyframeMarkerPositions } from "../lib/keyframes";
@@ -17,8 +17,10 @@ import {
   timelineRows,
   waveform,
 } from "../lib/timeline";
+import { type TransitionCut, transitionCutMarkers, transitionPairFor } from "../lib/transitions";
 import { useStore } from "../store";
 import { Icon, type IconName } from "./icons";
+import { TransitionEditor } from "./transition-editor";
 
 /** 轨道头宽度：图标、按用途起的名字、锁定 / 隐藏按钮 */
 const HEAD = 150;
@@ -47,6 +49,7 @@ export function Timeline() {
   const { seek, select } = useStore.getState();
   const [ghost, setGhost] = useState<Ghost | null>(null);
   const [zoomPps, setZoomPps] = useState<number | null>(null);
+  const [openTransitionId, setOpenTransitionId] = useState<string | null>(null);
   const history = useStore((s) => s.history);
   const reviewedRev = useStore((s) => s.reviewedRev);
   const dragSession = useRef<DragSession | null>(null);
@@ -89,6 +92,7 @@ export function Timeline() {
   const tl = preview?.timeline;
   const fps = tl?.fps ?? 30;
   const total = Math.max(1, tl?.durationInFrames ?? 1);
+  const transitionCuts = useMemo(() => (tl ? transitionCutMarkers(tl.videos) : []), [tl]);
   const fitPps = viewportWidth > 0 ? (viewportWidth * fps) / total : 40;
   const pps = zoomPps ?? fitPps;
   const timelineWidth = Math.max(1, (total / fps) * pps);
@@ -454,6 +458,7 @@ export function Timeline() {
           <RowView
             key={row.track.id}
             row={row}
+            project={project}
             px={px}
             fps={fps}
             selected={selected}
@@ -464,6 +469,9 @@ export function Timeline() {
             onScrub={scrub}
             ghost={ghost}
             onDragStart={startDrag}
+            transitionCuts={row.kind === "main" ? transitionCuts : []}
+            openTransitionId={openTransitionId}
+            setOpenTransitionId={setOpenTransitionId}
           />
         ))}
       </div>
@@ -500,6 +508,7 @@ export function Timeline() {
 
 function RowView({
   row,
+  project,
   px,
   fps,
   selected,
@@ -510,8 +519,12 @@ function RowView({
   onScrub,
   ghost,
   onDragStart,
+  transitionCuts,
+  openTransitionId,
+  setOpenTransitionId,
 }: {
   row: Row;
+  project: Project;
   px: (f: number) => number;
   fps: number;
   selected: string | null;
@@ -522,6 +535,9 @@ function RowView({
   onScrub: (e: React.PointerEvent<HTMLDivElement>) => void;
   ghost: Ghost | null;
   onDragStart: (e: React.PointerEvent, b: Block, mode: DragMode) => void;
+  transitionCuts: TransitionCut[];
+  openTransitionId: string | null;
+  setOpenTransitionId: (id: string | null) => void;
 }) {
   const { track } = row;
   const { submit, select, seek } = useStore.getState();
@@ -616,6 +632,26 @@ function RowView({
             </Fragment>
           );
         })}
+        {row.kind === "main" &&
+          transitionCuts.map((cut) => {
+            const pair = transitionPairFor(project, cut.incomingId);
+            if (!pair) return null;
+            return (
+              <TransitionEditor
+                key={`transition-${cut.incomingId}`}
+                pair={pair}
+                locked={track.locked}
+                variant="timeline"
+                left={px(cut.frame)}
+                open={openTransitionId === cut.incomingId}
+                onOpenChange={(open) => setOpenTransitionId(open ? cut.incomingId : null)}
+                onOpen={() => {
+                  select(cut.incomingId);
+                  seek(cut.frame);
+                }}
+              />
+            );
+          })}
       </div>
     </>
   );
