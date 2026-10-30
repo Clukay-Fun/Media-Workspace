@@ -2003,12 +2003,88 @@ textarea:focus-visible {
 
 .caption-row {
   display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: start;
+  column-gap: 4px;
+  padding: 2px 2px 2px 8px;
+  border-radius: 5px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.caption-row-main {
+  display: grid;
   grid-template-columns: 56px 1fr;
   gap: 10px;
-  padding: 7px 8px;
-  border-radius: 5px;
+  padding: 5px 0;
   text-align: left;
-  font-size: 13px;
+  color: inherit;
+}
+
+.caption-row > .icon-btn {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.caption-row:hover > .icon-btn,
+.caption-row.current > .icon-btn,
+.caption-row > .icon-btn.on,
+.caption-row > .icon-btn:focus-visible {
+  opacity: 1;
+}
+
+.caption-row .hl {
+  color: var(--text);
+  background: color-mix(in srgb, #ffd400 45%, transparent);
+  border-radius: 2px;
+}
+
+.hl-editor {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+  margin: 2px 6px 8px 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.hl-text {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--text);
+  user-select: text;
+  cursor: text;
+}
+
+.hl-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.hl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 2px 1px 7px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text);
+  background: color-mix(in srgb, #ffd400 30%, transparent);
+}
+
+.hl-chip .hl-nth {
+  font-size: 10px;
+  color: var(--text-3);
+}
+
+.hl-chip button {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 3px;
   color: var(--text-2);
 }
 

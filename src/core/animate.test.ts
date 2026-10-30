@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ease,
+  highlightAt,
   highlightMask,
   markerProgress,
   splitUnits,
@@ -43,6 +44,21 @@ describe("unitStarts", () => {
     const v = splitUnits("移民财产转移的条件", "word");
     expect(v.map((x) => x.text)).toEqual(["移民", "财产", "转移", "的", "条件"]);
     expect(unitStarts(v, "spread", 900, 0)).toEqual([0, 200, 400, 600, 700]);
+  });
+});
+
+describe("highlightAt", () => {
+  it("只出现一次不写 nth；出现多次时写第几次，标出来的正好是选中的那处", () => {
+    expect(highlightAt("拿到海外身份", 4, 6)).toEqual({ text: "身份" });
+    const h = highlightAt("身份和身份", 3, 5);
+    expect(h).toEqual({ text: "身份", nth: 1 });
+    expect(highlightMask("身份和身份", h ? [h] : [])).toEqual([false, false, false, true, true]);
+  });
+
+  it("空选择、只选了空格返回 null；越界时截到句子范围", () => {
+    expect(highlightAt("第一句", 1, 1)).toBeNull();
+    expect(highlightAt("a b", 1, 2)).toBeNull();
+    expect(highlightAt("第一句", 2, 9)).toEqual({ text: "句" });
   });
 });
 

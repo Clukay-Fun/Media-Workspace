@@ -316,6 +316,32 @@ export function highlightMask(
 }
 
 /**
+ * 把一句里选中的字（码点下标 [start, end)）变成一条高亮。这段文字在句子里只出现一次时不写 nth，
+ * 出现多次时写上它是第几次（和 highlightMask 的计数方式一致），只标选中的那一处。
+ */
+export function highlightAt(
+  text: string,
+  start: number,
+  end: number,
+): { text: string; nth?: number } | null {
+  const chars = [...text];
+  const a = Math.max(0, start);
+  const b = Math.min(chars.length, end);
+  const needle = chars.slice(a, b);
+  if (needle.length === 0 || needle.every((c) => /^\s$/u.test(c))) return null;
+  let total = 0;
+  let nth = 0;
+  for (let i = 0; i + needle.length <= chars.length; i++) {
+    if (needle.every((c, j) => chars[i + j] === c)) {
+      if (i < a) nth++;
+      total++;
+    }
+  }
+  const h = needle.join("");
+  return total > 1 ? { text: h, nth } : { text: h };
+}
+
+/**
  * 卡拉 OK 扫色的进度：每个字（码点下标）0–1。一个字从它开始念扫到下一个字开始念；
  * 一个单位里有多个字、又没有逐字时间时，平分这个单位的时长。
  */
