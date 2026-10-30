@@ -66,6 +66,10 @@ export const Keyframe = z.strictObject({
   easing: Easing.default("ease-in-out"),
 });
 
+/**
+ * 主轨两段之间的转场。slide：新画面滑进来盖住旧画面；push：新画面把旧画面推走；fade：交叉淡化。
+ * direction 是画面往哪边走，durationMs 是两段重叠的时长（总时长相应变短）
+ */
 export const Transition = z.strictObject({
   type: z.enum(["slide", "push", "fade"]),
   direction: Direction.optional(),

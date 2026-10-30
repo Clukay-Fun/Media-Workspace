@@ -147,3 +147,125 @@ describe("渲染", () => {
     expect(psnr(out, still ?? "", 35)).toBeLessThan(psnr(out, still ?? "", 20));
   });
 });
+
+// 阶段 D 的画面能力（docs/decisions/0017）：主轨转场、画中画（横屏素材 + 关键帧）、图片（入场动画 + 关键帧），
+// 每一项都在动的那几帧上比对截图和导出。
+describe("画面能力", () => {
+  let vdir: string;
+  const lavfi = (src: string, out: string, extra: string[] = []) =>
+    execFileSync(ffmpeg, ["-v", "error", "-y", "-f", "lavfi", "-i", src, ...extra, out]);
+
+  const build = async (type: "slide" | "push") => {
+    const d = join(root, `v-${type}.mwproj`);
+    await initProject(d);
+    const imp = (f: string) => importMedia(d, f, { proxy: false, peaks: false, faces: false });
+    const [m, v, i] = [await imp(media.main), await imp(media.pip), await imp(media.png)];
+    await applyToProject(d, {
+      baseRevision: 0,
+      source: "cli",
+      actor: "test",
+      ops: [
+        { op: "asset.add", id: "m", asset: m.asset },
+        { op: "asset.add", id: "v", asset: v.asset },
+        { op: "asset.add", id: "i", asset: i.asset },
+        { op: "canvas.update", set: { width: 540, height: 960 } },
+        {
+          op: "item.add",
+          track: "main",
+          item: { id: "c1", type: "clip", asset: "m", inMs: 0, outMs: 2000 },
+        },
+        {
+          op: "item.add",
+          track: "main",
+          item: {
+            id: "c2",
+            type: "clip",
+            asset: "m",
+            inMs: 2000,
+            outMs: 4000,
+            transitionIn: { type, direction: "left", durationMs: 500 },
+          },
+        },
+        { op: "track.add", track: { id: "pip", kind: "video", items: [] } },
+        {
+          op: "item.add",
+          track: "pip",
+          item: {
+            id: "p1",
+            type: "clip",
+            asset: "v",
+            at: { ms: 0 },
+            inMs: 0,
+            outMs: 3000,
+            gainDb: -60,
+            transform: { scale: 0.4 },
+            keyframes: [
+              { atMs: 0, transform: { x: 150, y: 200 } },
+              { atMs: 3000, transform: { x: 390, y: 760, radius: 24 } },
+            ],
+          },
+        },
+        {
+          op: "item.add",
+          track: "pip",
+          item: {
+            id: "i1",
+            type: "image",
+            asset: "i",
+            at: { ms: 500 },
+            durationMs: 2500,
+            transform: { scale: 0.3 },
+            animIn: { preset: "fade-up", durationMs: 600 },
+            keyframes: [
+              { atMs: 0, transform: { y: 480, rotation: 0 } },
+              { atMs: 2500, transform: { y: 300, rotation: 20 } },
+            ],
+          },
+        },
+      ],
+    });
+    return d;
+  };
+
+  const media = { main: "", pip: "", png: "" };
+
+  beforeAll(async () => {
+    media.main = join(root, "main.mp4");
+    media.pip = join(root, "pip.mp4");
+    media.png = join(root, "img.png");
+    lavfi("testsrc2=size=540x960:rate=30:duration=4", media.main, ["-pix_fmt", "yuv420p"]);
+    // 横屏素材做画中画：检查 contain 缩放后的位置
+    lavfi("smptebars=size=960x540:rate=30:duration=4", media.pip, ["-pix_fmt", "yuv420p"]);
+    lavfi("testsrc=size=400x300", media.png, ["-frames:v", "1"]);
+    vdir = await build("slide");
+  }, 120_000);
+
+  it("转场、画中画、图片动起来的帧：截图和导出一致", async () => {
+    const p = await loadProject(vdir);
+    const tl = compile(p);
+    // 4000ms - 500ms 重叠 = 3500ms → 105 帧；转场在第 45–60 帧
+    expect(tl.durationInFrames).toBe(105);
+    const out = join(root, "visual.mp4");
+    await exportVideo(vdir, p, { out, concurrency: 2 });
+    // 第 20 帧：图片入场动画中；第 52 帧：转场中、画中画和图片在关键帧之间；第 80 帧：转场后
+    const frames = [20, 52, 80];
+    const stills = await renderStills(vdir, p, frames, join(root, "visual-stills"));
+    frames.forEach((f, k) => {
+      expect(psnr(out, stills[k] ?? "", f), `第 ${f} 帧`).toBeGreaterThan(35);
+    });
+    // 错一帧时明显对不上，说明上面比的确实是在动的画面
+    expect(psnr(out, stills[1] ?? "", 58)).toBeLessThan(psnr(out, stills[1] ?? "", 52));
+  });
+
+  it("slide 和 push 画面不同：slide 的旧画面不动，push 的旧画面被推走", async () => {
+    const pushDir = await build("push");
+    const [a] = await renderStills(vdir, await loadProject(vdir), [52], join(root, "s-slide"));
+    const [b] = await renderStills(pushDir, await loadProject(pushDir), [52], join(root, "s-push"));
+    const r = spawnSync(
+      ffmpeg,
+      ["-i", a ?? "", "-i", b ?? "", "-filter_complex", "psnr", "-f", "null", "-"],
+      { encoding: "utf8" },
+    );
+    expect(Number(/average:([0-9.]+|inf)/.exec(r.stderr)?.[1] ?? 0)).toBeLessThan(25);
+  }, 120_000);
+});
