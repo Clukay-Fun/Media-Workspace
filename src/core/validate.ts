@@ -8,6 +8,8 @@ export type ValidateOptions = {
   templates?: readonly string[];
   /** 模板参数里引用的素材 ID（templates/overlayAssets）；不传时不检查 */
   templateAssets?: (o: { template: string; props: Record<string, unknown> }) => string[];
+  /** 模板支持的卡片尺寸（meta.sizes）；空 = 不是卡片。不传时不检查 */
+  templateSizes?: (template: string) => readonly string[] | undefined;
 };
 
 export type ValidateResult =
@@ -119,6 +121,22 @@ export function validate(input: unknown, opts: ValidateOptions = {}): ValidateRe
       if (t.kind === "overlay") {
         const o = item as (typeof t.items)[number];
         template(o, path);
+        // 卡片必须写尺寸：半屏会让主画面上移、有卡时字幕隐藏，AI 要清楚自己放的是什么（0022）
+        const sizes = opts.templateSizes?.(o.template);
+        if (sizes && sizes.length > 0 && !o.size)
+          err(
+            "VALIDATION",
+            `${path}.size`,
+            `「${o.template}」是卡片，要写 size：${sizes.join(" / ")}`,
+          );
+        else if (sizes && o.size && !sizes.includes(o.size))
+          err(
+            "VALIDATION",
+            `${path}.size`,
+            sizes.length > 0
+              ? `「${o.template}」没有 ${o.size} 尺寸，可用：${sizes.join(" / ")}`
+              : `「${o.template}」不是卡片，不能写 size`,
+          );
         return;
       }
       if (t.kind === "video" && t.main !== isMainClip(item as (typeof t.items)[number])) {

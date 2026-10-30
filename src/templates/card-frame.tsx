@@ -6,7 +6,8 @@ import type { Box } from "../core/lint";
 // 卡片外框：底板 + 统一的进出场。卡片里的内容按画布坐标排（和 TextBlock 一样），
 // 放在 children 里跟着底板一起动。
 
-const ENTER_MS = 320;
+// 进场和半屏时主画面上移同一段 400ms
+const ENTER_MS = 400;
 const EXIT_MS = 200;
 
 export type CardFrameProps = {

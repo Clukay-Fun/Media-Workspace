@@ -5,6 +5,8 @@ import { AbsoluteFill, Freeze, Img, Sequence, useCurrentFrame } from "remotion";
 import { type AnimState, ease, elementState, outwardDirection, transformAt } from "../core/animate";
 import type { PreviewProps } from "../core/api";
 import {
+  cardShownAt,
+  type FrameSpan,
   type FullTransform,
   mainLiftAt,
   type ResolvedCaption,
@@ -278,7 +280,7 @@ const MainClipLayer: React.FC<{
   );
 };
 
-/** 半屏卡出现时主轨和字幕整体上移让位（docs/decisions/0022）；用全局帧号，跨段时不跳 */
+/** 半屏卡出现时主轨整体上移让位（docs/decisions/0022）；用全局帧号，跨段时不跳 */
 const MainShift: React.FC<{
   tl: Pick<ResolvedTimeline, "mainShifts" | "height">;
   children: React.ReactNode;
@@ -290,6 +292,12 @@ const MainShift: React.FC<{
     </AbsoluteFill>
   );
 };
+
+/** 有卡片时字幕不显示（docs/decisions/0022）：只是看不见，逐字动画照常按时间走 */
+const CardGate: React.FC<{ spans: FrameSpan[]; children: React.ReactNode }> = ({
+  spans,
+  children,
+}) => (cardShownAt(spans, useCurrentFrame()) ? null : <AbsoluteFill>{children}</AbsoluteFill>);
 
 const OutroLayer: React.FC<{
   outro: NonNullable<ResolvedTimeline["outro"]>;
@@ -417,11 +425,11 @@ export const Main: React.FC<MainProps> = ({ timeline, styles, srcs, fonts }) => 
       z: c.z,
       key: `${c.id}-${c.part}`,
       node: (
-        <MainShift tl={timeline}>
+        <CardGate spans={timeline.cardSpans}>
           <Sequence key={`${c.id}-${c.part}`} from={c.from} durationInFrames={c.durationInFrames}>
             <CaptionLayer c={c} style={styleOf(c.style, "caption-word-yellow")} fps={fps} />
           </Sequence>
-        </MainShift>
+        </CardGate>
       ),
     });
   }
@@ -429,7 +437,8 @@ export const Main: React.FC<MainProps> = ({ timeline, styles, srcs, fonts }) => 
     if (o.hidden) continue;
     const def = TEMPLATES[o.template]?.meta.defaultStyle as keyof typeof BUILTIN_STYLES | undefined;
     layers.push({
-      z: o.z,
+      // 全屏卡盖住同一层的标题条
+      z: o.size === "full" ? o.z + 0.5 : o.z,
       key: o.id,
       node: (
         <Sequence key={o.id} from={o.from} durationInFrames={o.durationInFrames}>

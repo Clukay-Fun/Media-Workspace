@@ -97,20 +97,24 @@ export type ResolvedOverlay = Flags & {
   durationInFrames: number;
   style: string | null;
   /** 没写时为 null，由模板的默认尺寸决定怎么画（默认尺寸不会是半屏，见 templates） */
+  /** 卡片尺寸；null = 不是卡片（标题条等） */
   size: CardSize | null;
   transform: FullTransform;
   props: Record<string, unknown>;
 };
 
 /**
- * 半屏卡出现时主画面和字幕上移的比例（画面高度）和上移 / 回落用的时间（docs/decisions/0022）。
- * 移太多人脸会出画面顶部；字幕跟着上移，留在人脸和卡片之间
+ * 半屏卡出现时主画面上移的比例（画面高度，1920 高时 180px）和上移 / 回落用的时间，
+ * 和卡片进场同一段 400ms（docs/decisions/0022）。主画面只移不缩
  */
-export const HALF_CARD_SHIFT = 0.15;
+export const HALF_CARD_SHIFT = 180 / 1920;
 const HALF_CARD_RAMP_MS = 400;
 
 /** 主画面上移的时间段：重叠或相接的半屏卡合并成一段，中间不回落 */
 export type ResolvedShift = { from: number; to: number; rampFrames: number };
+
+/** 帧区间 [from, to) */
+export type FrameSpan = { from: number; to: number };
 
 export type ResolvedOutro = {
   asset: string;
@@ -139,6 +143,8 @@ export type ResolvedTimeline = {
   overlays: ResolvedOverlay[];
   /** 半屏卡让主画面上移的时间段，按开始时间排序 */
   mainShifts: ResolvedShift[];
+  /** 有卡片（写了 size 的叠加层）的时间段：这时字幕不显示 */
+  cardSpans: FrameSpan[];
   outro: ResolvedOutro | null;
   chapters: ResolvedChapter[];
   warnings: CompileWarning[];
@@ -568,7 +574,12 @@ export function compile(project: Project): ResolvedTimeline {
     images,
     captions,
     overlays,
-    mainShifts: mainShifts(overlays, f(HALF_CARD_RAMP_MS)),
+    mainShifts: mergeSpans(overlays.filter((o) => o.size === "half")).map((s) => ({
+      ...s,
+      // 卡片很短时上移和回落各占一半，不会叠在一起
+      rampFrames: Math.min(f(HALF_CARD_RAMP_MS), Math.floor((s.to - s.from) / 2)),
+    })),
+    cardSpans: mergeSpans(overlays.filter((o) => o.size !== null)),
     outro,
     chapters,
     warnings,
@@ -608,22 +619,27 @@ function stripUndefined<T extends object>(o: T): Partial<T> {
   return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;
 }
 
-function mainShifts(overlays: ResolvedOverlay[], ramp: number): ResolvedShift[] {
+/** 显示着的叠加层占的时间段，重叠或相接的合并，按开始时间排序 */
+function mergeSpans(overlays: ResolvedOverlay[]): FrameSpan[] {
   const spans = overlays
-    .filter((o) => o.size === "half" && !o.hidden)
+    .filter((o) => !o.hidden)
     .map((o) => ({ from: o.from, to: o.from + o.durationInFrames }))
     .toSorted((a, b) => a.from - b.from);
-  const merged: { from: number; to: number }[] = [];
+  const merged: FrameSpan[] = [];
   for (const s of spans) {
     const last = merged.at(-1);
     if (last && s.from <= last.to) last.to = Math.max(last.to, s.to);
     else merged.push({ ...s });
   }
-  // 卡片很短时上移和回落各占一半，不会叠在一起
-  return merged.map((s) => ({ ...s, rampFrames: Math.min(ramp, Math.floor((s.to - s.from) / 2)) }));
+  return merged;
 }
 
-/** 第 frame 帧主画面和字幕往上移了多少像素 */
+/** 第 frame 帧有没有卡片（有卡时字幕隐藏） */
+export function cardShownAt(spans: FrameSpan[], frame: number): boolean {
+  return spans.some((s) => frame >= s.from && frame < s.to);
+}
+
+/** 第 frame 帧主画面往上移了多少像素 */
 export function mainLiftAt(tl: Pick<ResolvedTimeline, "mainShifts" | "height">, frame: number) {
   return mainShiftAt(tl.mainShifts, frame) * HALF_CARD_SHIFT * tl.height;
 }

@@ -7,7 +7,7 @@ export const meta: TemplateMeta<TitleBarProps> = {
   description:
     '画面顶部一条半透明横条，上面 1–3 行大字标题，通常整条视频一直显示（durationMs: "toEnd"）',
   defaultStyle: "title-bar-yellow",
-  sizes: ["small"],
+  sizes: [],
   mood: ["沉稳"],
   useFor: "整条视频的主题，开头就出现，一直显示",
   example: {

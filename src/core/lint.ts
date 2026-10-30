@@ -1,12 +1,11 @@
 import { transformAt } from "./animate";
 import {
   compile,
-  HALF_CARD_SHIFT,
+  type FrameSpan,
   layoutMainTrack,
   mainLiftAt,
   mapTimelineMs,
   type ResolvedOverlay,
-  type ResolvedShift,
 } from "./compile";
 import { safeAreaFor } from "./safe-area";
 import type { Project } from "./schema";
@@ -25,7 +24,8 @@ export type LintIssue = {
     | "TEXT_OUTSIDE_SAFE_AREA"
     | "CAPTION_OVERFLOW"
     | "OVERLAP"
-    | "FACE_COVERED";
+    | "FACE_COVERED"
+    | "TOO_MANY_CARDS";
   /** 有问题的条目 */
   id: string;
   /** 遮挡时，另一方的条目 ID */
@@ -133,6 +133,8 @@ type Placed = {
   style: TextStyle;
   text: Box[];
   shapes: Box[];
+  /** 全屏卡：本来就要盖住画面，不算遮挡、挡脸 */
+  full?: boolean;
 };
 
 export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
@@ -157,10 +159,9 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
     const styleId = c.style ?? "caption-word-yellow";
     const st = styleOf(c.style, "caption-word-yellow");
     if (!st) continue;
-    // 半屏卡出现的时间段里字幕上移（v7）：按让位的时间段切开，各段用各自的位置
+    // 有卡片时字幕不显示（v7）：只检查没有卡片的那几段
     const box = textBox(c.text, st);
-    const lift = HALF_CARD_SHIFT * height;
-    for (const s of splitByShifts(c.from, c.from + c.durationInFrames, tl.mainShifts)) {
+    for (const s of spansOutside(c.from, c.from + c.durationInFrames, tl.cardSpans)) {
       placed.push({
         id: c.id,
         kind: "caption",
@@ -168,7 +169,7 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
         from: s.from,
         to: s.to,
         style: st,
-        text: [s.shifted ? { ...box, y0: box.y0 - lift, y1: box.y1 - lift } : box],
+        text: [box],
         shapes: [],
       });
     }
@@ -196,6 +197,20 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
       to: o.from + o.durationInFrames,
       style: st,
       ...b,
+      full: o.size === "full",
+    });
+  }
+
+  // 卡片太多：30 秒以内最多 2 张，之后每 15 秒多 1 张（Grok 的口播卡片调研）
+  const cards = tl.overlays.filter((o) => o.size !== null && !o.hidden);
+  const maxCards = Math.max(2, Math.floor(frameToMs(tl.mainEndFrame, fps) / 15_000));
+  const extra = cards.toSorted((a, b) => a.from - b.from)[maxCards];
+  if (extra) {
+    add({
+      code: "TOO_MANY_CARDS",
+      id: extra.id,
+      atMs: ms(extra.from),
+      message: `卡片有 ${cards.length} 张，这么长的视频最多 ${maxCards} 张，挑最要紧的留下`,
     });
   }
 
@@ -288,7 +303,7 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
     for (let j = i + 1; j < placed.length; j++) {
       const a = placed[i] as Placed;
       const b = placed[j] as Placed;
-      if (a.id === b.id) continue;
+      if (a.id === b.id || a.full || b.full) continue;
       const from = Math.max(a.from, b.from);
       if (from >= Math.min(a.to, b.to)) continue;
       const hit = [...a.text, ...a.shapes].some((x) =>
@@ -331,7 +346,9 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
     const segs = layoutMainTrack(project);
     const mains = tl.videos.filter((v) => v.main);
     const covering = [
-      ...placed.map((p) => ({ id: p.id, from: p.from, to: p.to, boxes: [...p.text, ...p.shapes] })),
+      ...placed
+        .filter((p) => !p.full)
+        .map((p) => ({ id: p.id, from: p.from, to: p.to, boxes: [...p.text, ...p.shapes] })),
       ...visuals.map((v) => ({ id: v.id, from: v.from, to: v.to, boxes: [v.box] })),
     ];
     for (const p of covering) {
@@ -386,20 +403,15 @@ function nearest(track: FaceTrack, ms: number): FaceTrack["frames"][number] | nu
   return best;
 }
 
-/** 把 [from, to) 按让位时间段切开（上移和回落的那几帧也算上移） */
-function splitByShifts(
-  from: number,
-  to: number,
-  shifts: ResolvedShift[],
-): { from: number; to: number; shifted: boolean }[] {
-  const out: { from: number; to: number; shifted: boolean }[] = [];
+/** [from, to) 去掉 spans 之后剩下的几段（spans 已排序、不重叠） */
+function spansOutside(from: number, to: number, spans: FrameSpan[]): FrameSpan[] {
+  const out: FrameSpan[] = [];
   let cur = from;
-  for (const s of shifts) {
+  for (const s of spans) {
     if (s.to <= cur || s.from >= to) continue;
-    if (s.from > cur) out.push({ from: cur, to: s.from, shifted: false });
-    out.push({ from: Math.max(cur, s.from), to: Math.min(to, s.to), shifted: true });
-    cur = Math.min(to, s.to);
+    if (s.from > cur) out.push({ from: cur, to: s.from });
+    cur = Math.max(cur, s.to);
   }
-  if (cur < to) out.push({ from: cur, to, shifted: false });
+  if (cur < to) out.push({ from: cur, to });
   return out;
 }

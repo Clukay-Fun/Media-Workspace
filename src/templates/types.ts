@@ -5,7 +5,7 @@ import type { TextStyle } from "../core/text-style";
 export type TemplateProps<P> = {
   props: P;
   style: TextStyle;
-  /** 卡片尺寸：叠加层写了 size 就用它，没写用模板的默认尺寸（meta.sizes 第一个） */
+  /** 卡片尺寸（叠加层的 size）；不是卡片的模板（标题条）固定传 small，用不上 */
   size: CardSize;
   /** 本地帧号：从叠加层出现开始算 */
   frame: number;
@@ -23,7 +23,7 @@ export type TemplateMeta<P = unknown> = {
   label: string;
   description: string;
   defaultStyle: string;
-  /** 支持的尺寸，第一个是默认尺寸，不能是 half（半屏卡要显式写 size，主画面才会让位） */
+  /** 支持的卡片尺寸；空 = 不是卡片（标题条），不能写 size。卡片的叠加层必须写 size（0022） */
   sizes: readonly CardSize[];
   /** 适合的气质，如「沉稳」「活泼」「强调」 */
   mood: readonly string[];

@@ -451,11 +451,17 @@ describe("卡片尺寸和半屏让位（v7）", () => {
   });
   const tl = compile(project);
 
-  it("重叠的半屏卡合并成一段，小卡和没写尺寸的不让位", () => {
+  it("重叠的半屏卡合并成一段，小卡和不是卡片的不让位", () => {
     expect(tl.overlays.map((o) => o.size)).toEqual(["half", "half", "half", "small", null]);
     expect(tl.mainShifts).toEqual([
       { from: 30, to: 120, rampFrames: 12 },
       { from: 180, to: 183, rampFrames: 1 },
+    ]);
+    // 有卡片（写了 size）的时间段字幕隐藏；没写 size 的不是卡片
+    expect(tl.cardSpans).toEqual([
+      { from: 30, to: 120 },
+      { from: 180, to: 183 },
+      { from: 210, to: 240 },
     ]);
   });
 

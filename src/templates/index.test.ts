@@ -4,10 +4,8 @@ import { overlayBounds, TEMPLATES } from ".";
 
 // 每个模板都要过的检查：新模板注册进来就自动覆盖（docs/template-guide.md）
 describe.each(Object.entries(TEMPLATES))("模板 %s", (name, tpl) => {
-  it("meta 写全，默认尺寸不是半屏", () => {
+  it("meta 写全", () => {
     expect(tpl.meta.name).toBe(name);
-    expect(tpl.meta.sizes.length).toBeGreaterThan(0);
-    expect(tpl.meta.sizes[0]).not.toBe("half");
     expect(tpl.meta.useFor.length).toBeGreaterThan(0);
     expect(BUILTIN_STYLES[tpl.meta.defaultStyle as keyof typeof BUILTIN_STYLES]).toBeDefined();
   });
@@ -21,7 +19,7 @@ describe.each(Object.entries(TEMPLATES))("模板 %s", (name, tpl) => {
     [1920, 1080],
   ])("每个尺寸的占位都在画布里（%i×%i）", (w, h) => {
     const style = BUILTIN_STYLES[tpl.meta.defaultStyle as keyof typeof BUILTIN_STYLES];
-    for (const size of tpl.meta.sizes) {
+    for (const size of tpl.meta.sizes.length > 0 ? tpl.meta.sizes : [null]) {
       const b = overlayBounds(
         { template: name, props: tpl.meta.example as Record<string, unknown>, size },
         style,

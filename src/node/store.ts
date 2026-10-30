@@ -135,7 +135,11 @@ export async function applyToProject(dir: string, req: ApplyRequest): Promise<Ap
   return withLock(dir, async () => {
     const current = await loadProject(dir);
     checkRevision(current, req.baseRevision);
-    const r = applyOps(current, req.ops, { templates: req.templates });
+    const r = applyOps(current, req.ops, {
+      templates: req.templates,
+      templateAssets: req.templateAssets,
+      templateSizes: req.templateSizes,
+    });
     const next: Project = { ...r.project, revision: current.revision + 1 };
     if (req.dryRun) {
       return {

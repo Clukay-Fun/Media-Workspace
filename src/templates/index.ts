@@ -51,7 +51,7 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
 
 export const TEMPLATE_NAMES = Object.keys(TEMPLATES);
 
-/** 叠加层实际用的尺寸：写了就用，没写用模板的默认尺寸 */
+/** 叠加层实际用的尺寸：卡片必须写 size（校验时检查），没写时按第一个尺寸画 */
 export function overlaySize(tpl: TemplateEntry, size: CardSize | null): CardSize {
   return size ?? tpl.meta.sizes[0] ?? "small";
 }

@@ -55,23 +55,56 @@ describe("质检", () => {
     expect(estimateLines("一二三四五六七八九十一二", caption).lines).toBe(2);
   });
 
-  it("半屏卡出现时字幕跟着上移：盖住原位置不算重叠，没让位的小卡算", () => {
-    // 半屏卡 y 1000–1766，字幕原位置约 1115–1215，上移 288 后在卡片上面
-    const card = (size: string) => ({
+  it("有卡时字幕不显示，不算重叠；不是卡片的叠加层照样算", () => {
+    const ov = (size?: string) => ({
       id: "k",
-      template: "text-card",
-      size,
+      template: "x",
+      ...(size ? { size } : {}),
+      at: { ms: 0 },
+      durationMs: 1000,
+      props: {},
+    });
+    // 盖住字幕位置（约 1115–1215）
+    const bounds: OverlayBounds = () => ({
+      text: [],
+      shapes: [{ x0: 54, y0: 1000, x1: 1026, y1: 1766 }],
+    });
+    const p = (size?: string) => make([cap("s1", 0, "一句")], [ov(size)]);
+    expect(codes(p("half"), { overlayBounds: bounds })).toEqual([]);
+    expect(codes(p("small"), { overlayBounds: bounds })).toEqual([]);
+    expect(codes(p(), { overlayBounds: bounds })).toEqual(["OVERLAP:k"]);
+  });
+
+  it("全屏卡盖住标题条不算遮挡", () => {
+    const ov = (id: string, size?: string) => ({
+      id,
+      template: "x",
+      ...(size ? { size } : {}),
       at: { ms: 0 },
       durationMs: 1000,
       props: {},
     });
     const bounds: OverlayBounds = () => ({
-      text: [],
-      shapes: [{ x0: 54, y0: 1000, x1: 1026, y1: 1766 }],
+      text: [{ x0: 100, y0: 200, x1: 900, y1: 300 }],
+      shapes: [],
     });
-    const p = (size: string) => make([cap("s1", 0, "一句")], [card(size)]);
-    expect(codes(p("half"), { overlayBounds: bounds })).toEqual([]);
-    expect(codes(p("small"), { overlayBounds: bounds })).toEqual(["OVERLAP:k"]);
+    expect(codes(make([], [ov("t"), ov("f", "full")]), { overlayBounds: bounds })).toEqual([]);
+    expect(codes(make([], [ov("t"), ov("f")]), { overlayBounds: bounds })).toEqual(["OVERLAP:f"]);
+  });
+
+  it("卡片太多：10 秒的视频最多 2 张", () => {
+    const ov = (id: string, ms: number) => ({
+      id,
+      template: "x",
+      size: "small",
+      at: { ms },
+      durationMs: 1000,
+      props: {},
+    });
+    expect(codes(make([], [ov("a", 0), ov("b", 3000)]))).toEqual([]);
+    expect(codes(make([], [ov("a", 0), ov("b", 3000), ov("c", 6000)]))).toEqual([
+      "TOO_MANY_CARDS:c",
+    ]);
   });
 
   it("正常字幕没有问题", () => {

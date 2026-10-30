@@ -143,7 +143,10 @@ export async function buildProps(
     }
     if (o.size && !tpl.meta.sizes.includes(o.size)) {
       throw new MwError("VALIDATION", `模板「${o.template}」没有 ${o.size} 尺寸`, {
-        hint: `可用尺寸：${tpl.meta.sizes.join(" / ")}`,
+        hint:
+          tpl.meta.sizes.length > 0
+            ? `可用尺寸：${tpl.meta.sizes.join(" / ")}`
+            : "它不是卡片，去掉 size",
       });
     }
   }

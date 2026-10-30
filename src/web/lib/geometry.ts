@@ -1,5 +1,5 @@
 import { transformAt } from "../../core/animate";
-import { type FullTransform, mainLiftAt, type ResolvedTimeline } from "../../core/compile";
+import { cardShownAt, type FullTransform, type ResolvedTimeline } from "../../core/compile";
 import { type Box, textBox } from "../../core/lint";
 import { BUILTIN_STYLES } from "../../core/presets";
 import type { Project } from "../../core/schema";
@@ -84,14 +84,15 @@ export function hitBoxes(
   };
   const out: HitBox[] = [];
   const top = 1000;
+  // 有卡片时字幕不显示，也点不到
+  const captionsOff = cardShownAt(tl.cardSpans, frame);
   for (const c of tl.captions) {
-    if (c.hidden || !showing(c.from, c.durationInFrames, frame)) continue;
+    if (c.hidden || captionsOff || !showing(c.from, c.durationInFrames, frame)) continue;
     const st = styleFor(styles, c.style, "caption-word-yellow");
     out.push({
       id: c.id,
       kind: "caption",
-      // 半屏卡出现时字幕跟着主画面上移
-      box: grow(lift(textBox(c.text, st), mainLiftAt(tl, frame)), PAD),
+      box: grow(textBox(c.text, st), PAD),
       z: top + c.z,
       locked: c.locked,
     });
@@ -106,7 +107,7 @@ export function hitBoxes(
       id: o.id,
       kind: "overlay",
       box: grow(transformBox(box, o.transform, width, height), PAD / 2),
-      z: top + o.z,
+      z: top + o.z + (o.size === "full" ? 0.5 : 0),
       locked: o.locked,
     });
   }
@@ -153,5 +154,3 @@ export function pick(boxes: HitBox[], x: number, y: number): HitBox | null {
     boxes.find((h) => x >= h.box.x0 && x <= h.box.x1 && y >= h.box.y0 && y <= h.box.y1) ?? null
   );
 }
-
-const lift = (b: Box, dy: number): Box => ({ ...b, y0: b.y0 - dy, y1: b.y1 - dy });

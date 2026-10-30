@@ -18,7 +18,7 @@ import {
 } from "./schema";
 import { type CaptionImportOptions, cuesToCaptions, parseSrt, SrtError } from "./srt";
 import { Easing, TextStyle } from "./text-style";
-import { validate } from "./validate";
+import { type ValidateOptions, validate } from "./validate";
 
 // 操作协议（PLAN 6）：所有修改都通过这里，一批操作要么全部生效，要么全部不生效。
 // 纯函数：输入旧工程，返回新工程；写盘、加锁、revision 检查在 node/store 里。
@@ -148,7 +148,8 @@ export type ApplyResult = {
   warnings: { code: string; path: string; message: string }[];
 };
 
-export type ApplyOptions = { templates?: readonly string[] };
+/** 和校验的选项一样：模板名、模板引用的素材、卡片尺寸 */
+export type ApplyOptions = ValidateOptions;
 
 /** 应用一批操作。任何一步失败都抛 MwError，旧工程不受影响 */
 export function applyOps(project: Project, rawOps: unknown, opts: ApplyOptions = {}): ApplyResult {

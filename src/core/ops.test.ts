@@ -121,6 +121,43 @@ describe("applyOps：原子性和锁定", () => {
   });
 });
 
+describe("卡片尺寸和模板素材（v7）", () => {
+  const opts = {
+    templates: ["card", "bar"],
+    templateSizes: (t: string) => (t === "card" ? ["small", "half"] : []),
+    templateAssets: (o: { props: Record<string, unknown> }) =>
+      typeof o.props.image === "string" ? [o.props.image] : [],
+  };
+  const add = (item: object) =>
+    applyOps(
+      project(),
+      [
+        { op: "track.add", track: { id: "ov", kind: "overlay", items: [] } },
+        {
+          op: "item.add",
+          track: "ov",
+          item: { id: "k", at: { ms: 0 }, durationMs: 1000, ...item },
+        },
+      ],
+      opts,
+    );
+  const issue = (item: object) => fail(() => add(item)).issues[0];
+
+  it("卡片要写 size，尺寸要在模板支持的范围里；不是卡片不能写 size", () => {
+    expect(add({ template: "card", size: "half" }).project).toBeDefined();
+    expect(add({ template: "bar" }).project).toBeDefined();
+    expect(issue({ template: "card" })?.path).toMatch(/size$/);
+    expect(issue({ template: "card", size: "full" })?.path).toMatch(/size$/);
+    expect(issue({ template: "bar", size: "small" })?.path).toMatch(/size$/);
+  });
+
+  it("模板引用的素材要存在", () => {
+    expect(issue({ template: "card", size: "small", props: { image: "zz" } })?.code).toBe(
+      "REF_MISSING",
+    );
+  });
+});
+
 describe("clip.split", () => {
   it("在时间线位置分割，考虑倍速；字幕不需要重新绑定", () => {
     const p = applyOps(project(), [{ op: "item.update", id: "c1", set: { speed: 2 } }]).project;
