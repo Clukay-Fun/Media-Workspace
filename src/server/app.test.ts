@@ -55,6 +55,7 @@ describe("本地服务接口", () => {
     const { req } = setup();
     const p = await (await req("/api/project")).json();
     expect(p.name).toBe("demo");
+    expect(p.dir).toBe(dir);
     expect(p.project.revision).toBe(0);
     const ok = await req("/api/ops", { body: { ops: [asset], baseRevision: 0 } });
     expect(ok.status).toBe(200);
