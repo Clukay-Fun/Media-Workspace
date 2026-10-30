@@ -1,7 +1,7 @@
 import type { Box } from "../../core/lint";
 import type { CardSize } from "../../core/schema";
 import type { TextStyle } from "../../core/text-style";
-import { cardBox, cardPadding, inCard } from "../card";
+import { cardBox, cardPadding, cardScale, inCard } from "../card";
 import type { TipBarProps } from "./schema";
 
 /** 提示条高度（1080 宽）：和人名条一样 120px；横屏不超过 small 区域 */
@@ -15,7 +15,7 @@ export function tipBarLayout(
   size: CardSize,
 ): { box: Box; text: TextStyle } {
   const area = cardBox(size, width, height);
-  const k = width / 1080;
+  const k = cardScale(width, height);
   const barHeight = Math.min(area.y1 - area.y0, BAR_HEIGHT * k);
   const box: Box = { x0: area.x0, y0: area.y0, x1: area.x1, y1: area.y0 + barHeight };
   const pad = cardPadding(width);

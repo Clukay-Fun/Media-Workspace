@@ -18,6 +18,8 @@ export type CardFrameProps = {
   /** 底板颜色；null = 不画底板（全屏卡常用自己的背景） */
   background?: string | null;
   radius?: number;
+  /** 从哪边进来：bottom 从下面浮上来、轻微放大（默认）；left 从左边滑进来（人名条、提示条） */
+  enterFrom?: "bottom" | "left";
   children?: React.ReactNode;
 };
 
@@ -28,6 +30,7 @@ export const CardFrame: React.FC<CardFrameProps> = ({
   fps,
   background = "#000000B3",
   radius = 32,
+  enterFrom = "bottom",
   children,
 }) => {
   const ms = (frame * 1000) / fps;
@@ -38,7 +41,10 @@ export const CardFrame: React.FC<CardFrameProps> = ({
   // 从下面一点浮上来，轻微放大；退场只淡出，不抢下一张卡的注意力
   const style: React.CSSProperties = {
     opacity: Math.min(enter, exit),
-    transform: `translateY(${(1 - enter) * Math.min(48, h * 0.15)}px) scale(${0.96 + 0.04 * enter})`,
+    transform:
+      enterFrom === "left"
+        ? `translateX(${-(1 - enter) * (box.x1 - box.x0) * 0.6}px)`
+        : `translateY(${(1 - enter) * Math.min(48, h * 0.15)}px) scale(${0.96 + 0.04 * enter})`,
     transformOrigin: `${(box.x0 + box.x1) / 2}px ${(box.y0 + box.y1) / 2}px`,
   };
   return (

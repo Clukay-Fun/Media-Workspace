@@ -21,17 +21,18 @@
 
 - `meta.sizes` 列出支持的尺寸。卡片的叠加层必须写 `size`（校验会查），`sizes` 为空的模板（标题条）不是卡片。
 - 有卡片时字幕自动隐藏，卡片不用给字幕让位置。
-- `small`：一块小卡（`cardBox("small")`，68%–82% 高度）；人名条这类矮的卡在这个区域里自己定高度。
+- `small`：一块小卡（`cardBox("small")`，64%–84% 高度）；人名条这类矮的卡在这个区域里自己定高度。
 - `half`：下半屏（52%–92% 高度），出现时主画面自动上移 180px（竖屏），模板不用管。
 - `full`：整个画面，盖住标题条，底板要不透明。
-- 字号、字数上限按 `docs/decisions/0022` 的表（1080 宽时的像素，按 `width / 1080` 缩放）；字数上限写进 schema（`.max()`）。
+- 字号、字数上限按 `docs/decisions/0022` 的表（1080×1920 时的像素）；实际像素一律用 `cardPx(px, width, height)`
+  （或 `cardScale` 乘上去），不要自己写 `width / 1080`：它会乘统一的放大倍数，横屏也不会翻倍。字数上限写进 schema（`.max()`）。
 - 组件从 `size` 拿到实际尺寸，用 `cardBox(size, width, height)` 算区域，不要自己写死像素。画布可能是竖屏也可能是横屏。
 
 ## 文字和动画
 
 - 文字用 `TextBlock`，样式先过 `inCard(style, box, width, at)` 放进卡片，再按需要改字号、`maxLines`。
   字幕的逐字动画、高亮、描边都能直接用。
-- 外框用 `CardFrame`：底板 + 统一的进出场。卡片内容放在它的 children 里一起动。
+- 外框用 `CardFrame`：底板 + 统一的进出场（`enterFrom: "bottom"` 默认，`"left"` 从左滑入）。卡片内容放在它的 children 里一起动。
 - 自己的动画按 `frame` 算（`ms = frame * 1000 / fps`），缓动用 `core/animate` 的 `ease`。
   不要用 `Math.random()`、`Date.now()`、CSS 动画、`useEffect`。
 - 数字滚动、逐条出现这类动画，时长按 `durationInFrames` 留出退场的 200ms。

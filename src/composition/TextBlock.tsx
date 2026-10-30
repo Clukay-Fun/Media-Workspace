@@ -136,6 +136,8 @@ export const TextBlock: React.FC<TextBlockProps> = ({
     lineHeight: font.lineHeight,
     letterSpacing: font.letterSpacing,
     whiteSpace: "pre-wrap",
+    // 多行时各行长短接近，避免最后一行只剩一两个字
+    textWrap: "balance",
     opacity: whole.opacity,
   };
 
@@ -173,140 +175,141 @@ export const TextBlock: React.FC<TextBlockProps> = ({
             : { position: "relative", filter: strokeW > 0 ? undefined : shadow }),
       }}
     >
-      {pieces.map(({ u, state, lit, active }, i) => {
-        const s = combine(state, { ...whole, opacity: 1 });
-        const color: React.CSSProperties =
-          kind === "deco"
-            ? { color: "transparent" }
-            : kind === "stroke"
-              ? { color: lit && hl?.stroke ? hl.stroke.color : style.stroke?.color }
-              : ink(lit);
-        const glow = kind === outer ? (lit && hl?.glow ? hl.glow : style.glow) : null;
-        const filter = [
-          s.blur > 0 ? `blur(${s.blur}px)` : "",
-          // 两层不同半径的光晕叠起来，中间亮、外面柔
-          glow
-            ? `drop-shadow(0 0 ${glow.blur / 2}px ${glow.color}) drop-shadow(0 0 ${glow.blur}px ${glow.color})`
-            : "",
-        ]
-          .filter(Boolean)
-          .join(" ");
-        const scale = s.scale * (lit && hl ? hl.scale : 1);
-        const paint = (from: number, to: number): React.CSSProperties => {
-          if (kind === "deco" && marker && hl?.marker) {
-            const p = avg(marker, from, to);
-            if (p <= 0) return {};
-            // 色块从字形的底部往上画（行框底部还留有约 (行高-1)/2 个字号的空白），高度按字号算
-            const bottom = ((font.lineHeight - 1) / 2 / font.lineHeight) * 100 + 4;
-            const top = Math.min(100, bottom + (hl.marker.height / font.lineHeight) * 100);
-            const c = hl.marker.color;
-            return {
-              backgroundImage: `linear-gradient(to top, transparent ${bottom}%, ${c} ${bottom}%, ${c} ${top}%, transparent ${top}%)`,
-              backgroundSize: `${p * 100}% 100%`,
-              backgroundRepeat: "no-repeat",
-            };
-          }
-          if (kind === "fill" && sweep && hl && !lit) {
-            const p = avg(sweep, from, to);
-            if (p >= 1) return ink(true);
-            if (p <= 0) return {};
-            // 卡拉 OK：已经念过的部分换成高亮色，用渐变裁切到文字上
-            return {
-              color: "transparent",
-              backgroundImage: `linear-gradient(90deg, ${hl.fill} ${p * 100}%, ${style.fill} ${p * 100}%)`,
-              WebkitBackgroundClip: "text",
-              backgroundClip: "text",
-            };
-          }
-          return {};
-        };
-        /** 装饰层上的色块和下划线；first / last 是这个字在单位里的头尾，色块只在头尾留边距和圆角 */
-        const ornaments = (from: number, to: number, first: boolean, last: boolean) => {
-          if (kind !== "deco") return null;
-          const b = active ? hl?.activeBox : null;
-          const ul = underline && hl?.underline ? hl.underline : null;
-          const p = ul && underline ? avg(underline, from, to) : 0;
-          const r = b?.radius ?? 0;
-          return (
-            <>
-              {b ? (
-                <span
-                  style={{
-                    position: "absolute",
-                    // 色块以字号为高，竖直方向对齐行框中心；相邻的字多盖 0.5px，避免缝
-                    top: `calc(50% - ${font.size / 2 + b.padding[0]}px)`,
-                    height: font.size + b.padding[0] * 2,
-                    left: first ? -b.padding[1] : 0,
-                    right: last ? -b.padding[1] : -0.5,
-                    background: b.color,
-                    borderRadius: `${first ? r : 0}px ${last ? r : 0}px ${last ? r : 0}px ${first ? r : 0}px`,
-                  }}
-                />
-              ) : null}
-              {ul && p > 0 ? (
-                <span
-                  style={{
-                    position: "absolute",
-                    left: 0,
-                    width: `${p * 100}%`,
-                    top: `calc(50% + ${font.size * (0.5 + ul.offset)}px)`,
-                    height: Math.max(1, font.size * ul.thickness),
-                    background: ul.color,
-                  }}
-                />
-              ) : null}
-            </>
+      {keepTogether(
+        pieces.flatMap(({ u, state, lit, active }, i) => {
+          const s = combine(state, { ...whole, opacity: 1 });
+          const color: React.CSSProperties =
+            kind === "deco"
+              ? { color: "transparent" }
+              : kind === "stroke"
+                ? { color: lit && hl?.stroke ? hl.stroke.color : style.stroke?.color }
+                : ink(lit);
+          const glow = kind === outer ? (lit && hl?.glow ? hl.glow : style.glow) : null;
+          const filter = [
+            s.blur > 0 ? `blur(${s.blur}px)` : "",
+            // 两层不同半径的光晕叠起来，中间亮、外面柔
+            glow
+              ? `drop-shadow(0 0 ${glow.blur / 2}px ${glow.color}) drop-shadow(0 0 ${glow.blur}px ${glow.color})`
+              : "",
+          ]
+            .filter(Boolean)
+            .join(" ");
+          const scale = s.scale * (lit && hl ? hl.scale : 1);
+          const paint = (from: number, to: number): React.CSSProperties => {
+            if (kind === "deco" && marker && hl?.marker) {
+              const p = avg(marker, from, to);
+              if (p <= 0) return {};
+              // 色块从字形的底部往上画（行框底部还留有约 (行高-1)/2 个字号的空白），高度按字号算
+              const bottom = ((font.lineHeight - 1) / 2 / font.lineHeight) * 100 + 4;
+              const top = Math.min(100, bottom + (hl.marker.height / font.lineHeight) * 100);
+              const c = hl.marker.color;
+              return {
+                backgroundImage: `linear-gradient(to top, transparent ${bottom}%, ${c} ${bottom}%, ${c} ${top}%, transparent ${top}%)`,
+                backgroundSize: `${p * 100}% 100%`,
+                backgroundRepeat: "no-repeat",
+              };
+            }
+            if (kind === "fill" && sweep && hl && !lit) {
+              const p = avg(sweep, from, to);
+              if (p >= 1) return ink(true);
+              if (p <= 0) return {};
+              // 卡拉 OK：已经念过的部分换成高亮色，用渐变裁切到文字上
+              return {
+                color: "transparent",
+                backgroundImage: `linear-gradient(90deg, ${hl.fill} ${p * 100}%, ${style.fill} ${p * 100}%)`,
+                WebkitBackgroundClip: "text",
+                backgroundClip: "text",
+              };
+            }
+            return {};
+          };
+          /** 装饰层上的色块和下划线；first / last 是这个字在单位里的头尾，色块只在头尾留边距和圆角 */
+          const ornaments = (from: number, to: number, first: boolean, last: boolean) => {
+            if (kind !== "deco") return null;
+            const b = active ? hl?.activeBox : null;
+            const ul = underline && hl?.underline ? hl.underline : null;
+            const p = ul && underline ? avg(underline, from, to) : 0;
+            const r = b?.radius ?? 0;
+            return (
+              <>
+                {b ? (
+                  <span
+                    style={{
+                      position: "absolute",
+                      // 色块以字号为高，竖直方向对齐行框中心；相邻的字多盖 0.5px，避免缝
+                      top: `calc(50% - ${font.size / 2 + b.padding[0]}px)`,
+                      height: font.size + b.padding[0] * 2,
+                      left: first ? -b.padding[1] : 0,
+                      right: last ? -b.padding[1] : -0.5,
+                      background: b.color,
+                      borderRadius: `${first ? r : 0}px ${last ? r : 0}px ${last ? r : 0}px ${first ? r : 0}px`,
+                    }}
+                  />
+                ) : null}
+                {ul && p > 0 ? (
+                  <span
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      width: `${p * 100}%`,
+                      top: `calc(50% + ${font.size * (0.5 + ul.offset)}px)`,
+                      height: Math.max(1, font.size * ul.thickness),
+                      background: ul.color,
+                    }}
+                  />
+                ) : null}
+              </>
+            );
+          };
+          const span = (
+            content: string,
+            key: string,
+            from: number,
+            to: number,
+            first: boolean,
+            last: boolean,
+          ) => (
+            <span
+              key={key}
+              style={{
+                position: kind === "deco" ? "relative" : undefined,
+                display: "inline-block",
+                whiteSpace: "pre",
+                ...color,
+                ...paint(from, to),
+                opacity: s.opacity,
+                transform: `translate(${s.dx}px, ${s.dy}px) scale(${scale}) rotate(${s.rotation}deg)`,
+                filter: filter || undefined,
+                textShadow:
+                  kind === "fill" && s.glow > 0 && !sweep
+                    ? `0 0 ${24 * s.glow}px ${hl?.fill ?? style.fill}`
+                    : undefined,
+              }}
+            >
+              {content}
+              {ornaments(from, to, first, last)}
+            </span>
           );
-        };
-        const span = (
-          content: string,
-          key: string,
-          from: number,
-          to: number,
-          first: boolean,
-          last: boolean,
-        ) => (
-          <span
-            key={key}
-            style={{
-              position: kind === "deco" ? "relative" : undefined,
-              display: "inline-block",
-              whiteSpace: "pre",
-              ...color,
-              ...paint(from, to),
-              opacity: s.opacity,
-              transform: `translate(${s.dx}px, ${s.dy}px) scale(${scale}) rotate(${s.rotation}deg)`,
-              filter: filter || undefined,
-              textShadow:
-                kind === "fill" && s.glow > 0 && !sweep
-                  ? `0 0 ${24 * s.glow}px ${hl?.fill ?? style.fill}`
-                  : undefined,
-            }}
-          >
-            {content}
-            {ornaments(from, to, first, last)}
-          </span>
-        );
-        // 中文按字放 inline-block，这样词中间也能换行（和剪映一致）；其他文字整词放一起，避免单词被拆开
-        const chars = HAN.test(u.text) ? [...u.text] : [u.text];
-        return (
-          <span key={`${u.start}`}>
-            {u.breakBefore ? <br /> : null}
-            {chars.length > 1 || HAN.test(u.text)
-              ? chars.map((c, j) =>
-                  span(
+          // 中文按字放 inline-block，这样词中间也能换行（和剪映一致）；其他文字整词放一起，避免单词被拆开
+          const chars = HAN.test(u.text) ? [...u.text] : [u.text];
+          return chars.map((c, j) => ({
+            key: `${i}-${j}`,
+            text: c,
+            br: u.breakBefore && j === 0,
+            node:
+              chars.length > 1 || HAN.test(u.text)
+                ? span(
                     c,
                     `${i}-${j}`,
                     u.start + j,
                     u.start + j + 1,
                     j === 0,
                     j === chars.length - 1,
-                  ),
-                )
-              : chars.map((c, j) => span(c, `${i}-${j}`, u.start, u.end, true, true))}
-          </span>
-        );
-      })}
+                  )
+                : span(c, `${i}-${j}`, u.start, u.end, true, true),
+          }));
+        }),
+      )}
     </div>
   );
 
@@ -332,3 +335,33 @@ export const TextBlock: React.FC<TextBlockProps> = ({
     </div>
   );
 };
+
+// 避头尾：收尾标点（右引号、逗号句号等）不放在行首，开头标点（左引号等）不放在行尾。
+// 每个字是单独的 inline-block，任意两个字之间都能断行，所以把它们和相邻的字包进一个不换行的 span
+const CLOSE = /^[，。、；：！？”’）》」』〉】…—,.;:!?)\]%]$/u;
+const OPEN = /^[“‘（《「『〈【(\[]$/u;
+
+type Atom = { key: string; text: string; br: boolean; node: React.ReactNode };
+
+function keepTogether(atoms: Atom[]): React.ReactNode[] {
+  const groups: Atom[][] = [];
+  for (const a of atoms) {
+    const last = groups.at(-1);
+    const prev = last?.at(-1);
+    if (last && prev && !a.br && (CLOSE.test(a.text) || OPEN.test(prev.text))) last.push(a);
+    else groups.push([a]);
+  }
+  return groups.map((g) => {
+    const first = g[0] as Atom;
+    return (
+      <span key={first.key}>
+        {first.br ? <br /> : null}
+        {g.length > 1 ? (
+          <span style={{ whiteSpace: "nowrap" }}>{g.map((a) => a.node)}</span>
+        ) : (
+          first.node
+        )}
+      </span>
+    );
+  });
+}

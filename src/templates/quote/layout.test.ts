@@ -30,7 +30,7 @@ describe("quoteLayout", () => {
     const small = quoteLayout(tooLong, style, 1080, 1920, "small");
     const half = quoteLayout(tooLong, style, 1080, 1920, "half");
     expect(small.fits).toBe(false);
-    expect(small.quote.font.size).toBe(48);
+    expect(small.quote.font.size).toBe(72);
     expect(half.fits).toBe(true);
     expect(half.quote.layout.maxLines).toBe(4);
   });

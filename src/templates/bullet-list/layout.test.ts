@@ -28,8 +28,8 @@ describe("bulletListLayout", () => {
         expect(box.y1).toBeLessThanOrEqual(layout.box.y1);
       }
       if (width === 1080) {
-        expect(layout.title?.font.size).toBe(44);
-        expect(layout.items[0]?.font.size).toBe(48);
+        expect(layout.title?.font.size).toBe(66);
+        expect(layout.items[0]?.font.size).toBe(72);
       }
     }
   });

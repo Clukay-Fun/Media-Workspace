@@ -1,7 +1,5 @@
 import type React from "react";
-import { AbsoluteFill } from "remotion";
 import { TextBlock } from "../../composition/TextBlock";
-import { ease } from "../../core/animate";
 import { CardFrame } from "../card-frame";
 import type { TemplateProps } from "../types";
 import { nameBarLayout } from "./layout";
@@ -19,9 +17,6 @@ export const NameBar: React.FC<TemplateProps<NameBarProps>> = ({
   height,
 }) => {
   const l = nameBarLayout(props, style, width, height, size);
-  const ms = (frame * 1000) / fps;
-  const enter = ease("ease-out", Math.min(1, ms / 400));
-  const offset = -(l.box.x1 - l.box.x0) * 0.6 * (1 - enter);
   return (
     <CardFrame
       box={l.box}
@@ -29,25 +24,24 @@ export const NameBar: React.FC<TemplateProps<NameBarProps>> = ({
       durationInFrames={durationInFrames}
       fps={fps}
       radius={Math.round(width * 0.03)}
+      enterFrom="left"
     >
-      <AbsoluteFill style={{ transform: `translateX(${offset}px)` }}>
+      <TextBlock
+        text={props.name}
+        style={l.name}
+        frame={frame}
+        durationInFrames={durationInFrames}
+        fps={fps}
+      />
+      {props.title && l.title ? (
         <TextBlock
-          text={props.name}
-          style={l.name}
+          text={props.title}
+          style={l.title}
           frame={frame}
           durationInFrames={durationInFrames}
           fps={fps}
         />
-        {props.title && l.title ? (
-          <TextBlock
-            text={props.title}
-            style={l.title}
-            frame={frame}
-            durationInFrames={durationInFrames}
-            fps={fps}
-          />
-        ) : null}
-      </AbsoluteFill>
+      ) : null}
     </CardFrame>
   );
 };

@@ -3,7 +3,7 @@ import { type Box, estimateLines } from "../../core/lint";
 import type { CardSize } from "../../core/schema";
 import type { TextStyle } from "../../core/text-style";
 import { msToFrame } from "../../core/time";
-import { cardBox, cardPadding } from "../card";
+import { cardBox, cardPadding, cardScale } from "../card";
 import type { BigNumberProps } from "./schema";
 
 const EXIT_MS = 200;
@@ -89,7 +89,7 @@ export function bigNumberLayout(
   const box = cardBox(size, width, height);
   const boxWidth = box.x1 - box.x0;
   const boxHeight = box.y1 - box.y0;
-  const widthScale = width / 1080;
+  const widthScale = cardScale(width, height);
   const lineHeight = style.font.lineHeight;
   const verticalPadding = Math.min(boxHeight * 0.08, cardPadding(width) * 0.35);
   const availableHeight = Math.max(1, boxHeight - 2 * verticalPadding);

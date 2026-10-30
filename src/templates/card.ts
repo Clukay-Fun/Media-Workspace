@@ -7,7 +7,7 @@ import type { TextStyle } from "../core/text-style";
 // 全屏卡盖住整个画面和标题条，底板要不透明。
 
 const BOXES: Record<CardSize, [number, number, number, number]> = {
-  small: [0.08, 0.68, 0.92, 0.82],
+  small: [0.06, 0.64, 0.94, 0.84],
   half: [0.05, 0.52, 0.95, 0.92],
   full: [0, 0, 1, 1],
 };
@@ -17,6 +17,21 @@ export function cardBox(size: CardSize, width: number, height: number): Box {
   const [x0, y0, x1, y1] = BOXES[size];
   return { x0: x0 * width, y0: y0 * height, x1: x1 * width, y1: y1 * height };
 }
+
+/**
+ * 卡片字号放大倍数：各模板按调研写 1080 宽时的字号（金句 48、要点 48…），在手机上看偏小，
+ * 和字幕（84）、标题条（92）放在一起太弱，统一乘这个倍数（docs/decisions/0022）
+ */
+export const CARD_TEXT_SCALE = 1.5;
+
+/**
+ * 调研字号（1080×1920 时的像素）→ 实际像素的倍数：按宽、高里缩得多的那边算（横屏不会因为宽而字号翻倍），
+ * 再乘 CARD_TEXT_SCALE
+ */
+export const cardScale = (width: number, height: number) =>
+  Math.min(width / 1080, height / 1920) * CARD_TEXT_SCALE;
+
+export const cardPx = (px: number, width: number, height: number) => px * cardScale(width, height);
 
 /** 卡片内边距：按画布宽度算 */
 export const cardPadding = (width: number) => Math.round(width * 0.05);

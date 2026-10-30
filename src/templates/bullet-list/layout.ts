@@ -2,7 +2,7 @@ import type { Box } from "../../core/lint";
 import type { CardSize } from "../../core/schema";
 import type { TextStyle } from "../../core/text-style";
 import { msToFrame } from "../../core/time";
-import { cardBox, cardPadding, inCard } from "../card";
+import { cardBox, cardPadding, cardPx, inCard } from "../card";
 import type { BulletListProps } from "./schema";
 
 export type BulletListLayout = {
@@ -62,7 +62,7 @@ export function bulletListLayout(
   const box = cardBox(size, width, height);
   const boxHeight = box.y1 - box.y0;
   const hasTitle = Boolean(props.title);
-  const itemSize = (48 * width) / 1080;
+  const itemSize = cardPx(48, width, height);
   const listStart = hasTitle ? (props.items.length === 2 ? 0.42 : 0.37) : 0.28;
   const listEnd = hasTitle ? (props.items.length === 2 ? 0.82 : 0.85) : 0.82;
   const items = props.items.map((item, index) => {
@@ -71,7 +71,7 @@ export function bulletListLayout(
   });
 
   if (!props.title) return { box, title: null, items };
-  const titleSize = (44 * width) / 1080;
+  const titleSize = cardPx(44, width, height);
   const title = place(style, box, width, 0.12, titleSize, 1);
   return { box, title, items };
 }

@@ -1,7 +1,7 @@
 import type { Box } from "../../core/lint";
 import type { CardSize } from "../../core/schema";
 import type { TextStyle } from "../../core/text-style";
-import { cardBox, cardPadding, inCard } from "../card";
+import { cardBox, cardPadding, cardScale, inCard } from "../card";
 import type { NameBarProps } from "./schema";
 
 /** 人名条高度（1080 宽）：调研值 120px；横屏时不能超过 small 区域 */
@@ -16,7 +16,7 @@ export function nameBarLayout(
   size: CardSize,
 ): { box: Box; name: TextStyle; title: TextStyle | null } {
   const area = cardBox(size, width, height);
-  const k = width / 1080;
+  const k = cardScale(width, height);
   const barHeight = Math.min(area.y1 - area.y0, BAR_HEIGHT * k);
   const fontScale = barHeight / BAR_HEIGHT;
   const box: Box = { x0: area.x0, y0: area.y0, x1: area.x1, y1: area.y0 + barHeight };

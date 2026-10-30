@@ -1,7 +1,7 @@
 import { type Box, estimateLines, textBox } from "../../core/lint";
 import type { CardSize } from "../../core/schema";
 import type { TextStyle } from "../../core/text-style";
-import { cardBox, cardPadding, inCard } from "../card";
+import { cardBox, cardPadding, cardPx, inCard } from "../card";
 import type { QuoteProps } from "./schema";
 
 export type QuoteLayout = {
@@ -57,14 +57,14 @@ export function quoteLayout(
   const boxHeight = box.y1 - box.y0;
   const maxLines = size === "small" ? 2 : 4;
   const maxChars = size === "small" ? 18 : 36;
-  const sourceSize = props.source ? Math.min((28 * width) / 1080, boxHeight * 0.12) : 0;
+  const sourceSize = props.source ? Math.min(cardPx(28, width, height), boxHeight * 0.12) : 0;
   const verticalPadding = Math.min(boxHeight * 0.12, cardPadding(width) * 0.5);
   const sourceHeight = sourceSize * 1.2;
   const sourceGap = props.source ? Math.min((12 * width) / 1080, boxHeight * 0.06) : 0;
   const textTop = box.y0 + verticalPadding;
   const textBottom = box.y1 - verticalPadding - sourceHeight - sourceGap;
   const textHeight = Math.max(1, textBottom - textTop);
-  const targetFontSize = (48 * width) / 1080;
+  const targetFontSize = cardPx(48, width, height);
   const allowedTextLength = [...props.text].length <= maxChars;
   let fontSize = targetFontSize;
   let quote = place(style, box, width, 0.5, fontSize, maxLines);
