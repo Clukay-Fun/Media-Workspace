@@ -468,7 +468,7 @@ stdout 默认输出 JSON，日志写到 stderr。
 
 > **v0.8 修订（`docs/decisions/0011`）**：大部分高亮和快剪操作已在阶段 A / v0.7 完成。阶段 C 收窄为：
 > 样式模板库（`mw styles`、MCP `styles`、左栏模板库，已完成）→ 逐字动画更顺滑 → 当前词色块 / 下划线 / 渐变 / 发光（格式 v5，已完成，`0012`）
-> → `docs/orchestration-guide.md`。文稿视图（F11）和样式编辑面板（F5）不做界面，交给 AI。验收以 0011 为准。
+> → `docs/orchestration-guide.md`（第一版已完成，阶段 E 补 MG 卡片部分）。文稿视图（F11）和样式编辑面板（F5）不做界面，交给 AI。验收以 0011 为准。
 
 ### 阶段 D：画面能力
 

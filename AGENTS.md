@@ -1,7 +1,7 @@
 # AGENTS.md：本仓库的开发规范
 
 本文件写给在本仓库里**写代码**的 AI（Codex、Claude Code 等）和人类开发者。
-（给 AI **操作工作台、编排视频**用的规则在 `docs/orchestration-guide.md`，阶段 C 再写，和本文件是两回事。）
+（给 AI **操作工作台、编排视频**用的规则在 `docs/orchestration-guide.md`，和本文件是两回事。）
 
 总体计划见 `docs/PLAN.md`。不确定的地方以 PLAN.md 为准，PLAN.md 也没写的，先问再做。
 
