@@ -8,6 +8,7 @@ import { planTransform } from "../../core/edit";
 import { applyOps, type Op } from "../../core/ops";
 import { safeAreaFor } from "../../core/safe-area";
 import { type HitBox, hitBoxes, pick } from "../lib/geometry";
+import { type Corner, resizeFromCorner } from "../lib/pip";
 import { findItem } from "../lib/project";
 import { frameOfMs, msOfFrame, timecode } from "../lib/timeline";
 import { useStore } from "../store";
@@ -22,6 +23,7 @@ const KIND: Record<HitBox["kind"], string> = {
 const EMBED = new URLSearchParams(location.search).has("embed");
 
 type Drag = {
+  mode: "move" | "resize";
   id: string;
   x0: number;
   y0: number;
@@ -30,6 +32,10 @@ type Drag = {
   /** 元素有关键帧时，播放头相对元素开始的毫秒数 */
   atMs: number | undefined;
   ops: Op[] | null;
+  /** 拖角缩放：开始时的选中框（画布像素）、拖的角、当时的缩放 */
+  corner?: Corner;
+  box?: HitBox["box"];
+  scale0?: number;
 };
 type AnnotationDraft = {
   target: string;
@@ -60,6 +66,7 @@ export function Stage() {
 
   const player = useRef<PlayerRef>(null);
   const area = useRef<HTMLDivElement>(null);
+  const hitLayer = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [hover, setHover] = useState<string | null>(null);
   const [annotationDraft, setAnnotationDraft] = useState<AnnotationDraft | null>(null);
@@ -130,15 +137,17 @@ export function Stage() {
     () => (timeline && preview ? hitBoxes(timeline, preview.styles, frame) : []),
     [timeline, preview, frame],
   );
+  const selBox = boxes.find((b) => b.id === selected);
 
-  const toCanvas = (e: React.PointerEvent | React.MouseEvent) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    return { x: (e.clientX - r.left) / scale, y: (e.clientY - r.top) / scale };
+  // 缩放手柄的 pointerdown 目标是按钮，不能拿它自己的 rect 换算，统一用点选层
+  const toCanvas = (clientX: number, clientY: number) => {
+    const r = hitLayer.current?.getBoundingClientRect();
+    return r ? { x: (clientX - r.left) / scale, y: (clientY - r.top) / scale } : { x: 0, y: 0 };
   };
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!project || e.button !== 0) return;
-    const p = toCanvas(e);
+    const p = toCanvas(e.clientX, e.clientY);
     const hit = pick(boxes, p.x, p.y);
     if (useStore.getState().annotating) {
       // 不让按下鼠标把焦点从批注输入框抢走
@@ -184,6 +193,7 @@ export function Stage() {
     const local = v ? useStore.getState().frame - v.from : 0;
     const now = v?.keyframes.length ? transformAt(v.transform, v.keyframes, local) : undefined;
     drag.current = {
+      mode: "move",
       id: hit.id,
       x0: p.x,
       y0: p.y,
@@ -195,11 +205,67 @@ export function Stage() {
     e.currentTarget.setPointerCapture(e.pointerId);
   };
 
+  /** 从四个角开始缩放：对角固定，拖动中只更新本地预览，松手提交一次 */
+  const startResize = (e: React.PointerEvent<HTMLButtonElement>, corner: Corner) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!project || !selBox || !timeline) return;
+    const v = [...timeline.videos, ...timeline.images].find((x) => x.id === selBox.id);
+    if (!v) return;
+    const local = frame - v.from;
+    const t = v.keyframes.length ? transformAt(v.transform, v.keyframes, local) : v.transform;
+    const atMs = v.keyframes.length
+      ? msOfFrame(Math.max(0, Math.min(local, v.durationInFrames - 1)), fps)
+      : undefined;
+    drag.current = {
+      mode: "resize",
+      id: selBox.id,
+      x0: 0,
+      y0: 0,
+      bx: t.x,
+      by: t.y,
+      atMs,
+      ops: null,
+      corner,
+      box: selBox.box,
+      scale0: t.scale,
+    };
+    hitLayer.current?.setPointerCapture(e.pointerId);
+  };
+
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const p = toCanvas(e);
+    const p = toCanvas(e.clientX, e.clientY);
     const d = drag.current;
     if (!d || !project) {
       setHover(pick(boxes, p.x, p.y)?.id ?? null);
+      return;
+    }
+    if (d.mode === "resize") {
+      if (!d.box || !d.corner || d.scale0 === undefined) return;
+      const r = resizeFromCorner({
+        box: d.box,
+        corner: d.corner,
+        pointer: p,
+        scale: d.scale0,
+      });
+      if (!r) return;
+      try {
+        const plan = planTransform(project, {
+          id: d.id,
+          transform: { scale: r.scale, x: r.x, y: r.y },
+          snap: false,
+          atMs: d.atMs,
+        });
+        d.ops = plan.ops;
+        st.setDraft({
+          timeline: compile(applyOps(project, plan.ops).project),
+          guides: plan.guides,
+        });
+      } catch (err) {
+        drag.current = null;
+        st.setDraft(null);
+        st.toast(err instanceof Error ? err.message : String(err), "error");
+      }
       return;
     }
     if (Math.hypot(p.x - d.x0, p.y - d.y0) < 3 / scale && !d.ops) return;
@@ -252,7 +318,6 @@ export function Stage() {
   );
   const safe = project ? safeAreaFor(project.canvas.safeArea.preset, W, H) : null;
   const flashing = flash && Date.now() - flash.at < 2400 ? flash : null;
-  const selBox = boxes.find((b) => b.id === selected);
   const selectedHasIssue = selBox && (lint?.issues ?? []).some((issue) => issue.id === selBox.id);
   const hoverBox = hover && hover !== selected ? boxes.find((b) => b.id === hover) : undefined;
 
@@ -289,6 +354,7 @@ export function Stage() {
               moveToBeginningWhenEnded={false}
             />
             <div
+              ref={hitLayer}
               className={
                 annotating
                   ? "hit-layer annotating"
@@ -325,7 +391,7 @@ export function Stage() {
                   style={g.axis === "h" ? { top: g.pos * scale } : { left: g.pos * scale }}
                 />
               ))}
-              {hoverBox && hoverBox.kind !== "video" && (
+              {hoverBox && (hoverBox.kind !== "video" || !hoverBox.main) && (
                 <div className="box hover" style={rect(hoverBox.box)} />
               )}
               {flashing &&
@@ -334,7 +400,7 @@ export function Stage() {
                   .map((b) => (
                     <div key={`${b.id}-${flashing.at}`} className="box flash" style={rect(b.box)} />
                   ))}
-              {selBox && selBox.kind !== "video" && (
+              {selBox && (selBox.kind !== "video" || !selBox.main) && (
                 <div
                   className={[
                     "box selected",
@@ -349,6 +415,9 @@ export function Stage() {
                     {selBox.locked && <Icon name="lock" size={11} />}
                     {KIND[selBox.kind]} · {selBox.id}
                   </span>
+                  {!selBox.locked && (selBox.kind === "image" || selBox.kind === "video") && (
+                    <ResizeHandles onStart={startResize} />
+                  )}
                 </div>
               )}
               {pins.map((c) => (
@@ -440,6 +509,35 @@ export function Stage() {
       </div>
       <PlayerFooter frame={frame} fps={fps} total={total} width={W} height={H} playing={playing} />
     </main>
+  );
+}
+
+const RESIZE_HANDLES: { corner: Corner; className: string; label: string }[] = [
+  { corner: "top-left", className: "nw", label: "左上" },
+  { corner: "top-right", className: "ne", label: "右上" },
+  { corner: "bottom-left", className: "sw", label: "左下" },
+  { corner: "bottom-right", className: "se", label: "右下" },
+];
+
+/** 选中框四角的缩放手柄；对角固定，等比缩放 */
+function ResizeHandles({
+  onStart,
+}: {
+  onStart: (e: React.PointerEvent<HTMLButtonElement>, corner: Corner) => void;
+}) {
+  return (
+    <>
+      {RESIZE_HANDLES.map((h) => (
+        <button
+          key={h.corner}
+          type="button"
+          className={`box-handle ${h.className}`}
+          aria-label={`拖角缩放（${h.label}）`}
+          title="拖动缩放，对角固定"
+          onPointerDown={(e) => onStart(e, h.corner)}
+        />
+      ))}
+    </>
   );
 }
 

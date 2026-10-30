@@ -10,7 +10,15 @@ import { TEMPLATES } from "../../templates";
 
 export type ElementKind = "caption" | "overlay" | "image" | "video";
 
-export type HitBox = { id: string; kind: ElementKind; box: Box; z: number; locked: boolean };
+export type HitBox = {
+  id: string;
+  kind: ElementKind;
+  box: Box;
+  z: number;
+  locked: boolean;
+  /** 视频片段：主轨铺满画面，不显示选中框和缩放手柄 */
+  main?: boolean;
+};
 
 const PAD = 14;
 
@@ -126,6 +134,7 @@ export function hitBoxes(
           ),
       z: v.main ? -1 : v.z,
       locked: v.locked,
+      main: v.main,
     });
   }
   return out.toSorted((a, b) => b.z - a.z);

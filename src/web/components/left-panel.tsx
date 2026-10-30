@@ -7,7 +7,9 @@ import type { LibraryStyle } from "../../core/api";
 import type { Project } from "../../core/schema";
 import type { TextStyle } from "../../core/text-style";
 import { ApiFailure } from "../data/client";
+import { placeAsset } from "../lib/pip";
 import { findItem } from "../lib/project";
+import { msOfFrame } from "../lib/timeline";
 import { type LeftTab, useStore } from "../store";
 import { Icon } from "./icons";
 
@@ -352,6 +354,20 @@ function AssetRow({ id, project, noFaces }: { id: string; project: Project; noFa
   const p = a.probe;
   const name = a.path.split("/").at(-1) ?? id;
   const isOutro = project.outro?.asset === id;
+
+  const place = () => {
+    const st = useStore.getState();
+    const fps = st.preview?.timeline.fps ?? 30;
+    try {
+      const { ops, itemId } = placeAsset(project, id, msOfFrame(st.frame, fps));
+      void st.submit(ops, `已把「${name}」放到画面上`).then((ok) => {
+        if (ok) st.select(itemId);
+      });
+    } catch (e) {
+      st.toast(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
   return (
     <div className="asset">
       <div className="asset-icon">
@@ -372,6 +388,16 @@ function AssetRow({ id, project, noFaces }: { id: string; project: Project; noFa
             ) : (
               <span className="tag ok">人脸已检测</span>
             ))}
+          {a.kind !== "audio" && (
+            <button
+              type="button"
+              className="mini-btn"
+              title="在播放头处放到画面上；视频默认右上角小窗"
+              onClick={place}
+            >
+              放到画面上
+            </button>
+          )}
         </div>
       </div>
     </div>
