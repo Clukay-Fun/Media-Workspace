@@ -79,6 +79,15 @@ describe("transformAt", () => {
   });
 });
 
+describe("unitStarts：剪映节奏（fraction）", () => {
+  it("前快后慢：第 k 个单位在二次缓出的进度到 k/n 时出现，标点跟着前一个，不看识音时间", () => {
+    const u = splitUnits("一，二三四", "char");
+    // 4 个有声单位，T = 1000 × 0.8 = 800：800 × (1 - √(1 - k/4))
+    const s = unitStarts(u, { fraction: 0.8 }, 1000, 0, [0, 0, 900, 900, 900]);
+    expect(s.map(Math.round)).toEqual([0, 0, 107, 234, 400]);
+  });
+});
+
 describe("unitStarts：识音得到的逐字时间", () => {
   it("每个词从它第一个字开始念的时候出现，标点跟前一个词", () => {
     const units = splitUnits("你好，世界", "char");

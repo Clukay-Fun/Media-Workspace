@@ -69,3 +69,25 @@ describe("TextBlock 装饰（格式 v5）", () => {
     expect(fill).not.toContain("drop-shadow");
   });
 });
+
+describe("TextBlock 逐字入场时长（inSlot）", () => {
+  const opacityOf = (out: string, ch: string) => {
+    const m = new RegExp(`opacity:([0-9.]+)[^>]*>${ch}<`).exec(out);
+    return m ? Number(m[1]) : null;
+  };
+  it("入场按到下一个字出现的时间算，in.durationMs 是上限", () => {
+    const style = {
+      animation: {
+        in: { preset: "fade", durationMs: 1000, easing: "linear" },
+        unit: "char",
+        stagger: { eachMs: 100 },
+        inSlot: 0.5,
+      },
+    };
+    // 时间槽 100ms，淡入 50ms：第 1 帧（33ms）时第一个字到 2/3
+    expect(opacityOf(html(style, 1), "一")).toBeCloseTo(2 / 3, 2);
+    // 没有 inSlot 时淡入 1000ms
+    const fixed = { animation: { ...style.animation, inSlot: null } };
+    expect(opacityOf(html(fixed, 1), "一")).toBeCloseTo(1 / 30, 2);
+  });
+});

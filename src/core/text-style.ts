@@ -163,19 +163,27 @@ export const TextStyle = z.strictObject({
       unit: z.enum(["char", "word", "line"]).default("line"),
       /**
        * 逐字 / 逐词出现的节奏（没有真实发音时间，都是估算）：
-       * spread = 在字幕时长内均分；{ eachMs } = 每个单位固定间隔；{ totalMs } = 在这段时间内全部出现（剪映入场动画的做法）
+       * spread = 在字幕时长内均分；{ eachMs } = 每个单位固定间隔；{ totalMs } = 在这段时间内全部出现；
+       * { fraction } = 剪映逐字的节奏（样片 1029 实测）：前快后慢，在字幕时长的 fraction 内出完，
+       * 不跟识音的逐字时间走（其他几种有逐字时间时跟着语音）
        */
       stagger: z
         .union([
           z.literal("spread"),
           z.strictObject({ eachMs: z.number().int().nonnegative() }),
           z.strictObject({ totalMs: z.number().int().nonnegative() }),
+          z.strictObject({ fraction: z.number().positive().max(1) }),
         ])
         .default("spread"),
+      /**
+       * 逐字入场占这个单位时间槽（到下一个单位出现）的比例：节奏快时入场短、慢时长，字一直在连续地出来，
+       * 不会出现「弹一下、停住、再弹一下」。in.durationMs 是上限。null = 固定用 in.durationMs
+       */
+      inSlot: z.number().positive().max(1).nullable().default(null),
       out: Anim.nullable().default(null),
       loop: Anim.nullable().default(null),
     })
-    .default({ in: null, unit: "line", stagger: "spread", out: null, loop: null }),
+    .default({ in: null, unit: "line", stagger: "spread", inSlot: null, out: null, loop: null }),
 });
 export type TextStyle = z.infer<typeof TextStyle>;
 export type Anim = z.infer<typeof Anim>;

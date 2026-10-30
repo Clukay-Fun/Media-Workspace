@@ -19,6 +19,7 @@
 > - v0.8 收尾（2026-10-29）：阶段 B 结束，合入 dev。手动环节够用即可，后续精力放在 AI 能做的能力上（阶段 C 起）。
 > - 阶段 C 收窄（`docs/decisions/0011`）：先做样式模板库，文稿视图和样式编辑面板交给 AI。
 > - 文字装饰（`docs/decisions/0012`）：渐变、发光、关键词下划线、当前词色块，工程格式升到 v5。
+> - 逐字节奏（`docs/decisions/0013`）：按样片实测改成剪映的「前快后慢」节奏，入场时长跟着时间槽走。
 
 ## 0. 一句话定义
 
@@ -258,7 +259,8 @@ AI 应用（Codex、Claude Code 等）通过 CLI 或本地 MCP 提交操作；
   "animation": {
     "in":  { "preset": "fade-up", "durationMs": 180, "easing": "ease-out" },
     "unit": "char",               // char | word | line：逐字、逐词、整行
-    "stagger": "spread",          // spread = 在字幕时长内均分（不代表真实发音时间）；或者填固定毫秒数
+    "stagger": "spread",          // spread = 在字幕时长内均分；{ eachMs } / { totalMs }；{ fraction } = 剪映的前快后慢节奏（0013）
+    "inSlot": null,               // 入场时长占到下一个词出现的时间的比例，in.durationMs 是上限（0013）
     "out": { "preset": "fade", "durationMs": 100 },
     "loop": null
   }
@@ -467,7 +469,7 @@ stdout 默认输出 JSON，日志写到 stderr。
 验收：在文稿视图里删除 3 句、合并 2 句、去停顿之后，导出的成片剪辑点正确；自己编排一个字幕样式，保存成模板，在另一个工程里使用。
 
 > **v0.8 修订（`docs/decisions/0011`）**：大部分高亮和快剪操作已在阶段 A / v0.7 完成。阶段 C 收窄为：
-> 样式模板库（`mw styles`、MCP `styles`、左栏模板库，已完成）→ 逐字动画更顺滑 → 当前词色块 / 下划线 / 渐变 / 发光（格式 v5，已完成，`0012`）
+> 样式模板库（`mw styles`、MCP `styles`、左栏模板库，已完成）→ 逐字动画更顺滑（已完成，`0013`，待用户看对比视频确认）→ 当前词色块 / 下划线 / 渐变 / 发光（格式 v5，已完成，`0012`）
 > → `docs/orchestration-guide.md`（第一版已完成，阶段 E 补 MG 卡片部分）。文稿视图（F11）和样式编辑面板（F5）不做界面，交给 AI。验收以 0011 为准。
 
 ### 阶段 D：画面能力

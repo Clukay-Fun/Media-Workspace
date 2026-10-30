@@ -89,12 +89,25 @@ export const TextBlock: React.FC<TextBlockProps> = ({
     font.size,
   );
 
+  const frac =
+    typeof animation.stagger === "object" && "fraction" in animation.stagger
+      ? animation.stagger.fraction
+      : 1;
+  /** 入场时长：设了 inSlot 时按到下一个单位出现的时间算，in.durationMs 是上限 */
+  const enterMs = (i: number) => {
+    const max = animation.in?.durationMs ?? 0;
+    if (animation.inSlot === null) return max;
+    const s = starts[i] ?? 0;
+    // fraction 节奏下最后一个单位的时间槽到「出完」为止，而不是字幕结束
+    const next = starts.slice(i + 1).find((x) => x > s) ?? revealEndMs * frac;
+    return Math.max(1, Math.min(max, (next - s) * animation.inSlot));
+  };
   const pieces = units.map((u, i) => {
     const t = revealMs - (starts[i] ?? 0);
     const state: AnimState = animation.in
       ? t < 0
         ? { ...IDLE, opacity: 0 }
-        : enterState(animation.in, Math.min(1, t / animation.in.durationMs), font.size)
+        : enterState(animation.in, Math.min(1, t / enterMs(i)), font.size)
       : IDLE;
     const keyword = mask.slice(u.start, u.end).some(Boolean);
     const lit =

@@ -12,7 +12,7 @@ describe.skipIf(!ready)("识音对齐", () => {
   it("给字幕写入单调递增、落在句子范围内的逐字时间", async () => {
     const text = "开放时间早上九点至下午五点。";
     const project = Project.parse({
-      version: 4,
+      version: 5,
       revision: 0,
       canvas: {},
       assets: { a: { kind: "audio", path: wav, probe: { durationMs: 5600 } } },

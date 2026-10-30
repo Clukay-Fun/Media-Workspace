@@ -19,10 +19,13 @@ export const BUILTIN_STYLES = {
     shadow: { color: "#00000080", blur: 6, x: 0, y: 2 },
     layout: { x: 540, y: 1165, anchor: "center", maxWidth: 859, maxLines: 2, align: "center" },
     highlight: { mode: "current", fill: "#F5FA00" },
+    // 逐词节奏按样片 1029 逐帧量出来的（docs/decisions/0013）：前快后慢，在字幕时长的 75% 内出完，
+    // 每个词的淡入占它时间槽的 60%，字一直在连续地出来
     animation: {
-      in: { preset: "fade", durationMs: 120, easing: "ease-out" },
+      in: { preset: "fade", durationMs: 300, easing: "ease-out" },
       unit: "word",
-      stagger: "spread",
+      stagger: { fraction: 0.75 },
+      inSlot: 0.6,
     },
   }),
   /** 顶部标题：粗黄字、黑描边、阴影。底色横条由 title-bar 模板画 */

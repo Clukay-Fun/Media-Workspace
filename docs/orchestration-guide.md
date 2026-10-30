@@ -65,7 +65,9 @@
   `keyword` 只亮标出的关键词（最克制，适合信息密集的讲解）；
   `current` 只亮正在念的字 / 词；`trail` 念过的都留亮；`sweep` 卡拉 OK 扫色。
   关键词在字幕条目的 `highlights` 里标，每句不超过 1–2 处，标多了等于没标。
-- **出现节奏** `animation.unit` + `stagger`：口播一般 `word` + `spread`，align 之后会跟着语音走。
+- **出现节奏** `animation.unit` + `stagger` + `inSlot`：
+  口播默认用剪映的节奏 `stagger: { fraction: 0.75 }` + `inSlot: 0.6`（内置 `caption-word-yellow` 就是这样）：
+  前快后慢、比语音略早出完，看着利落。要严格跟着念的速度出字时用 `spread` 并跑 `align`。
 - **装饰**（格式 v5）：
   - `highlight.activeBox`：正在念的词垫色块，节奏感最强，适合短句、快节奏；和 `current` 一起用时高亮色要和色块有对比。
   - `highlight.underline`：给关键词画线，比换色更安静；和荧光笔 `marker` 二选一。
