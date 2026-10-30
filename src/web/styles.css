@@ -1049,6 +1049,45 @@ textarea:focus-visible {
   outline-color: rgb(255 255 255 / 0.6);
 }
 
+/* 图片 / 画中画的四角缩放手柄：对角固定，等比缩放 */
+.box-handle {
+  position: absolute;
+  z-index: 1;
+  width: 10px;
+  height: 10px;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: var(--on-canvas);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35);
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.box-handle.nw {
+  left: 0;
+  top: 0;
+  cursor: nwse-resize;
+}
+
+.box-handle.ne {
+  right: 0;
+  top: 0;
+  cursor: nesw-resize;
+}
+
+.box-handle.sw {
+  left: 0;
+  bottom: 0;
+  cursor: nesw-resize;
+}
+
+.box-handle.se {
+  right: 0;
+  bottom: 0;
+  cursor: nwse-resize;
+}
+
 .box.tag-inside .box-tag {
   bottom: auto;
   top: 4px;
@@ -2545,6 +2584,19 @@ textarea:focus-visible {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 6px;
+}
+
+/* 画中画的四角预设 / 数值面板 */
+.pip-corners {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.pip-numbers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
 .slot {

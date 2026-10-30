@@ -2,15 +2,25 @@ import { transformAt } from "../../core/animate";
 import type { FullTransform, ResolvedTimeline } from "../../core/compile";
 import { type Box, textBox } from "../../core/lint";
 import { BUILTIN_STYLES } from "../../core/presets";
+import type { Project } from "../../core/schema";
 import type { TextStyle } from "../../core/text-style";
 import { TEMPLATES } from "../../templates";
+import { containBox } from "./pip";
 
 // 预览画面上的点选：算出当前帧每个可见元素在画布上占的区域（画布像素）。
 // 文字区域和质检（core/lint）用同一套估算，模板通过 bounds 声明自己占的区域。
 
 export type ElementKind = "caption" | "overlay" | "image" | "video";
 
-export type HitBox = { id: string; kind: ElementKind; box: Box; z: number; locked: boolean };
+export type HitBox = {
+  id: string;
+  kind: ElementKind;
+  box: Box;
+  z: number;
+  locked: boolean;
+  /** 视频片段：主轨铺满画面，不显示选中框和缩放手柄 */
+  main?: boolean;
+};
 
 const PAD = 14;
 
@@ -63,9 +73,15 @@ export function hitBoxes(
   tl: ResolvedTimeline,
   styles: Record<string, TextStyle>,
   frame: number,
+  assets?: Project["assets"],
 ): HitBox[] {
   const { width, height } = tl;
   const canvas: Box = { x0: 0, y0: 0, x1: width, y1: height };
+  // 图片和画中画按 objectFit: contain 后的真实画面区域算，不能按整幅画布
+  const content = (assetId: string): Box => {
+    const probe = assets?.[assetId]?.probe;
+    return containBox(width, height, probe?.width, probe?.height);
+  };
   const out: HitBox[] = [];
   const top = 1000;
   for (const c of tl.captions) {
@@ -101,7 +117,7 @@ export function hitBoxes(
       kind: "image",
       // 有关键帧时按此刻插值后的位置算，和画面一致
       box: transformBox(
-        canvas,
+        content(img.asset),
         transformAt(img.transform, img.keyframes, frame - img.from),
         width,
         height,
@@ -119,13 +135,14 @@ export function hitBoxes(
       box: v.main
         ? canvas
         : transformBox(
-            canvas,
+            content(v.asset),
             transformAt(v.transform, v.keyframes, frame - v.from),
             width,
             height,
           ),
       z: v.main ? -1 : v.z,
       locked: v.locked,
+      main: v.main,
     });
   }
   return out.toSorted((a, b) => b.z - a.z);
