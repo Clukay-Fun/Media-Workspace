@@ -11,6 +11,7 @@ import { applyOps } from "../../core/ops";
 import { BUILTIN_STYLES } from "../../core/presets";
 import { addComment, Review, setCommentStatus } from "../../core/review";
 import { Project } from "../../core/schema";
+import { msToFrame } from "../../core/time";
 import { changedIds, undoState } from "../../core/undo";
 import { overlayBounds, TEMPLATES } from "../../templates";
 import { type Api, ApiFailure, type LiveEvent } from "./client";
@@ -338,6 +339,16 @@ export function createMockApi(): Api {
       return {
         ok: true,
         comment: review.comments.find((c) => c.id === id) as Review["comments"][number],
+      };
+    },
+    cover: async () => {
+      const c = current();
+      const atMs = c.cover?.atMs ?? 1000;
+      return {
+        ok: true,
+        revision: c.revision,
+        file: `renders/示例-cover-r${c.revision}.png`,
+        frame: msToFrame(atMs, c.canvas.fps),
       };
     },
     exportVideo: async () => {

@@ -1,5 +1,6 @@
 import { timecode } from "../../lib/timeline";
 import { useStore } from "../../store";
+import { CoverPanel } from "./cover";
 
 /**
  * 未选中元素时的项目概览（docs/decisions/0015 第 7 条）：先让人确认在看哪个工程，
@@ -39,6 +40,7 @@ export function ProjectOverview() {
           {dir ?? "（示例工程）"}
         </dd>
       </dl>
+      <CoverPanel />
     </section>
   );
 }

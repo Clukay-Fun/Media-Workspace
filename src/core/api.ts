@@ -146,6 +146,9 @@ export type HistoryResponse = {
 
 export type ExportStarted = { ok: true; jobId: string };
 
+/** 导出封面（POST /api/cover）：file 是生成的 PNG 绝对路径，frame 是截的那一帧 */
+export type CoverResponse = { ok: true; revision: number; file: string; frame: number };
+
 /** 样式模板库里的一项（跨工程共用；内置样式不能覆盖或删除） */
 export type LibraryStyle = {
   name: string;
@@ -215,6 +218,7 @@ export const ROUTES = {
   redo: "/api/redo",
   peaks: (assetId: string) => `/api/media/${encodeURIComponent(assetId)}/peaks`,
   export: "/api/export",
+  cover: "/api/cover",
   lint: "/api/lint",
   comments: "/api/comments",
   comment: (id: string) => `/api/comments/${encodeURIComponent(id)}`,

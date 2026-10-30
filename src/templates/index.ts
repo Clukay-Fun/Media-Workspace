@@ -4,10 +4,22 @@ import type { ResolvedOverlay } from "../core/compile";
 import type { Box } from "../core/lint";
 import type { CardSize } from "../core/schema";
 import type { TextStyle } from "../core/text-style";
+import { bounds as nameBarBounds } from "./name-bar/bounds";
+import { NameBar } from "./name-bar/component";
+import { meta as nameBarMeta } from "./name-bar/meta";
+import { NameBarProps } from "./name-bar/schema";
+import { bounds as screenshotBounds } from "./screenshot/bounds";
+import { Screenshot } from "./screenshot/component";
+import { meta as screenshotMeta } from "./screenshot/meta";
+import { ScreenshotProps } from "./screenshot/schema";
 import { bounds as textCardBounds } from "./text-card/bounds";
 import { TextCard } from "./text-card/component";
 import { meta as textCardMeta } from "./text-card/meta";
 import { TextCardProps } from "./text-card/schema";
+import { bounds as tipBarBounds } from "./tip-bar/bounds";
+import { TipBar } from "./tip-bar/component";
+import { meta as tipBarMeta } from "./tip-bar/meta";
+import { TipBarProps } from "./tip-bar/schema";
 import { bounds as titleBarBounds } from "./title-bar/bounds";
 import { TitleBar } from "./title-bar/component";
 import { meta as titleBarMeta } from "./title-bar/meta";
@@ -46,6 +58,25 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
     schema: TextCardProps,
     Component: TextCard,
     bounds: textCardBounds,
+  },
+  "name-bar": {
+    meta: nameBarMeta,
+    schema: NameBarProps,
+    Component: NameBar,
+    bounds: nameBarBounds,
+  },
+  "tip-bar": {
+    meta: tipBarMeta,
+    schema: TipBarProps,
+    Component: TipBar,
+    bounds: tipBarBounds,
+  },
+  screenshot: {
+    meta: screenshotMeta,
+    schema: ScreenshotProps,
+    Component: Screenshot,
+    bounds: screenshotBounds,
+    assets: (p: ScreenshotProps) => [p.image],
   },
 };
 
