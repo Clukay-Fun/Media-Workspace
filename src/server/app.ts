@@ -19,7 +19,7 @@ import {
 } from "../core/api";
 import { MwError } from "../core/errors";
 import { zodIssues } from "../core/validate";
-import { lintDir, restoreCut, templateOpts } from "../node/actions";
+import { coverProject, lintDir, restoreCut, templateOpts } from "../node/actions";
 import { listStyles, saveStyle } from "../node/library";
 import { buildProps } from "../node/render";
 import {
@@ -192,6 +192,8 @@ export function createApp(ctx: AppContext): Hono {
     const req = await body(c, ExportRequest);
     return c.json({ ok: true, jobId: ctx.exports.start(req.out) });
   });
+
+  app.post(ROUTES.cover, async (c) => c.json(await coverProject(ctx.dir)));
 
   app.get(ROUTES.events, (c) =>
     streamSSE(c, async (stream) => {

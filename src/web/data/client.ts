@@ -3,6 +3,7 @@ import {
   type CommentRequest,
   type CommentResponse,
   type CommentStatusRequest,
+  type CoverResponse,
   type EditorResponse,
   type EditorState,
   type ExportStarted,
@@ -41,6 +42,7 @@ export type Api = {
   comment(req: CommentRequest): Promise<CommentResponse>;
   setComment(id: string, req: CommentStatusRequest): Promise<CommentResponse>;
   exportVideo(): Promise<ExportStarted>;
+  cover(): Promise<CoverResponse>;
   /** 订阅推送；返回取消订阅。onStatus 报告连接状态 */
   subscribe(onEvent: (e: LiveEvent) => void, onStatus: (live: boolean) => void): () => void;
 };
@@ -92,6 +94,7 @@ export const httpApi: Api = {
   comment: (req) => request(ROUTES.comments, { body: req }),
   setComment: (id, req) => request(ROUTES.comment(id), { body: req }),
   exportVideo: () => request(ROUTES.export, { body: {} }),
+  cover: () => request(ROUTES.cover, { body: {} }),
   subscribe(onEvent, onStatus) {
     const es = new EventSource(ROUTES.events);
     const handle = (m: MessageEvent<string>) => onEvent(JSON.parse(m.data) as ServerEvent);

@@ -5,8 +5,10 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { compile } from "../src/core/compile";
 import { coverView } from "../src/core/cover";
+import { MwError } from "../src/core/errors";
+import { applyOps } from "../src/core/ops";
 import { BUILTIN_STYLES } from "../src/core/presets";
-import { attachOutro, coverProject, removeOutro } from "../src/node/actions";
+import { attachOutro, coverProject, removeOutro, templateOpts } from "../src/node/actions";
 import { importMedia } from "../src/node/media";
 import { exportVideo, renderStills } from "../src/node/render";
 import { applyToProject, initProject, loadProject } from "../src/node/store";
@@ -434,4 +436,101 @@ describe("卡片和封面", () => {
     await removeOutro(d, who);
     expect((await loadProject(d)).outro).toBeNull();
   }, 120_000);
+});
+
+// 截图卡片（阶段 E）：用一张 lavfi 生成的 PNG，确认素材能进模板、截图和导出一致；
+// 再确认素材 ID 不存在时 validate 报 REF_MISSING。
+describe("截图卡片", () => {
+  let d: string;
+
+  beforeAll(async () => {
+    d = join(root, "shot.mwproj");
+    await initProject(d);
+    const image = join(root, "shot.png");
+    execFileSync(ffmpeg, [
+      "-v",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=size=800x450",
+      "-frames:v",
+      "1",
+      image,
+    ]);
+    const pic = await importMedia(d, image, { proxy: false, peaks: false, faces: false });
+    const vid = await importMedia(d, join(root, "src.mp4"), {
+      proxy: false,
+      peaks: false,
+      faces: false,
+    });
+    await applyToProject(d, {
+      baseRevision: 0,
+      source: "cli",
+      actor: "test",
+      ops: [
+        { op: "asset.add", id: "img", asset: pic.asset },
+        { op: "asset.add", id: "vid", asset: vid.asset },
+        { op: "canvas.update", set: { width: 540, height: 960 } },
+        {
+          op: "item.add",
+          track: "main",
+          item: { id: "c1", type: "clip", asset: "vid", inMs: 0, outMs: 2000 },
+        },
+        { op: "style.add", id: "card", style: noto(BUILTIN_STYLES["card-white"]) },
+        {
+          op: "item.add",
+          track: "titles",
+          item: {
+            id: "shot",
+            template: "screenshot",
+            size: "full",
+            at: { ms: 0 },
+            durationMs: 1000,
+            style: "card",
+            props: { image: "img", caption: "截图卡片" },
+          },
+        },
+      ],
+    });
+  }, 120_000);
+
+  it("截图和导出的对应帧一致", async () => {
+    const p = await loadProject(d);
+    const out = join(root, "shot.mp4");
+    await exportVideo(d, p, { out, concurrency: 2 });
+    const [still] = await renderStills(d, p, [10], join(root, "shot-stills"));
+    expect(psnr(out, still ?? "", 10)).toBeGreaterThan(35);
+  }, 180_000);
+
+  it("不存在的图片素材在提交操作时就报 REF_MISSING", async () => {
+    const p = await loadProject(d);
+    let error: unknown;
+    try {
+      applyOps(
+        p,
+        [
+          {
+            op: "item.add",
+            track: "titles",
+            item: {
+              id: "bad-shot",
+              template: "screenshot",
+              size: "half",
+              at: { ms: 0 },
+              durationMs: 1000,
+              style: "card",
+              props: { image: "missing" },
+            },
+          },
+        ],
+        templateOpts,
+      );
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(MwError);
+    expect((error as MwError).issues.some((e) => e.code === "REF_MISSING")).toBe(true);
+  });
 });
