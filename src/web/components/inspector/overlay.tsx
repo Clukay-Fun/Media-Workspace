@@ -1,3 +1,5 @@
+import type { Overlay } from "../../../core/schema";
+import { TEMPLATES } from "../../../templates";
 import {
   InspectorActions,
   InspectorHead,
@@ -6,14 +8,24 @@ import {
   StylePicker,
   TimingNudge,
 } from "./common";
+import { TextStyleEditor } from "./text-style-editor";
 
 /** 选中标题 / 卡片：样式、位置、出现时间 */
 export function OverlayInspector(props: InspectorProps) {
   const { project, id, ref_ } = props;
+  const overlay = ref_.item as Overlay;
+  const fallback = TEMPLATES[overlay.template]?.meta.defaultStyle ?? "title-bar-yellow";
   return (
     <div className="selection">
       <InspectorHead {...props} />
       <StylePicker project={project} id={id} ref_={ref_} sample="标题" />
+      <TextStyleEditor
+        project={project}
+        id={id}
+        ref_={ref_}
+        fallback={fallback}
+        elementLabel="标题 / 卡片"
+      />
       <SlotPicker id={id} ref_={ref_} />
       {!ref_.track.locked && <TimingNudge project={project} id={id} />}
       <InspectorActions ref_={ref_} />

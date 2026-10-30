@@ -3,6 +3,7 @@ import type { Caption } from "../../../core/schema";
 import { useStore } from "../../store";
 import { ListToggle } from "./caption-list";
 import { InspectorActions, InspectorHead, type InspectorProps, StylePicker } from "./common";
+import { TextStyleEditor } from "./text-style-editor";
 
 /** 选中一句字幕：文字、样式 */
 export function CaptionInspector(props: InspectorProps) {
@@ -12,6 +13,14 @@ export function CaptionInspector(props: InspectorProps) {
       <InspectorHead {...props} />
       <CaptionEditor caption={ref_.item as Caption} locked={ref_.track.locked} />
       <StylePicker project={project} id={id} ref_={ref_} sample="字幕" />
+      <TextStyleEditor
+        project={project}
+        id={id}
+        ref_={ref_}
+        fallback="caption-word-yellow"
+        showHighlight
+        elementLabel="字幕"
+      />
       <InspectorActions ref_={ref_}>
         <ListToggle />
       </InspectorActions>
