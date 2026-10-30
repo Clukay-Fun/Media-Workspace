@@ -17,6 +17,8 @@ export type Block = {
   /** 主轨片段：素材里的起点和倍速，画波形用 */
   trimBeforeFrames?: number;
   speed?: number;
+  /** 相对条目开头的关键帧位置（帧） */
+  keyframeFrames?: number[];
   /** 主轨片段前面剪掉的内容的理由 */
   cut?: string;
 };
@@ -53,6 +55,9 @@ export function timelineRows(project: Project, tl: ResolvedTimeline): Row[] {
         asset: v.asset,
         trimBeforeFrames: v.trimBeforeFrames,
         speed: v.speed,
+        ...(v.kind === "video" && v.keyframes.length > 0
+          ? { keyframeFrames: v.keyframes.map((keyframe) => keyframe.frame) }
+          : {}),
         ...(v.cutBefore ? { cut: v.cutBefore } : {}),
       });
     }
@@ -64,6 +69,9 @@ export function timelineRows(project: Project, tl: ResolvedTimeline): Row[] {
         to: i.from + i.durationInFrames,
         label: fileName(i.asset),
         kind: "image",
+        ...(i.keyframes.length > 0
+          ? { keyframeFrames: i.keyframes.map((keyframe) => keyframe.frame) }
+          : {}),
       });
     }
     for (const c of tl.captions.filter((x) => x.trackId === track.id)) {

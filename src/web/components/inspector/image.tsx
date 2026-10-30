@@ -12,6 +12,7 @@ import {
   SlotPicker,
   TimingNudge,
 } from "./common";
+import { KeyframesInspector } from "./keyframes";
 import { useNumberDraft } from "./number-draft";
 
 /** 选中图片：位置和大小、入场 / 出场动画、出现时间 */
@@ -99,6 +100,7 @@ export function ImageInspector(props: InspectorProps) {
           />
         </div>
       </Field>
+      <KeyframesInspector id={id} fps={props.fps} locked={locked} keyframes={image.keyframes} />
       <AnimField
         label="入场动画"
         anim={image.animIn ?? null}

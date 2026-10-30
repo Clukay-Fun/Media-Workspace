@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { FloatClip, MainClip } from "../../../core/schema";
 import { useStore } from "../../store";
 import { Field, InspectorActions, InspectorHead, type InspectorProps, TimingNudge } from "./common";
+import { KeyframesInspector } from "./keyframes";
 import { useNumberDraft } from "./number-draft";
 import { PipInspector } from "./pip";
 
@@ -42,6 +43,14 @@ export function ClipInspector(props: InspectorProps) {
         />
       )}
       {clip && <VolumeField id={id} gainDb={clip.gainDb} locked={track.locked} />}
+      {clip && track.kind === "video" && (
+        <KeyframesInspector
+          id={id}
+          fps={props.fps}
+          locked={track.locked}
+          keyframes={clip.keyframes}
+        />
+      )}
       {anchored && !track.locked && <TimingNudge project={project} id={id} />}
       <InspectorActions ref_={ref_} />
     </div>
