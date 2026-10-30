@@ -14,6 +14,7 @@ import {
   inspectProject,
   lintDir,
   previewProject,
+  restoreCut,
   templateOpts,
   templatesInfo,
   validateDir,
@@ -224,6 +225,24 @@ export function createMcpServer(): McpServer {
         }
         return { content } satisfies Result;
       }),
+  );
+
+  server.registerTool(
+    "uncut",
+    {
+      description:
+        "恢复剪辑点：把主轨片段 clip 前面剪掉的那段源时间接回来，随删句一起删掉的字幕从历史里找回。" +
+        "人在剪辑点上批注「这刀不要剪」「恢复」时用",
+      inputSchema: {
+        project,
+        clip: z.string().describe("剪辑点后面那个主轨片段的 ID（带 cutBefore 的那个）"),
+        baseRevision: base.optional(),
+        actor,
+        dryRun: z.boolean().default(false),
+      },
+    },
+    ({ project: p, clip, baseRevision, actor: a, dryRun }) =>
+      call(() => restoreCut(dirOf(p), clip, { baseRevision, dryRun, source: "mcp", actor: a })),
   );
 
   server.registerTool(

@@ -11,6 +11,7 @@ import {
   ExportRequest,
   httpStatus,
   OpsRequest,
+  RestoreCutRequest,
   ROUTES,
   SaveLibraryStyleRequest,
   type ServerEvent,
@@ -18,7 +19,7 @@ import {
 } from "../core/api";
 import { MwError } from "../core/errors";
 import { zodIssues } from "../core/validate";
-import { lintDir, templateOpts } from "../node/actions";
+import { lintDir, restoreCut, templateOpts } from "../node/actions";
 import { listStyles, saveStyle } from "../node/library";
 import { buildProps } from "../node/render";
 import {
@@ -162,6 +163,16 @@ export function createApp(ctx: AppContext): Hono {
       return c.json(r);
     });
   }
+
+  app.post(ROUTES.restoreCut, async (c) => {
+    const req = await body(c, RestoreCutRequest);
+    const r = await restoreCut(ctx.dir, req.clip, {
+      baseRevision: req.baseRevision,
+      source: "ui",
+      actor: req.actor,
+    });
+    return c.json(r);
+  });
 
   app.get("/api/media/:asset/peaks", async (c) => {
     const id = c.req.param("asset");

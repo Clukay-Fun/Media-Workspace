@@ -14,6 +14,8 @@ import {
   type PeaksResponse,
   type PreviewResponse,
   type ProjectResponse,
+  type RestoreCutRequest,
+  type RestoreCutResponse,
   type ReviewResponse,
   ROUTES,
   type SaveLibraryStyleRequest,
@@ -34,6 +36,7 @@ export type Api = {
   saveLibraryStyle(req: SaveLibraryStyleRequest): Promise<{ ok: true; saved: string }>;
   peaks(assetId: string): Promise<PeaksResponse | null>;
   ops(req: OpsRequest): Promise<OpsResponse>;
+  restoreCut(req: RestoreCutRequest): Promise<RestoreCutResponse>;
   undo(direction: "undo" | "redo", baseRevision: number): Promise<OpsResponse>;
   comment(req: CommentRequest): Promise<CommentResponse>;
   setComment(id: string, req: CommentStatusRequest): Promise<CommentResponse>;
@@ -84,6 +87,7 @@ export const httpApi: Api = {
   saveLibraryStyle: (req) => request(ROUTES.libraryStyles, { body: req }),
   peaks: (id) => request<PeaksResponse>(ROUTES.peaks(id)).catch(() => null),
   ops: (req) => request(ROUTES.ops, { body: req }),
+  restoreCut: (req) => request(ROUTES.restoreCut, { body: req }),
   undo: (direction, baseRevision) => request(ROUTES[direction], { body: { baseRevision } }),
   comment: (req) => request(ROUTES.comments, { body: req }),
   setComment: (id, req) => request(ROUTES.comment(id), { body: req }),

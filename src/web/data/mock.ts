@@ -292,6 +292,21 @@ export function createMockApi(): Api {
         return fail(e);
       }
     },
+    // 演示数据没有历史版本可翻，只接回画面，不找回字幕
+    restoreCut: async (req) => {
+      checkBase(req.baseRevision);
+      try {
+        const r = applyOps(current(), [{ op: "cut.restore", clip: req.clip }]);
+        const res = await commit(
+          r.project,
+          { actor: req.actor ?? "user", source: "ui", kind: "apply", ops: [] },
+          changedIds(current(), r.project),
+        );
+        return { ...res, restoredMs: [0, 0], captions: [], skipped: [] };
+      } catch (e) {
+        return fail(e);
+      }
+    },
     undo: async (direction, base) => {
       checkBase(base);
       const st = undoState(entries.map((e) => e.log))[direction];

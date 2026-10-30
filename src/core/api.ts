@@ -65,6 +65,22 @@ export const UndoRequest = z.strictObject({
 });
 export type UndoRequest = z.input<typeof UndoRequest>;
 
+/** 恢复剪辑点：clip 是剪辑点后面那个主轨片段（docs/decisions/0016） */
+export const RestoreCutRequest = z.strictObject({
+  clip: z.string().min(1),
+  baseRevision: z.number().int().nonnegative(),
+  actor: z.string().min(1).default("user"),
+});
+export type RestoreCutRequest = z.input<typeof RestoreCutRequest>;
+export type RestoreCutResponse = OpsResponse & {
+  /** 接回来的源时间区间 */
+  restoredMs: [number, number];
+  /** 从历史里找回的字幕 */
+  captions: string[];
+  /** 和现有字幕重叠、没有放回的字幕 */
+  skipped: string[];
+};
+
 export const ExportRequest = z.strictObject({
   /** 输出文件；不写时放在工程的 renders/ 下 */
   out: z.string().min(1).optional(),
@@ -201,6 +217,7 @@ export const ROUTES = {
   comment: (id: string) => `/api/comments/${encodeURIComponent(id)}`,
   events: "/api/events",
   libraryStyles: "/api/library/styles",
+  restoreCut: "/api/restore-cut",
 } as const;
 
 /** 错误码 → HTTP 状态 */

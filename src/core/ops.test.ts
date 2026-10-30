@@ -169,6 +169,28 @@ describe("字幕快剪", () => {
     expect(s3?.from).toBe(93); // (4000 - 900) × 30 / 1000
   });
 
+  it("cut.restore 把剪掉的源时间接回前一段，去掉剪辑标记", () => {
+    const cut = applyOps(project(), [{ op: "cut.removeCaptions", ids: ["s2"] }]).project;
+    const r = applyOps(cut, [{ op: "cut.restore", clip: "c1-1" }]);
+    expect(mainClips(r.project)).toEqual([
+      ["c1", 0, 3000],
+      ["c1-1", 3000, 10_000],
+    ]);
+    expect(r.project.tracks[0]?.items[1]).not.toHaveProperty("cutBefore");
+    // 字幕不由这个操作找回（node 层从历史里找）
+    expect(r.project.tracks[1]?.items.map((c) => c.id)).toEqual(["s1", "s3"]);
+  });
+
+  it("cut.restore 前面不是剪辑点时报 INVALID_OP", () => {
+    expect(fail(() => applyOps(project(), [{ op: "cut.restore", clip: "c1" }])).code).toBe(
+      "INVALID_OP",
+    );
+    const split = applyOps(project(), [{ op: "clip.split", id: "c1", atMs: 4000 }]).project;
+    expect(fail(() => applyOps(split, [{ op: "cut.restore", clip: "c1-1" }])).code).toBe(
+      "INVALID_OP",
+    );
+  });
+
   it("cut.removePauses 去掉超过阈值的停顿，两边保留余量", () => {
     const r = applyOps(project(), [
       { op: "cut.removePauses", track: "cap", minGapMs: 500, keepMs: 100 },

@@ -128,6 +128,11 @@ export const Op = z.discriminatedUnion("op", [
     /** 每个停顿两边各保留的余量 */
     keepMs: z.number().int().nonnegative().default(120),
   }),
+  /**
+   * 恢复一个剪辑点：主轨片段 clip 前面剪掉的那段源时间接回来（前一个片段延长到 clip 的入点）。
+   * 只恢复画面和声音；随删句一起删掉的字幕由 node 层从历史里找回，再用 item.add 加回去（docs/decisions/0016）
+   */
+  z.strictObject({ op: z.literal("cut.restore"), clip: Id }),
   // 样式
   z.strictObject({ op: z.literal("style.add"), id: Id, style: AnyObj }),
   z.strictObject({ op: z.literal("style.update"), id: Id, set: Patch }),
@@ -512,6 +517,31 @@ function run(ctx: Ctx, op: Op): void {
           );
         }
       }
+      return;
+    }
+    case "cut.restore": {
+      const main = ctx.mainTrack();
+      ctx.unlocked(main);
+      const k = main.items.findIndex((i) => i.id === op.clip);
+      if (k < 0) throw new MwError("NOT_FOUND", `主轨上没有片段「${op.clip}」`);
+      const clip = main.items[k] as ClipLike;
+      const prev = main.items[k - 1] as ClipLike | undefined;
+      if (
+        !prev ||
+        prev.type !== "clip" ||
+        clip.type !== "clip" ||
+        prev.asset !== clip.asset ||
+        prev.outMs >= clip.inMs
+      ) {
+        throw new MwError("INVALID_OP", `「${op.clip}」前面不是剪辑点，没有可以恢复的内容`, {
+          hint: "剪辑点 = 同一个素材的前后两段之间被剪掉了一截",
+        });
+      }
+      // 延长前一段而不是合并：后一段自己的变换、音量、关键帧都原样保留
+      prev.outMs = clip.inMs;
+      delete clip.cutBefore;
+      ctx.changed.add(prev.id);
+      ctx.changed.add(clip.id);
       return;
     }
     case "cut.removePauses": {

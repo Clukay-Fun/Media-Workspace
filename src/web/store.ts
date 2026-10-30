@@ -93,6 +93,8 @@ type State = {
   undo(direction: "undo" | "redo"): Promise<void>;
   /** 在播放头处分割选中的条目；没选中时分割播放头下的主轨片段 */
   splitAtPlayhead(): Promise<void>;
+  /** 恢复主轨片段 clip 前面的剪辑点，连同随删句删掉的字幕（docs/decisions/0016） */
+  restoreCut(clip: string): Promise<void>;
   addComment(c: NewComment): Promise<void>;
   setCommentStatus(id: string, status: "open" | "resolved"): Promise<void>;
   startExport(): Promise<void>;
@@ -272,6 +274,23 @@ export const useStore = create<State>((set, get) => {
         await submit(ops, `已在播放头处分割 ${id}`);
       } catch (e) {
         toast(e instanceof Error ? e.message : String(e), "error");
+      }
+    },
+
+    async restoreCut(clip) {
+      const { api, project } = get();
+      if (!project) return;
+      try {
+        const r = await api.restoreCut({ clip, baseRevision: project.revision, actor: "user" });
+        set({ flash: { ids: r.changed, at: Date.now() } });
+        const back = r.captions.length ? `，找回 ${r.captions.length} 句字幕` : "";
+        const left = r.skipped.length ? `；${r.skipped.length} 句和现有字幕重叠，没放回` : "";
+        get().toast(
+          `已恢复剪掉的 ${((r.restoredMs[1] - r.restoredMs[0]) / 1000).toFixed(1)} 秒${back}${left}`,
+        );
+        await get().refresh();
+      } catch (e) {
+        fail(e);
       }
     },
 

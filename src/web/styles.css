@@ -2591,6 +2591,11 @@ textarea:focus-visible {
   color: var(--text-2);
 }
 
+.cut-note .mini-btn {
+  display: flex;
+  margin-top: 6px;
+}
+
 /* ---- 时间线轨道头：图标 + 用途名，颜色和块一致 ---- */
 
 .row-label {

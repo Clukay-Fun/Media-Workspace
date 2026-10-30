@@ -9,6 +9,7 @@ import { lintProject } from "../core/lint";
 import { Op } from "../core/ops";
 import { BUILTIN_STYLES } from "../core/presets";
 import { SAFE_AREAS, type SafeAreaName, safeAreaFor } from "../core/safe-area";
+import type { Caption, MainClip } from "../core/schema";
 import { AnimPresetName, TextStyle } from "../core/text-style";
 import { msToFrame } from "../core/time";
 import { validate } from "../core/validate";
@@ -19,7 +20,15 @@ import { detectFaces, readFaces } from "./faces";
 import { importMedia } from "./media";
 import { projectFiles } from "./paths";
 import { exportVideo, renderStills } from "./render";
-import { applyToProject, loadEditor, loadProject, loadReview, type Source } from "./store";
+import {
+  applyToProject,
+  listHistory,
+  loadEditor,
+  loadProject,
+  loadReview,
+  readHistory,
+  type Source,
+} from "./store";
 
 // CLI、MCP、本地服务共用的操作（AGENTS.md 第 2 节：三个外壳只做参数解析和输出格式）。
 
@@ -117,6 +126,85 @@ export async function facesProject(dir: string, o: Actor & { onLog?: (s: string)
     ...templateOpts,
   });
   return { ...r, detected: ops.map((x) => (x as { id: string }).id), skipped };
+}
+
+/**
+ * 恢复剪辑点（docs/decisions/0016）：主轨片段 clip 前面剪掉的源时间接回来；
+ * 落在这段时间里、随删句一起删掉的字幕从历史里找回（连逐字时间、高亮），放回原来的轨道。
+ * 一次提交，撤销也是一次。
+ */
+export async function restoreCut(
+  dir: string,
+  clip: string,
+  o: Actor & { baseRevision?: number; dryRun?: boolean },
+) {
+  const p = await loadProject(dir);
+  const main = p.tracks.find((t) => t.kind === "video" && t.main);
+  const items = (main?.items ?? []) as MainClip[];
+  const k = items.findIndex((i) => i.id === clip);
+  const cur = items[k];
+  const prev = items[k - 1];
+  if (!cur || !prev || cur.type !== "clip" || prev.type !== "clip" || prev.asset !== cur.asset) {
+    throw new MwError("INVALID_OP", `「${clip}」前面不是剪辑点，没有可以恢复的内容`);
+  }
+  const asset = cur.asset;
+  const [from, to] = [prev.outMs, cur.inMs];
+
+  // 从新到旧翻历史，找这段源时间里现在已经不在的字幕；同一句取最新的版本
+  const present = new Set(p.tracks.flatMap((t) => t.items.map((i) => i.id)));
+  const found = new Map<string, { track: string; caption: Caption }>();
+  for (const rev of (await listHistory(dir)).reverse()) {
+    if (rev >= p.revision) continue;
+    const old = await readHistory(dir, rev).catch(() => null);
+    for (const t of old?.tracks ?? []) {
+      if (t.kind !== "caption") continue;
+      for (const c of t.items) {
+        if (c.asset !== asset || c.endMs <= from || c.startMs >= to) continue;
+        if (present.has(c.id) || found.has(c.id)) continue;
+        found.set(c.id, { track: t.id, caption: c });
+      }
+    }
+  }
+  // 放回时不能和现有字幕重叠（比如后来又合并、改过时间）；重叠的不放回，告诉调用方
+  const skipped: string[] = [];
+  const captionOps: Op[] = [];
+  const restored: string[] = [];
+  for (const { track, caption } of [...found.values()].sort(
+    (a, b) => a.caption.startMs - b.caption.startMs,
+  )) {
+    const t = p.tracks.find((x) => x.id === track && x.kind === "caption");
+    const clash = t?.items.some(
+      (c) =>
+        "startMs" in c &&
+        c.asset === asset &&
+        c.startMs < caption.endMs &&
+        c.endMs > caption.startMs,
+    );
+    if (!t || clash) {
+      skipped.push(caption.id);
+      continue;
+    }
+    const index = t.items.filter((c) => "startMs" in c && c.startMs < caption.startMs).length;
+    captionOps.push({ op: "item.add", track, item: caption, index });
+    restored.push(caption.id);
+  }
+  // item.add 的 index 是插入时的位置：按开始时间从后往前插，前面的位置不受影响
+  captionOps.reverse();
+
+  const r = await applyToProject(dir, {
+    ops: [{ op: "cut.restore", clip }, ...captionOps],
+    baseRevision: o.baseRevision ?? p.revision,
+    source: o.source,
+    actor: o.actor,
+    dryRun: Boolean(o.dryRun),
+    ...templateOpts,
+  });
+  return {
+    ...r,
+    restoredMs: [from, to],
+    captions: restored,
+    skipped,
+  };
 }
 
 /** 识音对齐，作为一次 caption.update 提交；匹配率低的句子列在 check 里让人检查 */
@@ -342,6 +430,7 @@ export function guideInfo() {
       "逐字节奏默认用剪映的前快后慢（stagger: { fraction: 0.75 } + inSlot），不看语音；要严格跟着念的速度出字时改用 spread 并跑 align，改了字幕文字后需要重新 align",
       "加标题、卡片之前先列方案（哪句话 → 加什么画面 → 用哪个模板 → 什么时间），给用户确认后再 apply",
       "删句（cut.removeCaptions）之前先跑 align：它会把字幕开始时间挪到真正开口的地方，否则下一句的第一个字可能被剪掉一半",
+      "剪错了用 uncut 恢复那一刀（片段 ID 是剪辑点后面那段），字幕会从历史里找回；不要整体 undo，会把后面的修改一起撤掉",
       "粗剪时在主轨片段的 cutBefore 写上前面剪掉的是什么（口误、重复、停顿，16 字以内），审片台会标在时间线上",
       "按内容分好章节（chapters.set，每章锚到开头那句字幕，标题 12 字以内），审片台的属性页显示章节目录",
       "需要在说到某个词时出现的元素，用 at: { caption: <字幕ID>, char: <第几个字> } 锚定，而不是估算毫秒",

@@ -22,6 +22,16 @@ export function ClipInspector(props: InspectorProps) {
         <p className="cut-note">
           <span className="cut-tag static">{cut}</span>
           这一段前面剪掉了一截，理由是 AI 粗剪时写的
+          {!track.locked && (
+            <button
+              type="button"
+              className="mini-btn"
+              title="把剪掉的画面、声音和字幕接回来；可以撤销"
+              onClick={() => void useStore.getState().restoreCut(id)}
+            >
+              恢复这一刀
+            </button>
+          )}
         </p>
       )}
       {anchored && track.kind !== "audio" && <SlotPicker id={id} ref_={ref_} />}

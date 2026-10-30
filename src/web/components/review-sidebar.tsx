@@ -228,6 +228,7 @@ const OP_LABEL: Record<string, string> = {
   "caption.split": "拆字幕",
   "cut.removeCaptions": "删句",
   "cut.removePauses": "去停顿",
+  "cut.restore": "恢复剪辑点",
   "style.add": "加样式",
   "style.update": "改样式",
 };

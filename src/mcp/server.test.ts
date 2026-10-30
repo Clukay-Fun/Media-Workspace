@@ -60,6 +60,7 @@ describe("MCP", () => {
         "resolve",
         "revert",
         "styles",
+        "uncut",
         "undo",
         "validate",
       ].sort(),

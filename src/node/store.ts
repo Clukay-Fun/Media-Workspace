@@ -282,7 +282,7 @@ export async function listHistory(dir: string): Promise<number[]> {
     .sort((a, b) => a - b);
 }
 
-async function readHistory(dir: string, revision: number): Promise<Project> {
+export async function readHistory(dir: string, revision: number): Promise<Project> {
   const file = join(projectFiles(dir).history, historyName(revision));
   const raw = await readFile(file, "utf8").catch(() => null);
   if (raw === null) {

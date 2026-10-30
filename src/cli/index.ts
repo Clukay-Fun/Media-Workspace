@@ -16,6 +16,7 @@ import {
   inspectProject,
   lintDir,
   previewProject,
+  restoreCut,
   templatesInfo,
   validateDir,
 } from "../node/actions";
@@ -225,6 +226,29 @@ cli
         await facesProject(resolveProjectDir(proj), { source: "cli", actor: o.actor, onLog: log }),
       );
     }),
+  );
+
+cli
+  .command(
+    "uncut <proj> <clip>",
+    "恢复剪辑点：把主轨片段 clip 前面剪掉的那段接回来，随删句删掉的字幕一起找回",
+  )
+  .option("--base <rev>", "基于哪个 revision（默认当前）")
+  .option("--actor <name>", "操作者", { default: "user" })
+  .option("--dry-run", "只检查，不写入")
+  .action(
+    act(
+      async (proj: string, clip: string, o: { base?: number; actor: string; dryRun?: boolean }) => {
+        out(
+          await restoreCut(resolveProjectDir(proj), clip, {
+            baseRevision: o.base === undefined ? undefined : Number(o.base),
+            dryRun: Boolean(o.dryRun),
+            source: "cli",
+            actor: o.actor,
+          }),
+        );
+      },
+    ),
   );
 
 cli
