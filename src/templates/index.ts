@@ -4,6 +4,18 @@ import type { ResolvedOverlay } from "../core/compile";
 import type { Box } from "../core/lint";
 import type { CardSize } from "../core/schema";
 import type { TextStyle } from "../core/text-style";
+import { bounds as bigNumberBounds } from "./big-number/bounds";
+import { BigNumber } from "./big-number/component";
+import { meta as bigNumberMeta } from "./big-number/meta";
+import { BigNumberProps } from "./big-number/schema";
+import { bounds as bulletListBounds } from "./bullet-list/bounds";
+import { BulletList } from "./bullet-list/component";
+import { meta as bulletListMeta } from "./bullet-list/meta";
+import { BulletListProps } from "./bullet-list/schema";
+import { bounds as quoteBounds } from "./quote/bounds";
+import { Quote } from "./quote/component";
+import { meta as quoteMeta } from "./quote/meta";
+import { QuoteProps } from "./quote/schema";
 import { bounds as textCardBounds } from "./text-card/bounds";
 import { TextCard } from "./text-card/component";
 import { meta as textCardMeta } from "./text-card/meta";
@@ -46,6 +58,24 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
     schema: TextCardProps,
     Component: TextCard,
     bounds: textCardBounds,
+  },
+  quote: {
+    meta: quoteMeta,
+    schema: QuoteProps,
+    Component: Quote,
+    bounds: quoteBounds,
+  },
+  "bullet-list": {
+    meta: bulletListMeta,
+    schema: BulletListProps,
+    Component: BulletList,
+    bounds: bulletListBounds,
+  },
+  "big-number": {
+    meta: bigNumberMeta,
+    schema: BigNumberProps,
+    Component: BigNumber,
+    bounds: bigNumberBounds,
   },
 };
 
