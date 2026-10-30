@@ -101,6 +101,18 @@ describe("applyOps：原子性和锁定", () => {
     ).toBe("INVALID_OP");
   });
 
+  it("set 里的 null 表示去掉这个字段（JSON 里没有 undefined）", () => {
+    const fade = { type: "fade", durationMs: 300 } as const;
+    const added = applyOps(project(), [
+      { op: "item.update", id: "c1", set: { transitionIn: fade } },
+    ]).project;
+    const removed = applyOps(added, [
+      { op: "item.update", id: "c1", set: { transitionIn: null } },
+    ]).project;
+    const clip = removed.tracks[0]?.items[0] as Record<string, unknown>;
+    expect("transitionIn" in clip).toBe(false);
+  });
+
   it("引用不存在的素材报 REF_MISSING", () => {
     const e = fail(() =>
       applyOps(project(), [{ op: "item.update", id: "c1", set: { asset: "zz" } }]),

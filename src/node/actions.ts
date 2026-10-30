@@ -426,7 +426,7 @@ export function guideInfo() {
       "一批操作要么全部生效，要么全部不生效；锁定的轨道（locked）不能修改，会返回 TRACK_LOCKED",
       "时间单位一律是整数毫秒。字幕绑定素材源时间；叠加层优先用 at: { caption: <字幕ID> } 锚定",
       "提交后用 validate、preview（sheet）自查，只修一轮；修的时候不要改动已经确定的时长",
-      "字段名拼错会返回 UNKNOWN_FIELD，不会被悄悄忽略",
+      "字段名拼错会返回 UNKNOWN_FIELD，不会被悄悄忽略；item.update 的 set 里写 null 表示去掉这个字段（比如去掉转场 transitionIn: null）",
       "逐字节奏默认用剪映的前快后慢（stagger: { fraction: 0.75 } + inSlot），不看语音；要严格跟着念的速度出字时改用 spread 并跑 align，改了字幕文字后需要重新 align",
       "加标题、卡片之前先列方案（哪句话 → 加什么画面 → 用哪个模板 → 什么时间），给用户确认后再 apply",
       "删句（cut.removeCaptions）之前先跑 align：它会把字幕开始时间挪到真正开口的地方，否则下一句的第一个字可能被剪掉一半",
