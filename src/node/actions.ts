@@ -4,6 +4,7 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 import { compile, type ResolvedTimeline } from "../core/compile";
+import { coverView } from "../core/cover";
 import { MwError } from "../core/errors";
 import { lintProject } from "../core/lint";
 import { Op } from "../core/ops";
@@ -14,7 +15,7 @@ import { AnimPresetName, TextStyle } from "../core/text-style";
 import { msToFrame } from "../core/time";
 import { validate } from "../core/validate";
 import { PROJECT_FORMAT_VERSION } from "../core/version";
-import { TEMPLATE_NAMES, TEMPLATES } from "../templates";
+import { overlayAssets, overlayBounds, TEMPLATE_NAMES, TEMPLATES } from "../templates";
 import { alignCaptions } from "./asr";
 import { detectFaces, readFaces } from "./faces";
 import { importMedia } from "./media";
@@ -33,7 +34,7 @@ import {
 // CLI、MCP、本地服务共用的操作（AGENTS.md 第 2 节：三个外壳只做参数解析和输出格式）。
 
 const run = promisify(execFile);
-export const templateOpts = { templates: TEMPLATE_NAMES };
+export const templateOpts = { templates: TEMPLATE_NAMES, templateAssets: overlayAssets };
 
 export type Actor = { source: Source; actor: string };
 
@@ -81,12 +82,8 @@ export async function lintDir(dir: string) {
   const issues = lintProject(p, {
     styles: { ...BUILTIN_STYLES, ...p.styles },
     faces,
-    overlayBounds: (o, style) => {
-      const tpl = TEMPLATES[o.template];
-      const props = tpl?.schema.safeParse(o.props);
-      if (!tpl?.bounds || !props?.success) return { text: [], shapes: [] };
-      return tpl.bounds(props.data, style, p.canvas.width, p.canvas.height);
-    },
+    overlayBounds: (o, style) => overlayBounds(o, style, p.canvas.width, p.canvas.height),
+    overlayStyle: (t) => TEMPLATES[t]?.meta.defaultStyle,
   });
   const videos = Object.entries(p.assets).filter(([, a]) => a.kind === "video");
   return {
@@ -389,14 +386,14 @@ export async function coverProject(
   o: { out?: string; onLog?: (s: string) => void } = {},
 ) {
   const p = await loadProject(dir);
-  const tl = compile(p);
-  const frame = msToFrame(p.cover?.atMs ?? 1000, tl.fps);
+  const view = coverView(p);
+  const frame = msToFrame(p.cover?.atMs ?? 1000, view.canvas.fps);
   const file = o.out
     ? resolve(o.out)
     : join(projectFiles(dir).renders, `${basename(dir, ".mwproj")}-cover-r${p.revision}.png`);
   const tmp = join(projectFiles(dir).stills, `cover-${process.pid}-${Date.now()}`);
   try {
-    const [png] = await renderStills(dir, p, [frame], tmp, o.onLog);
+    const [png] = await renderStills(dir, view, [frame], tmp, o.onLog);
     await mkdir(dirname(file), { recursive: true });
     await ffmpeg(["-i", png ?? "", file]);
   } finally {
@@ -442,6 +439,8 @@ export function guideInfo() {
       "画中画：非主轨视频轨道（没有就 track.add 一条 kind: video）上放 FloatClip，transform 定中心点和缩放（素材按比例完整放进画布再缩放）；空镜、录屏写 gainDb: -60 静音；滑动入场不写方向时从最近的画面边缘滑进来",
       "图片和画中画可以加循环动画 animLoop（v6）：只有 breathe（呼吸），durationMs 是周期，默认 2400、intensity 2（±6%，±3% 看不出来）；一条视频里别多处同时呼吸",
       "关键帧（keyframe.set，atMs 相对元素开始）：元素有关键帧后 transform 不再起作用，以关键帧为准；推近 1.5–2.5 秒、幅度 10–20%（4 秒以上显得拖）",
+      "卡片：先看 templates 的 useFor / sizes / example 选模板；叠加层的 size（v7）写 small / half / full，half 会让主画面和字幕上移让位，full 一条视频最多一两处；不写 size 用模板默认尺寸",
+      "封面：cover.update 写 atMs（1 秒以后、表情好的一帧）和 title: { template, style, props }，再跑 cover；封面只有主画面和封面标题",
       "提交后跑 lint：字太小、出安全区、字幕放不下、互相遮挡、挡脸；导入新视频时看一眼 subtitleCheck，原片已有字幕会重影",
     ],
     ops: z.toJSONSchema(Op, { io: "input" }),

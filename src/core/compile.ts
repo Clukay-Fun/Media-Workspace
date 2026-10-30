@@ -1,7 +1,9 @@
+import { ease } from "./animate";
 import { slotCenter } from "./safe-area";
 import {
   type Anchor,
   type Caption,
+  type CardSize,
   type FloatClip,
   type Highlight,
   isMainClip,
@@ -94,9 +96,21 @@ export type ResolvedOverlay = Flags & {
   from: number;
   durationInFrames: number;
   style: string | null;
+  /** 没写时为 null，由模板的默认尺寸决定怎么画（默认尺寸不会是半屏，见 templates） */
+  size: CardSize | null;
   transform: FullTransform;
   props: Record<string, unknown>;
 };
+
+/**
+ * 半屏卡出现时主画面和字幕上移的比例（画面高度）和上移 / 回落用的时间（docs/decisions/0022）。
+ * 移太多人脸会出画面顶部；字幕跟着上移，留在人脸和卡片之间
+ */
+export const HALF_CARD_SHIFT = 0.15;
+const HALF_CARD_RAMP_MS = 400;
+
+/** 主画面上移的时间段：重叠或相接的半屏卡合并成一段，中间不回落 */
+export type ResolvedShift = { from: number; to: number; rampFrames: number };
 
 export type ResolvedOutro = {
   asset: string;
@@ -123,6 +137,8 @@ export type ResolvedTimeline = {
   images: ResolvedImage[];
   captions: ResolvedCaption[];
   overlays: ResolvedOverlay[];
+  /** 半屏卡让主画面上移的时间段，按开始时间排序 */
+  mainShifts: ResolvedShift[];
   outro: ResolvedOutro | null;
   chapters: ResolvedChapter[];
   warnings: CompileWarning[];
@@ -494,6 +510,7 @@ export function compile(project: Project): ResolvedTimeline {
           from,
           durationInFrames,
           style: item.style ?? null,
+          size: item.size ?? null,
           transform: full(item.transform, item.slot),
           props: item.props,
         });
@@ -551,6 +568,7 @@ export function compile(project: Project): ResolvedTimeline {
     images,
     captions,
     overlays,
+    mainShifts: mainShifts(overlays, f(HALF_CARD_RAMP_MS)),
     outro,
     chapters,
     warnings,
@@ -588,4 +606,33 @@ function applyCaptionTiming(
 
 function stripUndefined<T extends object>(o: T): Partial<T> {
   return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;
+}
+
+function mainShifts(overlays: ResolvedOverlay[], ramp: number): ResolvedShift[] {
+  const spans = overlays
+    .filter((o) => o.size === "half" && !o.hidden)
+    .map((o) => ({ from: o.from, to: o.from + o.durationInFrames }))
+    .toSorted((a, b) => a.from - b.from);
+  const merged: { from: number; to: number }[] = [];
+  for (const s of spans) {
+    const last = merged.at(-1);
+    if (last && s.from <= last.to) last.to = Math.max(last.to, s.to);
+    else merged.push({ ...s });
+  }
+  // 卡片很短时上移和回落各占一半，不会叠在一起
+  return merged.map((s) => ({ ...s, rampFrames: Math.min(ramp, Math.floor((s.to - s.from) / 2)) }));
+}
+
+/** 第 frame 帧主画面和字幕往上移了多少像素 */
+export function mainLiftAt(tl: Pick<ResolvedTimeline, "mainShifts" | "height">, frame: number) {
+  return mainShiftAt(tl.mainShifts, frame) * HALF_CARD_SHIFT * tl.height;
+}
+
+/** 第 frame 帧主画面上移了多少（0–1，乘 HALF_CARD_SHIFT × 画面高度）：进出都用缓入缓出 */
+export function mainShiftAt(shifts: ResolvedShift[], frame: number): number {
+  const s = shifts.find((x) => frame >= x.from && frame < x.to);
+  if (!s) return 0;
+  if (s.rampFrames <= 0) return 1;
+  const p = Math.min(1, (frame - s.from) / s.rampFrames, (s.to - frame) / s.rampFrames);
+  return ease("ease-in-out", Math.max(0, p));
 }

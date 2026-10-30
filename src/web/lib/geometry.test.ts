@@ -7,7 +7,7 @@ import { containBox } from "./pip";
 
 const project = (overlayTransform?: object) =>
   Project.parse({
-    version: 6,
+    version: 7,
     revision: 0,
     canvas: {},
     assets: { a1: { kind: "video", path: "/raw.mov", probe: { durationMs: 10_000 } } },
@@ -80,7 +80,7 @@ describe("预览画面点选", () => {
 
   it("主轨只标记 main；非主轨视频也能点选，并按 transform 算框", () => {
     const p = Project.parse({
-      version: 6,
+      version: 7,
       revision: 0,
       canvas: {},
       assets: { a1: { kind: "video", path: "/raw.mov", probe: { durationMs: 10_000 } } },
@@ -124,7 +124,7 @@ describe("预览画面点选", () => {
 
   it("横屏图片和画中画按 contain 后的内容框算，不按整幅画布", () => {
     const p = Project.parse({
-      version: 6,
+      version: 7,
       revision: 0,
       canvas: {},
       assets: {

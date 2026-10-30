@@ -220,7 +220,7 @@ AI 应用（Codex、Claude Code 等）通过 CLI 或本地 MCP 提交操作；
         { "id": "m1", "type": "clip", "asset": "music1", "at": { "ms": 0 }, "gainDb": -18 } ] }
   ],
   "outro": { "asset": "outro1", "transitionIn": { "type": "fade", "durationMs": 300 } },  // 接在主轨最后，不受主轨编辑影响
-  "cover": { "atMs": 1200, "title": "o1" }
+  "cover": { "atMs": 1200, "title": { "template": "title-bar", "props": { "lines": ["拿到海外身份", "卖房款怎么出去"] } } }  // v7：封面标题直接写在这里
 }
 ```
 

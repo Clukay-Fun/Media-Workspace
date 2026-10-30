@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { compile } from "../src/core/compile";
+import { coverView } from "../src/core/cover";
 import { BUILTIN_STYLES } from "../src/core/presets";
+import { coverProject } from "../src/node/actions";
 import { importMedia } from "../src/node/media";
 import { exportVideo, renderStills } from "../src/node/render";
 import { applyToProject, initProject, loadProject } from "../src/node/store";
@@ -271,4 +273,138 @@ describe("画面能力", () => {
     );
     expect(Number(/average:([0-9.]+|inf)/.exec(r.stderr)?.[1] ?? 0)).toBeLessThan(25);
   }, 120_000);
+});
+
+// 阶段 E 的卡片框架（docs/decisions/0022）：半屏卡出现时主画面上移；封面只有主画面和封面标题
+describe("卡片和封面", () => {
+  let d: string;
+  const crop = (a: string, b: string, filter: string) => {
+    const r = spawnSync(
+      ffmpeg,
+      [
+        "-i",
+        a,
+        "-i",
+        b,
+        "-filter_complex",
+        `[0]${filter}[x];[1]${filter}[y];[x][y]psnr`,
+        "-f",
+        "null",
+        "-",
+      ],
+      { encoding: "utf8" },
+    );
+    const v = /average:([0-9.]+|inf)/.exec(r.stderr)?.[1] ?? "0";
+    return v === "inf" ? Number.POSITIVE_INFINITY : Number(v);
+  };
+  const setSize = async (size: "half" | "small") => {
+    const p = await loadProject(d);
+    await applyToProject(d, {
+      baseRevision: p.revision,
+      source: "cli",
+      actor: "test",
+      ops: [{ op: "item.update", id: "k1", set: { size } }],
+    });
+    return loadProject(d);
+  };
+
+  beforeAll(async () => {
+    d = join(root, "card.mwproj");
+    await initProject(d);
+    const src = join(root, "card-src.mp4");
+    execFileSync(ffmpeg, [
+      "-v",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=size=540x960:rate=30:duration=3",
+      "-pix_fmt",
+      "yuv420p",
+      src,
+    ]);
+    const m = await importMedia(d, src, { proxy: false, peaks: false, faces: false });
+    const cap = noto(BUILTIN_STYLES["caption-word-yellow"]);
+    await applyToProject(d, {
+      baseRevision: 0,
+      source: "cli",
+      actor: "test",
+      ops: [
+        { op: "asset.add", id: "m", asset: m.asset },
+        { op: "canvas.update", set: { width: 540, height: 960 } },
+        {
+          op: "item.add",
+          track: "main",
+          item: { id: "c1", type: "clip", asset: "m", inMs: 0, outMs: 3000 },
+        },
+        {
+          op: "style.add",
+          id: "cap",
+          style: { ...cap, layout: { ...cap.layout, x: 270, y: 600, maxWidth: 480 } },
+        },
+        { op: "style.add", id: "card", style: noto(BUILTIN_STYLES["card-white"]) },
+        { op: "style.add", id: "title", style: noto(BUILTIN_STYLES["title-bar-yellow"]) },
+        { op: "track.update", id: "captions", set: { style: "cap" } },
+        {
+          op: "caption.import",
+          track: "captions",
+          timebase: "source",
+          asset: "m",
+          srt: "1\n00:00:00,000 --> 00:00:03,000\n封面上不该有这句\n",
+        },
+        {
+          op: "item.add",
+          track: "titles",
+          item: {
+            id: "k1",
+            template: "text-card",
+            size: "half",
+            at: { ms: 1000 },
+            durationMs: 1500,
+            style: "card",
+            props: { title: "要点", body: "半屏卡" },
+          },
+        },
+        {
+          op: "cover.update",
+          set: {
+            atMs: 1500,
+            title: { template: "title-bar", style: "title", props: { lines: ["封面"] } },
+          },
+        },
+      ],
+    });
+  }, 120_000);
+
+  it("半屏卡：主画面上移的帧截图和导出一致，上半屏和小卡时不同", async () => {
+    const p = await loadProject(d);
+    const tl = compile(p);
+    // 第 30–75 帧是半屏卡，前后各 12 帧上移 / 回落
+    expect(tl.mainShifts).toEqual([{ from: 30, to: 75, rampFrames: 12 }]);
+    const out = join(root, "card.mp4");
+    await exportVideo(d, p, { out, concurrency: 2 });
+    const frames = [20, 36, 55];
+    const stills = await renderStills(d, p, frames, join(root, "card-stills"));
+    frames.forEach((f, k) => {
+      expect(psnr(out, stills[k] ?? "", f), `第 ${f} 帧`).toBeGreaterThan(35);
+    });
+    // 上半屏卡片盖不到：上移了画面就不同，没上移就一样
+    const small = await renderStills(d, await setSize("small"), [20, 55], join(root, "card-small"));
+    const top = "crop=540:300:0:0";
+    expect(crop(stills[2] ?? "", small[1] ?? "", top)).toBeLessThan(25);
+    expect(crop(stills[0] ?? "", small[0] ?? "", top)).toBeGreaterThan(40);
+    await setSize("half");
+  }, 180_000);
+
+  it("封面：只有主画面和封面标题，没有字幕和卡片", async () => {
+    const p = await loadProject(d);
+    const r = await coverProject(d, { out: join(root, "cover.png") });
+    expect(r.frame).toBe(45);
+    const [clean] = await renderStills(d, coverView(p), [45], join(root, "cover-clean"));
+    const [full] = await renderStills(d, p, [45], join(root, "cover-full"));
+    expect(crop(r.file, clean ?? "", "null")).toBeGreaterThan(40);
+    // 完整画面在第 45 帧有字幕和半屏卡，下半屏明显不同
+    expect(crop(r.file, full ?? "", "crop=540:480:0:480")).toBeLessThan(25);
+  }, 180_000);
 });

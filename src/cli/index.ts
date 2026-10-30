@@ -17,6 +17,7 @@ import {
   lintDir,
   previewProject,
   restoreCut,
+  templateOpts,
   templatesInfo,
   validateDir,
 } from "../node/actions";
@@ -45,7 +46,6 @@ import {
   undoProject,
 } from "../node/store";
 import { startServer } from "../server/index";
-import { TEMPLATE_NAMES } from "../templates";
 
 // mw：stdout 只输出 JSON（给 AI 解析），进度和日志写 stderr。
 // 退出码（PLAN 7）：0 成功，1 校验失败，2 参数错误，3 版本冲突，4 媒体错误，5 渲染失败，6 轨道已锁定。
@@ -94,7 +94,7 @@ const act =
   (...args: A) =>
     fn(...args).catch(fail);
 
-const templates = { templates: TEMPLATE_NAMES };
+const templates = templateOpts;
 
 const cli = cac("mw");
 

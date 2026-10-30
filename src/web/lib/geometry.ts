@@ -1,10 +1,10 @@
 import { transformAt } from "../../core/animate";
-import type { FullTransform, ResolvedTimeline } from "../../core/compile";
+import { type FullTransform, mainLiftAt, type ResolvedTimeline } from "../../core/compile";
 import { type Box, textBox } from "../../core/lint";
 import { BUILTIN_STYLES } from "../../core/presets";
 import type { Project } from "../../core/schema";
 import type { TextStyle } from "../../core/text-style";
-import { TEMPLATES } from "../../templates";
+import { overlayBounds, TEMPLATES } from "../../templates";
 import { containBox } from "./pip";
 
 // 预览画面上的点选：算出当前帧每个可见元素在画布上占的区域（画布像素）。
@@ -90,7 +90,8 @@ export function hitBoxes(
     out.push({
       id: c.id,
       kind: "caption",
-      box: grow(textBox(c.text, st), PAD),
+      // 半屏卡出现时字幕跟着主画面上移
+      box: grow(lift(textBox(c.text, st), mainLiftAt(tl, frame)), PAD),
       z: top + c.z,
       locked: c.locked,
     });
@@ -99,9 +100,8 @@ export function hitBoxes(
     if (o.hidden || !showing(o.from, o.durationInFrames, frame)) continue;
     const tpl = TEMPLATES[o.template];
     const st = styleFor(styles, o.style, tpl?.meta.defaultStyle ?? "title-bar-yellow");
-    const parsed = tpl?.schema.safeParse(o.props);
-    const b = tpl?.bounds && parsed?.success ? tpl.bounds(parsed.data, st, width, height) : null;
-    const box = union(b ? [...b.text, ...b.shapes] : []) ?? canvas;
+    const b = overlayBounds(o, st, width, height);
+    const box = union([...b.text, ...b.shapes]) ?? canvas;
     out.push({
       id: o.id,
       kind: "overlay",
@@ -153,3 +153,5 @@ export function pick(boxes: HitBox[], x: number, y: number): HitBox | null {
     boxes.find((h) => x >= h.box.x0 && x <= h.box.x1 && y >= h.box.y0 && y <= h.box.y1) ?? null
   );
 }
+
+const lift = (b: Box, dy: number): Box => ({ ...b, y0: b.y0 - dy, y1: b.y1 - dy });

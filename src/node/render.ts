@@ -12,7 +12,7 @@ import { facesFor } from "../core/fonts";
 import { BUILTIN_STYLES } from "../core/presets";
 import type { Project } from "../core/schema";
 import type { TextStyle } from "../core/text-style";
-import { TEMPLATES } from "../templates";
+import { overlayAssets, TEMPLATES } from "../templates";
 import { resolveFaces } from "./fonts";
 import { type MediaServer, startMediaServer } from "./media-server";
 
@@ -91,6 +91,7 @@ export async function buildProps(
     ...timeline.videos.map((v) => v.asset),
     ...timeline.images.map((i) => i.asset),
     ...(timeline.outro ? [timeline.outro.asset] : []),
+    ...timeline.overlays.flatMap((o) => overlayAssets(o)),
   ]);
   for (const id of used) {
     const a = project.assets[id];
@@ -138,6 +139,11 @@ export async function buildProps(
           path: `${o.id}.props.${i.path.join(".")}`,
           message: i.message,
         })),
+      });
+    }
+    if (o.size && !tpl.meta.sizes.includes(o.size)) {
+      throw new MwError("VALIDATION", `模板「${o.template}」没有 ${o.size} 尺寸`, {
+        hint: `可用尺寸：${tpl.meta.sizes.join(" / ")}`,
       });
     }
   }

@@ -14,6 +14,7 @@ const empty: MainProps = {
     images: [],
     captions: [],
     overlays: [],
+    mainShifts: [],
     outro: null,
     chapters: [],
     warnings: [],

@@ -13,7 +13,7 @@ const styles: Record<string, TextStyle> = {
 
 function make(captions: object[], overlays: object[] = []) {
   return Project.parse({
-    version: 6,
+    version: 7,
     revision: 0,
     canvas: {},
     assets: {
@@ -53,6 +53,25 @@ describe("质检", () => {
     expect(estimateLines("一句", caption).lines).toBe(1);
     // 12 × 84 = 1008 > 859
     expect(estimateLines("一二三四五六七八九十一二", caption).lines).toBe(2);
+  });
+
+  it("半屏卡出现时字幕跟着上移：盖住原位置不算重叠，没让位的小卡算", () => {
+    // 半屏卡 y 1000–1766，字幕原位置约 1115–1215，上移 288 后在卡片上面
+    const card = (size: string) => ({
+      id: "k",
+      template: "text-card",
+      size,
+      at: { ms: 0 },
+      durationMs: 1000,
+      props: {},
+    });
+    const bounds: OverlayBounds = () => ({
+      text: [],
+      shapes: [{ x0: 54, y0: 1000, x1: 1026, y1: 1766 }],
+    });
+    const p = (size: string) => make([cap("s1", 0, "一句")], [card(size)]);
+    expect(codes(p("half"), { overlayBounds: bounds })).toEqual([]);
+    expect(codes(p("small"), { overlayBounds: bounds })).toEqual(["OVERLAP:k"]);
   });
 
   it("正常字幕没有问题", () => {

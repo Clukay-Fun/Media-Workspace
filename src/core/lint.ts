@@ -1,5 +1,13 @@
 import { transformAt } from "./animate";
-import { compile, layoutMainTrack, mapTimelineMs, type ResolvedOverlay } from "./compile";
+import {
+  compile,
+  HALF_CARD_SHIFT,
+  layoutMainTrack,
+  mainLiftAt,
+  mapTimelineMs,
+  type ResolvedOverlay,
+  type ResolvedShift,
+} from "./compile";
 import { safeAreaFor } from "./safe-area";
 import type { Project } from "./schema";
 import type { TextStyle } from "./text-style";
@@ -42,6 +50,8 @@ export type OverlayBounds = (
 export type LintOptions = {
   styles: Record<string, TextStyle>;
   overlayBounds?: OverlayBounds;
+  /** 叠加层没写样式时用的样式 ID（模板的 meta.defaultStyle）；不传时按标题条 */
+  overlayStyle?: (template: string) => string | undefined;
   faces?: Record<string, FaceTrack>;
   /** 1080 宽画面上的最小字号，其他宽度按比例 */
   minFontSize?: number;
@@ -147,16 +157,21 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
     const styleId = c.style ?? "caption-word-yellow";
     const st = styleOf(c.style, "caption-word-yellow");
     if (!st) continue;
-    placed.push({
-      id: c.id,
-      kind: "caption",
-      styleId,
-      from: c.from,
-      to: c.from + c.durationInFrames,
-      style: st,
-      text: [textBox(c.text, st)],
-      shapes: [],
-    });
+    // 半屏卡出现的时间段里字幕上移（v7）：按让位的时间段切开，各段用各自的位置
+    const box = textBox(c.text, st);
+    const lift = HALF_CARD_SHIFT * height;
+    for (const s of splitByShifts(c.from, c.from + c.durationInFrames, tl.mainShifts)) {
+      placed.push({
+        id: c.id,
+        kind: "caption",
+        styleId,
+        from: s.from,
+        to: s.to,
+        style: st,
+        text: [s.shifted ? { ...box, y0: box.y0 - lift, y1: box.y1 - lift } : box],
+        shapes: [],
+      });
+    }
     const { lines } = estimateLines(c.text, st);
     if (lines > st.layout.maxLines) {
       add({
@@ -169,13 +184,14 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
   }
   for (const o of tl.overlays) {
     if (o.hidden) continue;
-    const st = styleOf(o.style, "title-bar-yellow");
+    const styleId = o.style ?? opts.overlayStyle?.(o.template) ?? "title-bar-yellow";
+    const st = styleOf(styleId, "title-bar-yellow");
     if (!st) continue;
     const b = opts.overlayBounds?.(o, st) ?? { text: [], shapes: [] };
     placed.push({
       id: o.id,
       kind: "overlay",
-      styleId: o.style ?? "title-bar-yellow",
+      styleId,
       from: o.from,
       to: o.from + o.durationInFrames,
       style: st,
@@ -335,9 +351,11 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
         const k = Math.min(width / sw, height / sh);
         const ox = (width - sw * k) / 2;
         const oy = (height - sh * k) / 2;
+        // 半屏卡出现时主画面整体上移（v7）
+        const lift = mainLiftAt(tl, f);
         const toCanvas = (nx: number, ny: number) => ({
           x: t.x + t.scale * (ox + nx * sw * k - width / 2),
-          y: t.y + t.scale * (oy + ny * sh * k - height / 2),
+          y: t.y + t.scale * (oy + ny * sh * k - height / 2) - lift,
         });
         for (const fb of sample.boxes) {
           const a0 = toCanvas(fb.x, fb.y);
@@ -366,4 +384,22 @@ function nearest(track: FaceTrack, ms: number): FaceTrack["frames"][number] | nu
     if (!best || Math.abs(f.ms - ms) < Math.abs(best.ms - ms)) best = f;
   }
   return best;
+}
+
+/** 把 [from, to) 按让位时间段切开（上移和回落的那几帧也算上移） */
+function splitByShifts(
+  from: number,
+  to: number,
+  shifts: ResolvedShift[],
+): { from: number; to: number; shifted: boolean }[] {
+  const out: { from: number; to: number; shifted: boolean }[] = [];
+  let cur = from;
+  for (const s of shifts) {
+    if (s.to <= cur || s.from >= to) continue;
+    if (s.from > cur) out.push({ from: cur, to: s.from, shifted: false });
+    out.push({ from: Math.max(cur, s.from), to: Math.min(to, s.to), shifted: true });
+    cur = Math.min(to, s.to);
+  }
+  if (cur < to) out.push({ from: cur, to, shifted: false });
+  return out;
 }

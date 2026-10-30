@@ -40,7 +40,7 @@ const video = (
 
 const projectWithMainClips = () =>
   Project.parse({
-    version: 6,
+    version: 7,
     revision: 0,
     canvas: {},
     assets: {

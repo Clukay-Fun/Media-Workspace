@@ -12,7 +12,7 @@ import { BUILTIN_STYLES } from "../../core/presets";
 import { addComment, Review, setCommentStatus } from "../../core/review";
 import { Project } from "../../core/schema";
 import { changedIds, undoState } from "../../core/undo";
-import { TEMPLATES } from "../../templates";
+import { overlayBounds, TEMPLATES } from "../../templates";
 import { type Api, ApiFailure, type LiveEvent } from "./client";
 
 // Mock 模式（VITE_MW_MOCK=1）：不连服务端，在浏览器里用 core 的真实逻辑维护一份内存工程。
@@ -43,7 +43,7 @@ function demoProject(): Project {
   });
   const at = (i: number) => captions[i] ?? { startMs: 0, endMs: 0 };
   return Project.parse({
-    version: 6,
+    version: 7,
     revision: 0,
     canvas: { background: "#1a1b1f" },
     assets: {
@@ -235,12 +235,9 @@ export function createMockApi(): Api {
       revision: current().revision,
       issues: lintProject(current(), {
         styles: { ...BUILTIN_STYLES, ...current().styles },
-        overlayBounds: (o, style) => {
-          const tpl = TEMPLATES[o.template];
-          const props = tpl?.schema.safeParse(o.props);
-          if (!tpl?.bounds || !props?.success) return { text: [], shapes: [] };
-          return tpl.bounds(props.data, style, current().canvas.width, current().canvas.height);
-        },
+        overlayBounds: (o, style) =>
+          overlayBounds(o, style, current().canvas.width, current().canvas.height),
+        overlayStyle: (t) => TEMPLATES[t]?.meta.defaultStyle,
       }),
       noFaceData: ["outro"],
     }),

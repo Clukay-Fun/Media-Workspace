@@ -42,4 +42,17 @@ export const BUILTIN_STYLES = {
     shadow: { color: "#000000B3", blur: 10, x: 0, y: 4 },
     layout: { x: 540, y: 236, anchor: "center", maxWidth: 960, maxLines: 2, align: "center" },
   }),
+  /** 卡片文字：白字，不描边（底板已经压暗）；位置由卡片模板按卡片区域决定 */
+  "card-white": TextStyle.parse({
+    font: {
+      family: "alibaba-puhuiti-3",
+      fallback: ["noto-sans-sc"],
+      weight: 700,
+      size: 64,
+      lineHeight: 1.3,
+    },
+    fill: "#FFFFFF",
+    highlight: { mode: "keyword", fill: "#F8D800" },
+    layout: { x: 540, y: 960, anchor: "center", maxWidth: 900, maxLines: 4, align: "center" },
+  }),
 } satisfies Record<string, TextStyle>;
