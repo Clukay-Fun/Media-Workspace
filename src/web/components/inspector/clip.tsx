@@ -1,16 +1,10 @@
 import { useEffect, useRef } from "react";
 import type { FloatClip, MainClip } from "../../../core/schema";
 import { useStore } from "../../store";
-import {
-  Field,
-  InspectorActions,
-  InspectorHead,
-  type InspectorProps,
-  SlotPicker,
-  TimingNudge,
-} from "./common";
+import { Field, InspectorActions, InspectorHead, type InspectorProps, TimingNudge } from "./common";
 import { KeyframesInspector } from "./keyframes";
 import { useNumberDraft } from "./number-draft";
+import { PipInspector } from "./pip";
 
 /** 选中视频 / 音频片段：主轨片段、画中画、音频轨上的片段 */
 export function ClipInspector(props: InspectorProps) {
@@ -18,6 +12,7 @@ export function ClipInspector(props: InspectorProps) {
   const { track, item } = ref_;
   const anchored = "at" in item;
   const clip = "outMs" in item ? (item as MainClip | FloatClip) : null;
+  const pip = clip && track.kind === "video" && "at" in clip ? clip : null;
   const cut = "cutBefore" in item ? (item.cutBefore as string | undefined) : undefined;
   return (
     <div className="selection">
@@ -38,7 +33,7 @@ export function ClipInspector(props: InspectorProps) {
           )}
         </p>
       )}
-      {anchored && track.kind !== "audio" && <SlotPicker id={id} ref_={ref_} />}
+      {pip && <PipInspector project={project} id={id} item={pip} locked={track.locked} />}
       {clip && (
         <SpeedField
           id={id}
