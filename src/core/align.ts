@@ -22,6 +22,21 @@ export function alignChars(
   endMs: number,
 ): number[] {
   const chars = [...text];
+  const { voiced, known } = matchHeard(chars, tokens, endMs);
+  return finish(chars, voiced, known, startMs, endMs);
+}
+
+/**
+ * 这句话第一个字实际开始念的时间（没对上时为 null）。不限制在字幕范围里：
+ * 字幕的开始时间常常比真正开口晚一点，删前一句时会把这句的第一个字剪掉一半（0013 验收发现）
+ */
+export function speechOnsetMs(text: string, tokens: AsrToken[], endMs: number): number | null {
+  const { known } = matchHeard([...text], tokens, endMs);
+  return known[0] ?? null;
+}
+
+/** 把识别出的字和字幕的字对齐，返回每个发音字识别到的时间（没对上为 null） */
+function matchHeard(chars: string[], tokens: AsrToken[], endMs: number) {
   // 识别结果按字展开；一个 token 有多个字时（英文词片），平均分到下一个 token 开始之前
   const heard: { c: string; ms: number }[] = [];
   tokens.forEach((t, i) => {
@@ -61,7 +76,17 @@ export function alignChars(
     } else if (at(i, j) === at(i - 1, j) + 1) i--;
     else j--;
   }
+  return { voiced, known };
+}
 
+function finish(
+  chars: string[],
+  voiced: number[],
+  known: (number | null)[],
+  startMs: number,
+  endMs: number,
+): number[] {
+  const n = known.length;
   // 插值没对上的字；时间倒退的（识别乱序）当作没对上
   const last = Math.max(startMs, endMs - 1);
   const clamp = (v: number) => Math.min(last, Math.max(startMs, v));

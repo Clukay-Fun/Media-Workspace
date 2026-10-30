@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alignChars } from "./align";
+import { alignChars, speechOnsetMs } from "./align";
 
 const tok = (s: string, times: number[]) =>
   [...s].map((text, i) => ({ text, startMs: times[i] ?? 0 }));
@@ -48,5 +48,18 @@ describe("alignChars", () => {
       500,
     );
     expect(t).toEqual([0, 100, 300]);
+  });
+});
+
+describe("speechOnsetMs", () => {
+  it("第一个字实际开口的时间，可以早于字幕开始；前面多识别出的上一句的字不算", () => {
+    // 字幕从 1000 开始，「涉」在 880 就念了；「呢」是上一句的尾巴
+    const heard = tok("呢涉及取得", [700, 880, 1040, 1200, 1350]);
+    expect(speechOnsetMs("涉及取得", heard, 2000)).toBe(880);
+    expect(alignChars("涉及取得", heard, 1000, 2000)[0]).toBe(1000);
+  });
+
+  it("什么都没对上时为 null", () => {
+    expect(speechOnsetMs("涉及", [], 2000)).toBeNull();
   });
 });

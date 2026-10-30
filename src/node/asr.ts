@@ -4,7 +4,7 @@ import { mkdir, rename, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { isAbsolute, join, resolve } from "node:path";
 import { Readable } from "node:stream";
-import { type AsrToken, alignChars } from "../core/align";
+import { type AsrToken, alignChars, speechOnsetMs } from "../core/align";
 import { MwError } from "../core/errors";
 import type { Op } from "../core/ops";
 import type { Caption, Project } from "../core/schema";
@@ -149,7 +149,14 @@ export type AlignReport = {
   heard: string;
   /** 识别出的字里和字幕对上的比例；太低说明这句可能没对准，值得人工看一下 */
   match: number;
+  /** 真正开口比字幕早，开始时间往前挪了多少毫秒（0 = 没挪） */
+  startMovedMs: number;
 };
+
+/** 开始时间挪到开口之前多少：识音给的是字的大致起点，留一点余量，别把声母切掉 */
+const ONSET_LEAD_MS = 60;
+/** 挪的时候和上一句最后一个字至少隔开这么久，避免把上一句的尾音划进这一句 */
+const PREV_TAIL_MS = 150;
 
 /**
  * 给字幕识音，生成写入逐字时间的 ops（caption.update）。
@@ -167,8 +174,19 @@ export async function alignCaptions(
     const missing = opts.ids.filter((id) => !caps.some((c) => c.id === id));
     if (missing.length > 0) throw new MwError("NOT_FOUND", `字幕不存在：${missing.join("、")}`);
   }
+  // 每句字幕的上一句（同一条轨道），用来在挪开始时间时同步收回上一句的结束时间
+  const prevOf = new Map<string, Caption>();
+  for (const t of project.tracks) {
+    if (t.kind !== "caption") continue;
+    t.items.forEach((c, k) => {
+      const p = t.items[k - 1];
+      if (p) prevOf.set(c.id, p);
+    });
+  }
   const rec = createRecognizer();
-  const ops: Op[] = [];
+  const sets = new Map<string, Record<string, unknown>>();
+  const set = (id: string, v: Record<string, unknown>) =>
+    sets.set(id, { ...(sets.get(id) ?? {}), ...v });
   const report: AlignReport[] = [];
   for (const [i, cap] of caps.entries()) {
     const a = project.assets[cap.asset];
@@ -193,11 +211,43 @@ export async function alignCaptions(
             },
           ],
     );
-    const charStartMs = alignChars(cap.text, tokens, cap.startMs, cap.endMs);
-    ops.push({ op: "caption.update", id: cap.id, set: { charStartMs } });
-    report.push({ id: cap.id, text: cap.text, heard: r.text, match: matchRatio(cap.text, r.text) });
+    // 字幕的开始时间常常比真正开口晚，删掉上一句时会把这句的第一个字剪掉一半（0013 验收发现）：
+    // 开口更早时把开始时间挪到开口前，上一句的结束时间同步收回
+    let startMs = cap.startMs;
+    const onset = speechOnsetMs(cap.text, tokens, cap.endMs);
+    const prev = prevOf.get(cap.id);
+    const prevSet = prev ? sets.get(prev.id) : undefined;
+    const prevStarts = (prevSet?.charStartMs as number[] | undefined) ?? prev?.charStartMs;
+    if (onset !== null && onset < cap.startMs) {
+      const floor = Math.max(
+        0,
+        cap.startMs - PAD_MS,
+        prev ? prev.startMs + 1 : 0,
+        prev && prevStarts?.length ? (prevStarts.at(-1) ?? 0) + PREV_TAIL_MS : 0,
+      );
+      startMs = Math.min(cap.startMs, Math.max(floor, Math.round(onset - ONSET_LEAD_MS)));
+    }
+    if (startMs < cap.startMs) {
+      set(cap.id, { startMs });
+      if (prev && prev.endMs > startMs) {
+        set(prev.id, {
+          endMs: startMs,
+          ...(prevStarts ? { charStartMs: prevStarts.map((v) => Math.min(v, startMs - 1)) } : {}),
+        });
+      }
+    }
+    const charStartMs = alignChars(cap.text, tokens, startMs, cap.endMs);
+    set(cap.id, { charStartMs });
+    report.push({
+      id: cap.id,
+      text: cap.text,
+      heard: r.text,
+      match: matchRatio(cap.text, r.text),
+      startMovedMs: cap.startMs - startMs,
+    });
     opts.onLog?.(`识音 ${i + 1}/${caps.length} ${cap.id}：${r.text}`);
   }
+  const ops: Op[] = [...sets].map(([id, v]) => ({ op: "caption.update", id, set: v }));
   return { ops, report };
 }
 

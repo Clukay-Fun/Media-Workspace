@@ -139,7 +139,13 @@ export async function alignProject(
     dryRun: Boolean(o.dryRun),
     ...templateOpts,
   });
-  return { ...r, aligned: report.length, check: report.filter((x) => x.match < 0.8) };
+  return {
+    ...r,
+    aligned: report.length,
+    check: report.filter((x) => x.match < 0.8),
+    // 真正开口比字幕早、开始时间往前挪过的句子
+    moved: report.filter((x) => x.startMovedMs > 0).map((x) => ({ id: x.id, ms: x.startMovedMs })),
+  };
 }
 
 export type InspectView = "all" | "tracks" | "captions" | "assets" | "styles" | "timeline";
@@ -335,6 +341,7 @@ export function guideInfo() {
       "字段名拼错会返回 UNKNOWN_FIELD，不会被悄悄忽略",
       "逐字节奏默认用剪映的前快后慢（stagger: { fraction: 0.75 } + inSlot），不看语音；要严格跟着念的速度出字时改用 spread 并跑 align，改了字幕文字后需要重新 align",
       "加标题、卡片之前先列方案（哪句话 → 加什么画面 → 用哪个模板 → 什么时间），给用户确认后再 apply",
+      "删句（cut.removeCaptions）之前先跑 align：它会把字幕开始时间挪到真正开口的地方，否则下一句的第一个字可能被剪掉一半",
       "粗剪时在主轨片段的 cutBefore 写上前面剪掉的是什么（口误、重复、停顿，16 字以内），审片台会标在时间线上",
       "按内容分好章节（chapters.set，每章锚到开头那句字幕，标题 12 字以内），审片台的属性页显示章节目录",
       "需要在说到某个词时出现的元素，用 at: { caption: <字幕ID>, char: <第几个字> } 锚定，而不是估算毫秒",
