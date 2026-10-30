@@ -26,11 +26,14 @@ import {
 import { ASR_MODEL, asrModelDir, fetchAsrModel, hasAsrModel } from "../node/asr";
 import {
   getDefaultOutro,
+  getLayout,
+  layoutFile,
   listStyles,
   outroDefaultFile,
   removeStyle,
   saveStyle,
   setDefaultOutro,
+  setLayout,
   textStylesDir,
   useStyle,
 } from "../node/library";
@@ -414,6 +417,18 @@ cli
         ...(o.gain === undefined ? {} : { gainDb: Number(o.gain) }),
       });
       out({ ok: true, file: outroDefaultFile(), outro });
+    }),
+  );
+
+cli
+  .command("layout", "查看 / 设置账号版式（参考线、人脸位置、标题和字幕样式，所有工程共用）")
+  .option("--file <json>", "用这个 JSON 文件整份替换账号版式")
+  .action(
+    act(async (o: { file?: string }) => {
+      if (o.file === undefined)
+        return out({ ok: true, file: layoutFile(), layout: await getLayout() });
+      const input = JSON.parse(await readFile(o.file, "utf8"));
+      out({ ok: true, file: layoutFile(), layout: await setLayout(input) });
     }),
   );
 

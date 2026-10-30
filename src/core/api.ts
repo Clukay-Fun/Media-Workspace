@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ResolvedTimeline } from "./compile";
 import type { ErrorCode, Issue } from "./errors";
+import type { Layout } from "./layout";
 import type { LintIssue } from "./lint";
 import { Ops } from "./ops";
 import { type Comment, NewComment, type Review } from "./review";
@@ -168,6 +169,9 @@ export const SaveLibraryStyleRequest = z.strictObject({
 });
 export type SaveLibraryStyleRequest = z.input<typeof SaveLibraryStyleRequest>;
 
+/** 账号版式（GET 读，PUT 整份替换）；没设置过时 layout 为 null */
+export type LayoutResponse = { ok: true; layout: Layout | null };
+
 /** 质检结果（GET /api/lint）：界面可以在时间线上标出 atMs 的位置 */
 export type LintResponse = {
   ok: true;
@@ -224,6 +228,7 @@ export const ROUTES = {
   comment: (id: string) => `/api/comments/${encodeURIComponent(id)}`,
   events: "/api/events",
   libraryStyles: "/api/library/styles",
+  layout: "/api/library/layout",
   restoreCut: "/api/restore-cut",
 } as const;
 

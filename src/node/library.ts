@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { z } from "zod";
 import type { LibraryStyle } from "../core/api";
 import { MwError } from "../core/errors";
+import { Layout, type LayoutInput } from "../core/layout";
 import { BUILTIN_STYLES } from "../core/presets";
 import { Id, Transition } from "../core/schema";
 import { TextStyle } from "../core/text-style";
@@ -170,4 +171,34 @@ export async function setDefaultOutro(
   await mkdir(join(mwHome(), "library"), { recursive: true });
   await writeFile(outroDefaultFile(), `${JSON.stringify(entry, null, 2)}\n`);
   return entry;
+}
+
+// 账号版式（阶段 F，docs/decisions/0025）：~/MediaWorkspace/library/layout.json，所有工程共用。
+
+export function layoutFile(): string {
+  return join(mwHome(), "library", "layout.json");
+}
+
+/** 没设置过时返回 null；文件坏了报错 */
+export async function getLayout(): Promise<Layout | null> {
+  const f = layoutFile();
+  if (!existsSync(f)) return null;
+  const r = Layout.safeParse(JSON.parse(await readFile(f, "utf8")));
+  if (!r.success) {
+    throw new MwError("VALIDATION", `账号版式文件坏了：${f}`, {
+      hint: "用 mw layout --file <json> 重新设置",
+    });
+  }
+  return r.data;
+}
+
+/** 整份替换账号版式 */
+export async function setLayout(input: LayoutInput): Promise<Layout> {
+  const r = Layout.safeParse({ ...input, savedAt: new Date().toISOString() });
+  if (!r.success) {
+    throw new MwError("VALIDATION", `版式不合法：${r.error.issues[0]?.message ?? ""}`);
+  }
+  await mkdir(join(mwHome(), "library"), { recursive: true });
+  await writeFile(layoutFile(), `${JSON.stringify(r.data, null, 2)}\n`);
+  return r.data;
 }

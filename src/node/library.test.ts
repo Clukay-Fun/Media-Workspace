@@ -7,10 +7,13 @@ import { BUILTIN_STYLES } from "../core/presets";
 import { attachOutro } from "./actions";
 import {
   getDefaultOutro,
+  getLayout,
+  layoutFile,
   listStyles,
   removeStyle,
   saveStyle,
   setDefaultOutro,
+  setLayout,
   textStylesDir,
   useStyle,
 } from "./library";
@@ -125,5 +128,23 @@ describe("默认片尾", () => {
     expect((await loadProject(b)).outro).toEqual({ asset: "end", gainDb: -6 });
     await setDefaultOutro(file, { fadeMs: 0 });
     expect((await getDefaultOutro())?.transitionIn).toBeNull();
+  });
+});
+
+describe("账号版式", () => {
+  it("没设置时为 null；设置后补上默认值，坏文件报 VALIDATION", async () => {
+    expect(await getLayout()).toBeNull();
+    const l = await setLayout({
+      guides: [{ id: "top", axis: "h", pos: 0.25, label: "头顶" }],
+      face: { cx: 0.5, top: 0.3, bottom: 0.5 },
+    });
+    expect(l).toMatchObject({ version: 1, titleStyle: null, captionStyle: null });
+    expect(await getLayout()).toEqual(l);
+    expect(await code(setLayout({ face: { cx: 0.5, top: 0.6, bottom: 0.5 } }))).toBe("VALIDATION");
+    expect(await code(setLayout({ guides: [{ id: "x", axis: "h", pos: 960 }] }))).toBe(
+      "VALIDATION",
+    );
+    await writeFile(layoutFile(), '{"version":2}');
+    expect(await code(getLayout())).toBe("VALIDATION");
   });
 });

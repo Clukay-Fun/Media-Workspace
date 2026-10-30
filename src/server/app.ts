@@ -18,9 +18,10 @@ import {
   UndoRequest,
 } from "../core/api";
 import { MwError } from "../core/errors";
+import { Layout } from "../core/layout";
 import { zodIssues } from "../core/validate";
 import { coverProject, lintDir, restoreCut, templateOpts } from "../node/actions";
-import { listStyles, saveStyle } from "../node/library";
+import { getLayout, listStyles, saveStyle, setLayout } from "../node/library";
 import { buildProps } from "../node/render";
 import {
   applyToProject,
@@ -131,6 +132,11 @@ export function createApp(ctx: AppContext): Hono {
     });
     return c.json({ ok: true, saved: saved.name });
   });
+
+  app.get(ROUTES.layout, async (c) => c.json({ ok: true, layout: await getLayout() }));
+  app.put(ROUTES.layout, async (c) =>
+    c.json({ ok: true, layout: await setLayout(await body(c, Layout)) }),
+  );
 
   app.get(ROUTES.lint, async (c) => c.json(await lintDir(ctx.dir)));
 
