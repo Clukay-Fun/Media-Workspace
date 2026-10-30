@@ -88,7 +88,12 @@ export function createApp(ctx: AppContext): Hono {
   };
 
   app.get(ROUTES.project, async (c) =>
-    c.json({ ok: true, name: basename(ctx.dir, ".mwproj"), project: await loadProject(ctx.dir) }),
+    c.json({
+      ok: true,
+      name: basename(ctx.dir, ".mwproj"),
+      dir: ctx.dir,
+      project: await loadProject(ctx.dir),
+    }),
   );
 
   app.get(ROUTES.preview, async (c) => {

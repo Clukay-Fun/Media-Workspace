@@ -7,6 +7,7 @@ import { type SideTab, useStore } from "../store";
 import { CommentCard } from "./comment-card";
 import { Icon } from "./icons";
 import { SelectionCard } from "./inspector";
+import { ProjectOverview } from "./inspector/project";
 
 /**
  * 右栏：属性 / 批注 / AI 改动。属性页给选中元素能直接点的选项，点不出来的在底部输入框告诉 AI。
@@ -87,6 +88,7 @@ function Properties() {
   }
   return (
     <>
+      <ProjectOverview />
       <Chapters />
       <h3 className="panel-title">质检</h3>
       <IssueList />
