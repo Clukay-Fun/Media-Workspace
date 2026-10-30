@@ -33,31 +33,6 @@ const ANIM_UNITS = [
   { value: "line", label: "整行" },
 ] as const;
 
-const grid = {
-  display: "grid",
-  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-  gap: 8,
-};
-
-const control = {
-  display: "grid",
-  minWidth: 0,
-  gap: 4,
-  color: "var(--text-2)",
-  fontSize: 12,
-};
-
-const row = { display: "flex", alignItems: "center", gap: 8 };
-
-const colorInput = {
-  width: 44,
-  height: 32,
-  padding: 2,
-  border: "1px solid var(--line-strong)",
-  borderRadius: 6,
-  background: "var(--panel)",
-};
-
 export function TextStyleEditor({
   project,
   id,
@@ -153,7 +128,7 @@ export function TextStyleEditor({
             应用到所有用这个样式的
           </button>
         </div>
-        <p className="hint" style={{ margin: "6px 0 0" }}>
+        <p className="hint">
           {scope === "item"
             ? `后续调整只影响当前${elementLabel}`
             : "后续调整会同步到使用当前样式的所有元素"}
@@ -181,7 +156,7 @@ export function TextStyleEditor({
         </select>
       </Field>
 
-      <div style={grid}>
+      <div className="insp-grid">
         <NumberControl
           label="字号"
           value={style.font.size}
@@ -190,7 +165,7 @@ export function TextStyleEditor({
           disabled={locked}
           onCommit={(size) => update({ font: { size } })}
         />
-        <label style={control}>
+        <label className="insp-control">
           <span>字重</span>
           <select
             className="select"
@@ -207,7 +182,7 @@ export function TextStyleEditor({
         </label>
       </div>
 
-      <div style={grid}>
+      <div className="insp-grid">
         <ColorControl
           label="填充色"
           value={style.fill}
@@ -225,7 +200,7 @@ export function TextStyleEditor({
       </div>
 
       <Field label="位置">
-        <div style={grid}>
+        <div className="insp-grid">
           <NumberControl
             label="X"
             value={style.layout.x}
@@ -245,7 +220,7 @@ export function TextStyleEditor({
             disabled={locked}
             onCommit={(maxWidth) => update({ layout: { maxWidth } })}
           />
-          <label style={control}>
+          <label className="insp-control">
             <span>对齐</span>
             <select
               className="select"
@@ -276,8 +251,8 @@ export function TextStyleEditor({
         </select>
       </Field>
 
-      <div style={grid}>
-        <label style={control}>
+      <div className="insp-grid">
+        <label className="insp-control">
           <span>出现单位</span>
           <select
             className="select"
@@ -305,7 +280,7 @@ export function TextStyleEditor({
 
       <details className="style-more">
         <summary>更多</summary>
-        <div style={{ display: "grid", gap: 14, paddingTop: 12 }}>
+        <div className="style-more-body">
           <OptionalEffect
             label="描边"
             enabled={style.stroke !== null}
@@ -461,7 +436,7 @@ export function TextStyleEditor({
             {style.gradient && (
               <>
                 {style.gradient.colors.map((color, index) => (
-                  <div key={`${index}-${color}`} style={row}>
+                  <div key={`${index}-${color}`} className="insp-row">
                     <ColorControl
                       label={`颜色 ${index + 1}`}
                       value={color}
@@ -525,7 +500,7 @@ function OptionalEffect({
   return (
     <section className="field">
       <h3>{label}</h3>
-      <label style={{ ...row, fontSize: 12 }}>
+      <label className="insp-row insp-toggle">
         <input
           type="checkbox"
           checked={enabled}
@@ -534,7 +509,7 @@ function OptionalEffect({
         />
         启用
       </label>
-      {enabled && <div style={{ ...grid, marginTop: 8 }}>{children}</div>}
+      {enabled && <div className="insp-grid insp-effect">{children}</div>}
     </section>
   );
 }
@@ -583,7 +558,7 @@ function NumberControl({
   };
 
   return (
-    <label style={control}>
+    <label className="insp-control">
       <span>{label}</span>
       <input
         className="select"
@@ -671,14 +646,14 @@ function ColorControl({
   }, []);
 
   return (
-    <label style={control}>
+    <label className="insp-control">
       <span>{label}</span>
       <input
         ref={input}
         type="color"
         value={pickerColor}
         disabled={disabled}
-        style={colorInput}
+        className="insp-color"
         onChange={(e) => {
           const next = `${e.currentTarget.value}${alpha}`;
           draftRef.current = next;

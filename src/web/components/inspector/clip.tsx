@@ -120,7 +120,7 @@ function SpeedField({
           </button>
         ))}
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+      <div className="insp-row insp-below">
         <input
           className="select"
           type="number"
@@ -133,7 +133,6 @@ function SpeedField({
           onChange={(e) => num.change(e.target.value)}
           onBlur={(e) => commit(e.currentTarget.value)}
           onKeyDown={num.keyDown}
-          style={{ width: 84 }}
         />
         <span className="field-note">倍 · 变速后 {seconds} 秒</span>
       </div>
@@ -174,7 +173,7 @@ function VolumeField({ id, gainDb, locked }: { id: string; gainDb: number; locke
 
   return (
     <Field label="音量" note="0 dB 是原声">
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div className="insp-row">
         <input
           type="range"
           min={-60}
@@ -187,7 +186,6 @@ function VolumeField({ id, gainDb, locked }: { id: string; gainDb: number; locke
           onPointerUp={(e) => commit(Number(e.currentTarget.value))}
           onKeyUp={(e) => commit(Number(e.currentTarget.value))}
           onBlur={(e) => commit(Number(e.currentTarget.value))}
-          style={{ flex: 1, minWidth: 0, accentColor: "var(--accent)" }}
         />
         <input
           className="select"
@@ -201,7 +199,6 @@ function VolumeField({ id, gainDb, locked }: { id: string; gainDb: number; locke
           onChange={(e) => num.change(e.target.value)}
           onBlur={(e) => commitTyped(e.currentTarget.value)}
           onKeyDown={num.keyDown}
-          style={{ width: 78 }}
         />
         <span className="field-note">dB</span>
       </div>

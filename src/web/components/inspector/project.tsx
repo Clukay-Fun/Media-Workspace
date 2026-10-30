@@ -35,11 +35,7 @@ export function ProjectOverview() {
         <dt>字幕</dt>
         <dd>{captionCount} 句</dd>
         <dt>路径</dt>
-        <dd
-          className="mono"
-          style={{ fontSize: 11, wordBreak: "break-all" }}
-          title={dir ?? "示例工程没有保存路径"}
-        >
+        <dd className="mono path" title={dir ?? "示例工程没有保存路径"}>
           {dir ?? "（示例工程）"}
         </dd>
       </dl>

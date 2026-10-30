@@ -44,7 +44,7 @@ export function ImageInspector(props: InspectorProps) {
       <InspectorHead {...props} />
       <SlotPicker id={id} ref_={ref_} />
       <Field label="位置和大小">
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <div className="insp-grid">
           <NumField
             label="缩放 %"
             value={Math.round(shown.scale * 100)}
@@ -136,7 +136,7 @@ function NumField({
   };
 
   return (
-    <label style={{ display: "grid", gap: 4, fontSize: 11, color: "var(--text-3)" }}>
+    <label className="insp-control">
       <span>{label}</span>
       <input
         className="select"
@@ -178,7 +178,7 @@ function AnimField({
 }) {
   return (
     <Field label={label}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div className="insp-row">
         <select
           className="select"
           value={anim?.preset ?? "none"}
@@ -245,7 +245,6 @@ function AnimDuration({
         onChange={(e) => num.change(e.target.value)}
         onBlur={(e) => commit(e.currentTarget.value)}
         onKeyDown={num.keyDown}
-        style={{ width: 92 }}
       />
       <span className="field-note">毫秒</span>
     </>

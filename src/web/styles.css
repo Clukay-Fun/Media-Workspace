@@ -2708,3 +2708,85 @@ textarea:focus-visible {
 .block.clip:has(.cut-tag) .block-label {
   margin-left: calc(2em + 14px);
 }
+
+/* ---- 右栏属性控件（inspector/）：两列网格、标签在上的输入、横排 ---- */
+.text-style-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.text-style-editor .hint {
+  margin-top: 6px;
+}
+
+.insp-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 8px;
+}
+
+.insp-control {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.insp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.insp-below {
+  margin-top: 8px;
+}
+
+.insp-row .select[type="number"] {
+  width: 84px;
+  flex: none;
+}
+
+.insp-row input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+
+.insp-color {
+  width: 44px;
+  height: 32px;
+  padding: 2px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.insp-toggle {
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.insp-effect {
+  margin-top: 8px;
+}
+
+.style-more > summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.style-more-body {
+  display: grid;
+  gap: 14px;
+  padding-top: 12px;
+}
+
+.facts dd.path {
+  font-size: 11px;
+  word-break: break-all;
+}
