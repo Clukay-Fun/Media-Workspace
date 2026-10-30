@@ -237,6 +237,16 @@ export function swatch(s: TextStyle): React.CSSProperties {
           padding: `${s.box.padding[0] / 4}px ${s.box.padding[1] / 4}px`,
         }
       : {}),
+    // 渐变和背景框都用 background，同时有时只显示背景框
+    ...(s.gradient && !s.box
+      ? {
+          color: "transparent",
+          backgroundImage: `linear-gradient(180deg, ${s.gradient.colors.join(", ")})`,
+          WebkitBackgroundClip: "text",
+          backgroundClip: "text",
+        }
+      : {}),
+    textShadow: s.glow ? `0 0 ${s.glow.blur / 4}px ${s.glow.color}` : undefined,
   };
 }
 

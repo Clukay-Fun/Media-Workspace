@@ -341,6 +341,7 @@ export function guideInfo() {
       "开始工作前先看 comments：人在审片台上留的批注（带时间点和条目 ID），逐条处理后用 resolve 标记并写明改了什么；不打算改的也 resolve，在 note 里说明原因",
       "用户说「等我批注」或手头没活时，在后台跑 mw comments <工程> --wait：审片台上一有新批注就返回，处理完再挂上继续等",
       "样式模板库：先用 styles（list）看有哪些现成样式，用 use 复制进工程再引用；用户说「存成模板」「以后都用这个」时用 save 存进库，写一句 description 说明适合什么内容",
+      "文字装饰（格式 v5）：gradient 竖直渐变、glow 发光；highlight.underline 给关键词画下划线，highlight.activeBox 给正在念的字 / 词垫色块（跟着 animation.unit），highlight.gradient / glow 只作用于高亮的字。改完用 preview 截两三帧看效果",
       "提交后跑 lint：字太小、出安全区、字幕放不下、互相遮挡、挡脸；导入新视频时看一眼 subtitleCheck，原片已有字幕会重影",
     ],
     ops: z.toJSONSchema(Op, { io: "input" }),

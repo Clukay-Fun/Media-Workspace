@@ -4,7 +4,7 @@ import { Project } from "./schema";
 import { sourceFrameAt } from "./time";
 
 const base = {
-  version: 4,
+  version: 5,
   revision: 0,
   canvas: {},
   assets: {

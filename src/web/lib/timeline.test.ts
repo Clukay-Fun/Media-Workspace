@@ -4,7 +4,7 @@ import { Project } from "../../core/schema";
 import { tickStep, timecode, timelineRows, waveform } from "./timeline";
 
 const project = Project.parse({
-  version: 4,
+  version: 5,
   revision: 0,
   canvas: {},
   assets: {

@@ -66,6 +66,11 @@ export const TextBlock: React.FC<TextBlockProps> = ({
   const marker = hl?.marker
     ? markerProgress(mask, units, starts, revealMs, hl.marker.drawMs)
     : null;
+  const underline = hl?.underline
+    ? markerProgress(mask, units, starts, revealMs, hl.underline.drawMs)
+    : null;
+  // 荧光笔、下划线、当前词色块都画在文字后面的装饰层上
+  const deco = marker !== null || underline !== null || Boolean(hl?.activeBox);
   /** 一个 span 覆盖的字的平均进度（英文整词放一个 span） */
   const avg = (arr: number[], from: number, to: number) =>
     to > from ? arr.slice(from, to).reduce((a, b) => a + b, 0) / (to - from) : 0;
@@ -97,7 +102,7 @@ export const TextBlock: React.FC<TextBlockProps> = ({
       (keyword ||
         (hl.mode === "current" && i === current) ||
         (hl.mode === "trail" && i <= current && t >= 0));
-    return { u, state, lit };
+    return { u, state, lit, active: i === current };
   });
 
   const box: React.CSSProperties = {
@@ -126,10 +131,23 @@ export const TextBlock: React.FC<TextBlockProps> = ({
   const shadow = style.shadow
     ? `drop-shadow(${style.shadow.x}px ${style.shadow.y}px ${style.shadow.blur / 2}px ${style.shadow.color})`
     : undefined;
-  const layer = (kind: "marker" | "stroke" | "fill") => (
+  // 发光画在最外面一层文字上：有描边时是描边层
+  const outer = strokeW > 0 ? "stroke" : "fill";
+  /** 文字本身的颜色：纯色，或者用背景渐变裁切到文字上 */
+  const ink = (lit: boolean): React.CSSProperties => {
+    const g = lit ? hl?.gradient : style.gradient;
+    if (!g) return { color: lit ? hl?.fill : style.fill };
+    return {
+      color: "transparent",
+      backgroundImage: `linear-gradient(180deg, ${g.colors.join(", ")})`,
+      WebkitBackgroundClip: "text",
+      backgroundClip: "text",
+    };
+  };
+  const layer = (kind: "deco" | "stroke" | "fill") => (
     <div
       style={{
-        ...(kind === "marker"
+        ...(kind === "deco"
           ? { position: "absolute", inset: 0, color: "transparent" }
           : kind === "stroke"
             ? {
@@ -142,21 +160,27 @@ export const TextBlock: React.FC<TextBlockProps> = ({
             : { position: "relative", filter: strokeW > 0 ? undefined : shadow }),
       }}
     >
-      {pieces.map(({ u, state, lit }, i) => {
+      {pieces.map(({ u, state, lit, active }, i) => {
         const s = combine(state, { ...whole, opacity: 1 });
-        const color =
-          kind === "marker"
-            ? "transparent"
+        const color: React.CSSProperties =
+          kind === "deco"
+            ? { color: "transparent" }
             : kind === "stroke"
-              ? lit && hl?.stroke
-                ? hl.stroke.color
-                : style.stroke?.color
-              : lit
-                ? hl?.fill
-                : style.fill;
+              ? { color: lit && hl?.stroke ? hl.stroke.color : style.stroke?.color }
+              : ink(lit);
+        const glow = kind === outer ? (lit && hl?.glow ? hl.glow : style.glow) : null;
+        const filter = [
+          s.blur > 0 ? `blur(${s.blur}px)` : "",
+          // 两层不同半径的光晕叠起来，中间亮、外面柔
+          glow
+            ? `drop-shadow(0 0 ${glow.blur / 2}px ${glow.color}) drop-shadow(0 0 ${glow.blur}px ${glow.color})`
+            : "",
+        ]
+          .filter(Boolean)
+          .join(" ");
         const scale = s.scale * (lit && hl ? hl.scale : 1);
         const paint = (from: number, to: number): React.CSSProperties => {
-          if (kind === "marker" && marker && hl?.marker) {
+          if (kind === "deco" && marker && hl?.marker) {
             const p = avg(marker, from, to);
             if (p <= 0) return {};
             // 色块从字形的底部往上画（行框底部还留有约 (行高-1)/2 个字号的空白），高度按字号算
@@ -171,7 +195,7 @@ export const TextBlock: React.FC<TextBlockProps> = ({
           }
           if (kind === "fill" && sweep && hl && !lit) {
             const p = avg(sweep, from, to);
-            if (p >= 1) return { color: hl.fill };
+            if (p >= 1) return ink(true);
             if (p <= 0) return {};
             // 卡拉 OK：已经念过的部分换成高亮色，用渐变裁切到文字上
             return {
@@ -183,17 +207,63 @@ export const TextBlock: React.FC<TextBlockProps> = ({
           }
           return {};
         };
-        const span = (content: string, key: string, from: number, to: number) => (
+        /** 装饰层上的色块和下划线；first / last 是这个字在单位里的头尾，色块只在头尾留边距和圆角 */
+        const ornaments = (from: number, to: number, first: boolean, last: boolean) => {
+          if (kind !== "deco") return null;
+          const b = active ? hl?.activeBox : null;
+          const ul = underline && hl?.underline ? hl.underline : null;
+          const p = ul && underline ? avg(underline, from, to) : 0;
+          const r = b?.radius ?? 0;
+          return (
+            <>
+              {b ? (
+                <span
+                  style={{
+                    position: "absolute",
+                    // 色块以字号为高，竖直方向对齐行框中心；相邻的字多盖 0.5px，避免缝
+                    top: `calc(50% - ${font.size / 2 + b.padding[0]}px)`,
+                    height: font.size + b.padding[0] * 2,
+                    left: first ? -b.padding[1] : 0,
+                    right: last ? -b.padding[1] : -0.5,
+                    background: b.color,
+                    borderRadius: `${first ? r : 0}px ${last ? r : 0}px ${last ? r : 0}px ${first ? r : 0}px`,
+                  }}
+                />
+              ) : null}
+              {ul && p > 0 ? (
+                <span
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    width: `${p * 100}%`,
+                    top: `calc(50% + ${font.size * (0.5 + ul.offset)}px)`,
+                    height: Math.max(1, font.size * ul.thickness),
+                    background: ul.color,
+                  }}
+                />
+              ) : null}
+            </>
+          );
+        };
+        const span = (
+          content: string,
+          key: string,
+          from: number,
+          to: number,
+          first: boolean,
+          last: boolean,
+        ) => (
           <span
             key={key}
             style={{
+              position: kind === "deco" ? "relative" : undefined,
               display: "inline-block",
               whiteSpace: "pre",
-              color,
+              ...color,
               ...paint(from, to),
               opacity: s.opacity,
               transform: `translate(${s.dx}px, ${s.dy}px) scale(${scale}) rotate(${s.rotation}deg)`,
-              filter: s.blur > 0 ? `blur(${s.blur}px)` : undefined,
+              filter: filter || undefined,
               textShadow:
                 kind === "fill" && s.glow > 0 && !sweep
                   ? `0 0 ${24 * s.glow}px ${hl?.fill ?? style.fill}`
@@ -201,6 +271,7 @@ export const TextBlock: React.FC<TextBlockProps> = ({
             }}
           >
             {content}
+            {ornaments(from, to, first, last)}
           </span>
         );
         // 中文按字放 inline-block，这样词中间也能换行（和剪映一致）；其他文字整词放一起，避免单词被拆开
@@ -209,8 +280,17 @@ export const TextBlock: React.FC<TextBlockProps> = ({
           <span key={`${u.start}`}>
             {u.breakBefore ? <br /> : null}
             {chars.length > 1 || HAN.test(u.text)
-              ? chars.map((c, j) => span(c, `${i}-${j}`, u.start + j, u.start + j + 1))
-              : chars.map((c, j) => span(c, `${i}-${j}`, u.start, u.end))}
+              ? chars.map((c, j) =>
+                  span(
+                    c,
+                    `${i}-${j}`,
+                    u.start + j,
+                    u.start + j + 1,
+                    j === 0,
+                    j === chars.length - 1,
+                  ),
+                )
+              : chars.map((c, j) => span(c, `${i}-${j}`, u.start, u.end, true, true))}
           </span>
         );
       })}
@@ -231,7 +311,7 @@ export const TextBlock: React.FC<TextBlockProps> = ({
         }}
       >
         <div style={{ position: "relative" }}>
-          {marker ? layer("marker") : null}
+          {deco ? layer("deco") : null}
           {strokeW > 0 ? layer("stroke") : null}
           {layer("fill")}
         </div>

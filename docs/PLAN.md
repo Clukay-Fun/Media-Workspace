@@ -18,6 +18,7 @@
 >   工程格式升到 v4（`chapters`、`MainClip.cutBefore`）。
 > - v0.8 收尾（2026-10-29）：阶段 B 结束，合入 dev。手动环节够用即可，后续精力放在 AI 能做的能力上（阶段 C 起）。
 > - 阶段 C 收窄（`docs/decisions/0011`）：先做样式模板库，文稿视图和样式编辑面板交给 AI。
+> - 文字装饰（`docs/decisions/0012`）：渐变、发光、关键词下划线、当前词色块，工程格式升到 v5。
 
 ## 0. 一句话定义
 
@@ -250,7 +251,9 @@ AI 应用（Codex、Claude Code 等）通过 CLI 或本地 MCP 提交操作；
   "layout": { "x": 540, "y": 1160, "anchor": "center", "maxWidth": 920, "maxLines": 2, "align": "center" },
   "highlight": { "fill": "#FFD400", "stroke": null, "scale": 1.0, "anim": "pop" },
   // 阶段 C 加入：高亮方式 mode（keyword = 只亮关键词；current = 只亮正在念的字 / 词；trail = 念过的都留亮）、
-  // 当前词底下的圆角色块 activeBox、下划线 underline、渐变、发光
+  // 当前词底下的圆角色块 activeBox、下划线 underline、高亮的字的 gradient / glow（docs/decisions/0012，格式 v5）
+  "gradient": null,               // 竖直渐变：{ "colors": ["#FFFFFF", "#9FD8FF"] }，代替 fill
+  "glow": null,                   // 发光：{ "color": "#3AA0FF", "blur": 16 }
   "timing": { "leadMs": 0, "tailMs": 0, "handoff": "cut" },  // 提前出现、延后消失；相邻两句 cut = 直接切换，overlap = 允许重叠
   "animation": {
     "in":  { "preset": "fade-up", "durationMs": 180, "easing": "ease-out" },
@@ -464,7 +467,7 @@ stdout 默认输出 JSON，日志写到 stderr。
 验收：在文稿视图里删除 3 句、合并 2 句、去停顿之后，导出的成片剪辑点正确；自己编排一个字幕样式，保存成模板，在另一个工程里使用。
 
 > **v0.8 修订（`docs/decisions/0011`）**：大部分高亮和快剪操作已在阶段 A / v0.7 完成。阶段 C 收窄为：
-> 样式模板库（`mw styles`、MCP `styles`、左栏模板库，已完成）→ 逐字动画更顺滑 → 当前词色块 / 下划线 / 渐变 / 发光（格式 v5）
+> 样式模板库（`mw styles`、MCP `styles`、左栏模板库，已完成）→ 逐字动画更顺滑 → 当前词色块 / 下划线 / 渐变 / 发光（格式 v5，已完成，`0012`）
 > → `docs/orchestration-guide.md`。文稿视图（F11）和样式编辑面板（F5）不做界面，交给 AI。验收以 0011 为准。
 
 ### 阶段 D：画面能力

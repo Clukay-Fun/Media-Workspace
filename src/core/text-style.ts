@@ -38,6 +38,15 @@ export const AnimPresetName = z.enum([
 
 export const Direction = z.enum(["up", "down", "left", "right"]);
 
+/** 竖直渐变：从上到下依次经过这些颜色。逐字渲染时每个字各画一遍，所以只做竖直方向 */
+export const Gradient = z.strictObject({ colors: z.array(Color).min(2).max(4) });
+
+/** 发光：文字外面一圈柔光，blur 是光晕半径（像素） */
+export const Glow = z.strictObject({
+  color: Color,
+  blur: z.number().positive().max(100),
+});
+
 /** 声明式动画：文字、图片、画中画的入场 / 出场 / 循环都用它 */
 export const Anim = z.strictObject({
   preset: AnimPresetName,
@@ -59,6 +68,9 @@ export const TextStyle = z.strictObject({
     lineHeight: z.number().positive().default(1.25),
   }),
   fill: Color,
+  /** 设置后文字用渐变代替 fill（fill 仍是卡拉 OK 扫色时没念到的颜色） */
+  gradient: Gradient.nullable().default(null),
+  glow: Glow.nullable().default(null),
   stroke: z
     .strictObject({ color: Color, width: z.number().nonnegative().max(40) })
     .nullable()
@@ -109,6 +121,31 @@ export const TextStyle = z.strictObject({
         })
         .nullable()
         .default(null),
+      /** 关键词出现时，在字下面从左往右画一条线；thickness、offset 按字号的比例算 */
+      underline: z
+        .strictObject({
+          color: Color,
+          thickness: z.number().positive().max(0.5).default(0.08),
+          /** 线的上沿离字底部的距离 */
+          offset: z.number().min(-0.5).max(1).default(0.06),
+          drawMs: z.number().int().positive().max(3000).default(300),
+        })
+        .nullable()
+        .default(null),
+      /** 当前词色块：正在念的那个字 / 词（按 animation.unit）后面垫一块底色，跟着语音走，任何 mode 都生效 */
+      activeBox: z
+        .strictObject({
+          color: Color,
+          radius: z.number().nonnegative().default(0),
+          /** [上下, 左右]，按像素，往字的外面扩 */
+          padding: z.tuple([z.number(), z.number()]).default([0, 0]),
+        })
+        .nullable()
+        .default(null),
+      /** 高亮的字用渐变代替 highlight.fill */
+      gradient: Gradient.nullable().default(null),
+      /** 高亮的字发光 */
+      glow: Glow.nullable().default(null),
     })
     .nullable()
     .default(null),

@@ -13,6 +13,8 @@ const STEPS: Record<number, (p: Raw) => Raw> = {
   2: (p) => ({ ...p, version: 3 }),
   // 3 → 4：新增可选的章节（chapters）和主轨片段的剪辑理由（cutBefore），docs/decisions/0010
   3: (p) => ({ ...p, version: 4 }),
+  // 4 → 5：文本样式新增可选的渐变、发光、下划线、当前词色块（docs/decisions/0012），旧样式不用改
+  4: (p) => ({ ...p, version: 5 }),
 };
 
 export function migrate(data: unknown): unknown {
