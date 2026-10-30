@@ -1,8 +1,10 @@
 import { MwError } from "../../core/errors";
-import type { Box } from "../../core/lint";
+import { type Box, containBox } from "../../core/lint";
 import type { Op } from "../../core/ops";
 import { safeAreaFor } from "../../core/safe-area";
 import type { Project } from "../../core/schema";
+
+export { containBox };
 
 // 画中画 / 图片放到画面上的纯计算（阶段 D）：四角小窗位置、拖角等比缩放、新条目的默认值。
 // 界面只负责把这里的结果转成 ops，不自己算坐标。
@@ -25,25 +27,6 @@ export type Placement = { scale: number; x: number; y: number };
 
 const roundScale = (v: number) => Math.round(v * 1000) / 1000;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
-
-/**
- * 素材在画布上按 objectFit: contain 显示后的内容框（画布像素）。
- * 渲染时图片和视频都铺满画布再 contain，所以宽高比不同时会上下或左右留黑边。
- * 没有素材尺寸（或数据不合法）时退回整幅画布。
- */
-export function containBox(
-  width: number,
-  height: number,
-  sourceWidth?: number,
-  sourceHeight?: number,
-): Box {
-  if (!sourceWidth || !sourceHeight || sourceWidth <= 0 || sourceHeight <= 0)
-    return { x0: 0, y0: 0, x1: width, y1: height };
-  const scale = Math.min(width / sourceWidth, height / sourceHeight);
-  const w = sourceWidth * scale;
-  const h = sourceHeight * scale;
-  return { x0: (width - w) / 2, y0: (height - h) / 2, x1: (width + w) / 2, y1: (height + h) / 2 };
-}
 
 /**
  * 四个角的小窗位置：内容宽度占画幅的 1/3，内容框边缘离安全区再留画幅宽度的 2%。

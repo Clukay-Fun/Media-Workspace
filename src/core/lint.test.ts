@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { estimateLines, type FaceTrack, lintProject, type OverlayBounds } from "./lint";
 import { BUILTIN_STYLES } from "./presets";
-import { Project } from "./schema";
+import { Project, Track } from "./schema";
 import { TextStyle } from "./text-style";
 
 const caption = BUILTIN_STYLES["caption-word-yellow"];
@@ -91,6 +91,36 @@ describe("质检", () => {
       [{ id: "o1", template: "card", at: { ms: 3000 }, durationMs: 1000 }],
     );
     expect(lintProject(later, { styles, overlayBounds })).toEqual([]);
+  });
+
+  it("图片、画中画压住字幕；按 contain 后的真实画面算，带关键帧时跟着位置走", () => {
+    const withImage = (item: object) => {
+      const p = make([cap("s1", 0, "一句")]);
+      p.assets.img = {
+        kind: "image",
+        path: "/a.png",
+        probe: { durationMs: 0, width: 1920, height: 1080 },
+      };
+      p.tracks.push(Track.parse({ id: "pip", kind: "video", items: [item] }));
+      return p;
+    };
+    const img = { id: "i1", type: "image", asset: "img", at: { ms: 0 }, durationMs: 1000 };
+    // 默认铺满：横图 contain 后在画面中间 1080×607，压住字幕（y≈1170）
+    expect(codes(withImage({ ...img, transform: { y: 1170 } }))).toContain("OVERLAP:i1");
+    // 缩小一半挪到上面（y 348–652），不压字幕
+    expect(codes(withImage({ ...img, transform: { y: 500, scale: 0.5 } }))).not.toContain(
+      "OVERLAP:i1",
+    );
+    // 开始在顶上，关键帧移到字幕位置
+    const moving = {
+      ...img,
+      transform: { scale: 0.5 },
+      keyframes: [
+        { atMs: 0, transform: { y: 500 } },
+        { atMs: 900, transform: { y: 1170 } },
+      ],
+    };
+    expect(codes(withImage(moving))).toContain("OVERLAP:i1");
   });
 
   it("字幕挡脸：人脸坐标按主轨的缩放换算到画面", () => {

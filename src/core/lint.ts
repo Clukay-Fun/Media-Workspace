@@ -87,6 +87,25 @@ export function textBox(text: string, style: TextStyle): Box {
   return { x0, y0, x1: x0 + width, y1: y0 + h };
 }
 
+/**
+ * 素材在画布上按 objectFit: contain 显示后的内容框（画布像素）。
+ * 渲染时图片和视频都铺满画布再 contain，所以宽高比不同时会上下或左右留黑边。
+ * 没有素材尺寸（或数据不合法）时退回整幅画布。
+ */
+export function containBox(
+  width: number,
+  height: number,
+  sourceWidth?: number,
+  sourceHeight?: number,
+): Box {
+  if (!sourceWidth || !sourceHeight || sourceWidth <= 0 || sourceHeight <= 0)
+    return { x0: 0, y0: 0, x1: width, y1: height };
+  const scale = Math.min(width / sourceWidth, height / sourceHeight);
+  const w = sourceWidth * scale;
+  const h = sourceHeight * scale;
+  return { x0: (width - w) / 2, y0: (height - h) / 2, x1: (width + w) / 2, y1: (height + h) / 2 };
+}
+
 const area = (b: Box) => Math.max(0, b.x1 - b.x0) * Math.max(0, b.y1 - b.y0);
 const intersect = (a: Box, b: Box): Box => ({
   x0: Math.max(a.x0, b.x0),
@@ -219,6 +238,35 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
       i.message += `；用样式「${styleId}」的字幕共 ${g.count} 条有同样的问题，建议调整样式的 maxWidth 或位置`;
   }
 
+  // 画面元素（图片、画中画）：按 contain 后的真实画面区域算，带关键帧的会动
+  const step = Math.max(1, Math.round((fps * 500) / 1000));
+  const visuals: { id: string; from: number; to: number; box: Box }[] = [];
+  for (const v of [...tl.images, ...tl.videos.filter((x) => !x.main && x.kind === "video")]) {
+    if (v.hidden) continue;
+    const probe = project.assets[v.asset]?.probe;
+    const content = containBox(width, height, probe?.width, probe?.height);
+    const end = v.from + v.durationInFrames;
+    // 每 0.5 秒一次，再加上每个关键帧的时刻和最后一帧，停在关键帧上的位置不会漏掉
+    const frames = new Set<number>([end - 1]);
+    for (let f = v.from; f < end; f += step) frames.add(f);
+    for (const k of v.keyframes) if (k.frame < v.durationInFrames) frames.add(v.from + k.frame);
+    for (const f of [...frames].sort((a, b) => a - b)) {
+      const t = transformAt(v.transform, v.keyframes, f - v.from);
+      const map = (x: number, y: number) => ({
+        x: t.x + t.scale * (x - width / 2),
+        y: t.y + t.scale * (y - height / 2),
+      });
+      const a0 = map(content.x0, content.y0);
+      const a1 = map(content.x1, content.y1);
+      visuals.push({
+        id: v.id,
+        from: f,
+        to: f + 1,
+        box: { x0: a0.x, y0: a0.y, x1: a1.x, y1: a1.y },
+      });
+    }
+  }
+
   // 3. 同时出现的元素互相遮挡（文字压文字、文字压卡片）
   for (let i = 0; i < placed.length; i++) {
     for (let j = i + 1; j < placed.length; j++) {
@@ -246,13 +294,32 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
     }
   }
 
+  // 图片、画中画压住字幕或标题的文字（画面元素之间、压住卡片底条不算）
+  for (const v of visuals) {
+    for (const p of placed) {
+      if (Math.max(v.from, p.from) >= Math.min(v.to, p.to)) continue;
+      if (p.text.some((x) => area(intersect(x, v.box)) > 0)) {
+        add({
+          code: "OVERLAP",
+          id: v.id,
+          other: p.id,
+          atMs: ms(Math.max(v.from, p.from)),
+          message: `「${v.id}」挡住了「${p.id}」的文字`,
+        });
+      }
+    }
+  }
+
   // 4. 挡脸：按人脸采样，把素材坐标换算到画面上（主轨片段的缩放和位移）
   if (opts.faces) {
     const segs = layoutMainTrack(project);
     const mains = tl.videos.filter((v) => v.main);
-    for (const p of placed) {
-      const boxes = [...p.text, ...p.shapes];
-      const step = Math.max(1, Math.round((fps * 500) / 1000));
+    const covering = [
+      ...placed.map((p) => ({ id: p.id, from: p.from, to: p.to, boxes: [...p.text, ...p.shapes] })),
+      ...visuals.map((v) => ({ id: v.id, from: v.from, to: v.to, boxes: [v.box] })),
+    ];
+    for (const p of covering) {
+      const boxes = p.boxes;
       for (let f = p.from; f < p.to; f += step) {
         const src = mapTimelineMs(segs, frameToMs(f, fps));
         if (!src) continue;
