@@ -91,6 +91,8 @@ const VideoLayer: React.FC<{
         muted={v.muted}
         volume={dbToGain(v.gainDb)}
         objectFit="contain"
+        // 不给宽高时按素材自然尺寸贴在左上角，横屏素材不会上下居中（和图片的 contain 不一致）
+        style={{ width: "100%", height: "100%" }}
       />
     </AbsoluteFill>
   );
@@ -186,7 +188,12 @@ function presentation(t: ResolvedTransition): TransitionPresentation<Record<stri
     left: "from-right",
     right: "from-left",
   } as const;
-  return slide({ direction: from[t.direction] }) as TransitionPresentation<Record<string, unknown>>;
+  // push：旧画面被新画面推走（Remotion 的 slide 本身就是这样）；
+  // slide：旧画面不动，新画面滑进来盖住它（docs/decisions/0017）
+  const exitStyle = t.type === "slide" ? { transform: "none" } : undefined;
+  return slide({ direction: from[t.direction], exitStyle }) as TransitionPresentation<
+    Record<string, unknown>
+  >;
 }
 
 export const Main: React.FC<MainProps> = ({ timeline, styles, srcs, fonts }) => {
