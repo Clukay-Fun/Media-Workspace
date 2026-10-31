@@ -3,14 +3,14 @@ import { useCallback, useState } from "react";
 // 面板尺寸只是个人习惯，存在浏览器里；读写失败（隐私模式等）就用默认值
 
 /**
- * leftW、sideW 为 null 时用样式表里按容器宽度给的默认值；
+ * sideW 为 null 时用样式表里按容器宽度给的默认值；
  * timelineH 为 null 时时间线刚好放下所有轨道，把高度留给预览
  */
-export type Layout = { leftW: number | null; sideW: number | null; timelineH: number | null };
+export type Layout = { sideW: number | null; timelineH: number | null };
 
 const KEY = "mw.layout.v5";
 
-export const DEFAULT_LAYOUT: Layout = { leftW: null, sideW: null, timelineH: null };
+export const DEFAULT_LAYOUT: Layout = { sideW: null, timelineH: null };
 
 function read(): Layout {
   try {

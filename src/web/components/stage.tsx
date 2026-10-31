@@ -7,6 +7,7 @@ import { compile } from "../../core/compile";
 import { planTransform } from "../../core/edit";
 import { applyOps, type Op } from "../../core/ops";
 import { safeAreaFor } from "../../core/safe-area";
+import type { Project } from "../../core/schema";
 import { type HitBox, hitBoxes, pick } from "../lib/geometry";
 import { type Corner, resizeFromCorner } from "../lib/pip";
 import { findItem } from "../lib/project";
@@ -413,7 +414,7 @@ export function Stage() {
                   <span className="box-tag">
                     {selectedHasIssue && <Icon name="warn" size={11} className="box-warning" />}
                     {selBox.locked && <Icon name="lock" size={11} />}
-                    {KIND[selBox.kind]} · {selBox.id}
+                    {KIND[selBox.kind]} · {boxName(project, selBox.id)}
                   </span>
                   {!selBox.locked && (selBox.kind === "image" || selBox.kind === "video") && (
                     <ResizeHandles onStart={startResize} />
@@ -603,6 +604,22 @@ function PlayerFooter({
       </div>
     </footer>
   );
+}
+
+/** 选中框上的名字：字幕取前几个字，标题 / 卡片取文字，片段取素材文件名；都没有时用 ID */
+function boxName(project: Project | null, id: string): string {
+  const ref = project ? findItem(project, id) : null;
+  if (!ref) return id;
+  const short = (t: string) => ([...t].length > 10 ? `${[...t].slice(0, 10).join("")}…` : t);
+  const it = ref.item as Record<string, unknown>;
+  if (typeof it.text === "string") return short(it.text);
+  const props = it.props as Record<string, unknown> | undefined;
+  const lines = props?.lines ?? props?.text ?? props?.title;
+  if (Array.isArray(lines)) return short(lines.join(" "));
+  if (typeof lines === "string") return short(lines);
+  if (typeof it.asset === "string")
+    return short(project?.assets[it.asset]?.path.split("/").pop() ?? it.asset);
+  return id;
 }
 
 function PreviewSettings() {

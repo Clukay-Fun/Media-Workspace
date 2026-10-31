@@ -10,7 +10,7 @@ import { DEFAULT_LAYOUT, useLayout } from "./lib/layout";
 import { useStore } from "./store";
 
 /**
- * 上面三栏：左栏素材 / 样式，中间预览，右栏属性 / 批注 / AI 改动；
+ * 上面两栏：中间预览，右栏属性 / 批注 / AI 改动；左栏素材 / 样式平时收起，从顶栏按钮滑出。
  * 下面整宽时间线。断点按容器宽度（container query），嵌进别的应用时也对。
  */
 export function App() {
@@ -18,7 +18,6 @@ export function App() {
   useShortcuts();
   const [layout, setLayout] = useLayout();
   const app = useRef<HTMLDivElement>(null);
-  const left = useRef(0);
   const side = useRef(0);
   const origin = useRef(layout);
   const autoH = useAutoTimelineHeight(app);
@@ -26,15 +25,11 @@ export function App() {
 
   const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
   // 中间至少留 420，竖屏画面才不会太小
-  const room = (other: number) => (app.current?.clientWidth ?? window.innerWidth) - other - 420;
-  const dragLeft = (dx: number) => {
-    setLayout({ leftW: clamp(left.current + dx, 220, Math.min(480, room(side.current))) });
-  };
+  const room = () => (app.current?.clientWidth ?? window.innerWidth) - 420;
   const dragSide = (dx: number) => {
-    setLayout({ sideW: clamp(side.current - dx, 260, Math.min(520, room(left.current))) });
+    setLayout({ sideW: clamp(side.current - dx, 260, Math.min(520, room())) });
   };
   const measure = () => {
-    left.current = app.current?.querySelector(".left-panel")?.clientWidth ?? 280;
     side.current = app.current?.querySelector(".sidebar")?.clientWidth ?? 340;
   };
   const dragTimeline = (dy: number) => {
@@ -49,7 +44,6 @@ export function App() {
         ref={app}
         style={
           {
-            ...(layout.leftW ? { "--left-w": `${layout.leftW}px` } : {}),
             ...(layout.sideW ? { "--side-w": `${layout.sideW}px` } : {}),
             "--tl-h": `${timelineH}px`,
           } as React.CSSProperties
@@ -57,14 +51,6 @@ export function App() {
       >
         <TopBar />
         <LeftPanel />
-        <Splitter
-          axis="x"
-          label="调整左栏宽度"
-          className="left"
-          onStart={measure}
-          onDrag={dragLeft}
-          onReset={() => setLayout({ leftW: null })}
-        />
         <Stage />
         <Splitter
           axis="x"
@@ -143,6 +129,8 @@ function useShortcuts() {
         e.preventDefault();
         s.setAnnotating(true);
       } else if (e.key === "Escape") {
+        // 先收起左栏抽屉，再取消选中
+        if (s.leftOpen) return s.setLeftOpen(false);
         s.select(null);
         s.setPin(null);
         s.setAnnotating(false);
