@@ -24,10 +24,12 @@ import { alignCaptions, transcribeFile } from "./asr";
 import { detectFaces, readFaces } from "./faces";
 import { getDefaultOutro, getLayout } from "./library";
 import { decodeAudioSamples, importMedia, probeMedia } from "./media";
-import { projectFiles } from "./paths";
+import { projectFiles, resolveProjectDir } from "./paths";
 import { exportVideo, renderStills } from "./render";
 import {
   applyToProject,
+  emptyProject,
+  initProject,
   listHistory,
   loadEditor,
   loadProject,
@@ -51,6 +53,19 @@ export const templateOpts = {
 export type Actor = { source: Source; actor: string };
 
 /** 导入素材：probe、必要时转标准化文件和代理，然后提交 asset.add */
+/** 新建工程：默认复制内置样式，字幕轨用内置字幕样式，开箱就是样片的效果 */
+export async function createProject(name: string, o: Actor & { styles?: boolean }) {
+  const dir = resolveProjectDir(name);
+  const p = emptyProject();
+  if (o.styles !== false) {
+    p.styles = { ...BUILTIN_STYLES };
+    const cap = p.tracks.find((t) => t.kind === "caption");
+    if (cap && cap.kind === "caption") cap.style = "caption-word-yellow";
+  }
+  await initProject(dir, p, { source: o.source, actor: o.actor });
+  return { ok: true as const, project: dir, revision: 0 };
+}
+
 export async function importAsset(
   dir: string,
   file: string,

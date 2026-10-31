@@ -10,6 +10,7 @@ import {
   commentsInfo,
   compareProject,
   coverProject,
+  createProject,
   exportProject,
   facesProject,
   frameProject,
@@ -82,6 +83,22 @@ export function createMcpServer(): McpServer {
         "第一次使用前先调用：编排规则、全部操作（ops）和文本样式的 JSON Schema、模板、动画预设、安全区",
     },
     () => call(async () => guideInfo()),
+  );
+
+  server.registerTool(
+    "init",
+    {
+      description:
+        "新建工程（名字放在 ~/MediaWorkspace/projects 下，或给 .mwproj 路径）：默认复制内置样式，字幕轨用内置字幕样式。" +
+        "接着 import 原片（主轨空着时自动放上主轨）",
+      inputSchema: {
+        project,
+        styles: z.boolean().default(true).describe("false = 不复制内置样式"),
+        actor,
+      },
+    },
+    ({ project: p, styles, actor: a }) =>
+      call(() => createProject(p, { styles, source: "mcp", actor: a })),
   );
 
   server.registerTool(
@@ -359,7 +376,7 @@ export function createMcpServer(): McpServer {
     "layout",
     {
       description:
-        "账号版式（所有工程共用）：参考线、人脸框该落在哪、标题和字幕用哪个样式。不给 layout 时读；给了整份替换。" +
+        "账号版式（所有工程共用）：参考线、人脸框该落在哪、标题和字幕用哪个样式、口播倍速（speed）、一条字幕最多几个字（captionMaxChars）。不给 layout 时读；给了整份替换。" +
         "位置都是占画面宽 / 高的比例（0–1）",
       inputSchema: {
         layout: Layout.optional().describe("新的整份版式；不给时只读"),

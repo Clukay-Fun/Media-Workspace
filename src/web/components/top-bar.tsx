@@ -5,6 +5,7 @@ import { Icon } from "./icons";
 
 export function TopBar() {
   const project = useStore((s) => s.project);
+  const name = useStore((s) => s.name);
   const history = useStore((s) => s.history);
   const lint = useStore((s) => s.lint);
   const review = useStore((s) => s.review);
@@ -41,6 +42,9 @@ export function TopBar() {
         >
           <Icon name="list" />
         </button>
+        <h1 className="topbar-name" title={name}>
+          {name || "载入中…"}
+        </h1>
       </div>
 
       <div className="topbar-center">

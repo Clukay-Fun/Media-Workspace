@@ -1,4 +1,5 @@
 import type React from "react";
+import { useState } from "react";
 import { planDrag } from "../../../core/edit";
 import type { Op } from "../../../core/ops";
 import type { Anchor, Caption, Project, Slot, Transform } from "../../../core/schema";
@@ -100,6 +101,29 @@ export function InspectorActions({
   );
 }
 
+/**
+ * 一个元素适合用哪些样式：同类元素（字幕 / 标题 / 卡片）已经在用的，加上名字前缀相同的（caption-、title-、card-）。
+ * 其余样式收在「更多样式」里，免得给字幕列出标题条、卡片的样式
+ */
+function relevantStyles(project: Project, ref_: ItemRef): Set<string> {
+  const isCaption = ref_.track.kind === "caption";
+  const template = "template" in ref_.item ? String(ref_.item.template) : "";
+  const group = (tpl: string) => (tpl.startsWith("title") ? "title" : "card");
+  const prefix = isCaption ? "caption" : group(template);
+  const used = new Set<string>();
+  for (const t of project.tracks) {
+    if (isCaption ? t.kind !== "caption" : t.kind !== "overlay") continue;
+    if ("style" in t && t.style && isCaption) used.add(t.style);
+    for (const it of t.items) {
+      if (!isCaption && "template" in it && group(String(it.template)) !== prefix) continue;
+      if ("style" in it && it.style) used.add(it.style);
+    }
+  }
+  return new Set(
+    Object.keys(project.styles).filter((n) => used.has(n) || n.startsWith(`${prefix}-`)),
+  );
+}
+
 /** 换成工程里的另一个样式（整套替换） */
 export function StylePicker({
   project,
@@ -112,33 +136,50 @@ export function StylePicker({
   ref_: ItemRef;
   sample: string;
 }) {
+  const [more, setMore] = useState(false);
   const isCaption = ref_.track.kind === "caption";
-  const styleId = "style" in ref_.item ? (ref_.item.style ?? null) : null;
+  const own = "style" in ref_.item ? (ref_.item.style ?? null) : null;
+  // 元素没写样式时用轨道的样式（字幕轨）
+  const styleId = own ?? ("style" in ref_.track ? (ref_.track.style ?? null) : null);
   const setStyle = (style: string) => {
     const op: Op = isCaption
       ? { op: "caption.update", id, set: { style } }
       : { op: "item.update", id, set: { style } };
     void useStore.getState().submit([op], `已套用样式「${style}」`);
   };
+  const fit = relevantStyles(project, ref_);
+  const names = Object.keys(project.styles);
+  const shown = names.filter((n) => more || fit.has(n) || n === styleId);
+  const hidden = names.length - names.filter((n) => fit.has(n) || n === styleId).length;
   return (
     <Field label="样式">
       <div className="style-grid">
-        {Object.entries(project.styles).map(([name, style]) => (
-          <button
-            key={name}
-            type="button"
-            className={styleId === name ? "style-chip on" : "style-chip"}
-            disabled={ref_.track.locked}
-            title={name}
-            onClick={() => styleId !== name && setStyle(name)}
-          >
-            <span className="style-chip-sample" style={swatch(style)}>
-              {sample}
-            </span>
-            <span className="style-chip-name">{name}</span>
-          </button>
-        ))}
+        {shown.flatMap((name) => {
+          const style = project.styles[name];
+          return style
+            ? [
+                <button
+                  key={name}
+                  type="button"
+                  className={styleId === name ? "style-chip on" : "style-chip"}
+                  disabled={ref_.track.locked}
+                  title={name}
+                  onClick={() => styleId !== name && setStyle(name)}
+                >
+                  <span className="style-chip-sample" style={swatch(style)}>
+                    {sample}
+                  </span>
+                  <span className="style-chip-name">{name}</span>
+                </button>,
+              ]
+            : [];
+        })}
       </div>
+      {hidden > 0 && (
+        <button type="button" className="link more-styles" onClick={() => setMore(!more)}>
+          {more ? "收起" : `更多样式（${hidden}）`}
+        </button>
+      )}
     </Field>
   );
 }

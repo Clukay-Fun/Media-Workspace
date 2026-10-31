@@ -12,6 +12,7 @@ import {
   commentsInfo,
   compareProject,
   coverProject,
+  createProject,
   exportProject,
   facesProject,
   frameProject,
@@ -123,16 +124,7 @@ cli
   .option("--actor <name>", "操作者", { default: "user" })
   .action(
     act(async (name: string, o: { styles: boolean; actor: string }) => {
-      const dir = resolveProjectDir(name);
-      const p = emptyProject();
-      if (o.styles) p.styles = { ...BUILTIN_STYLES };
-      // 字幕轨默认用内置字幕样式，新工程开箱就是样片的效果
-      if (o.styles) {
-        const cap = p.tracks.find((t) => t.kind === "caption");
-        if (cap && cap.kind === "caption") cap.style = "caption-word-yellow";
-      }
-      await initProject(dir, p, { source: "cli", actor: String(o.actor) });
-      out({ ok: true, project: dir, revision: 0 });
+      out(await createProject(name, { styles: o.styles, source: "cli", actor: String(o.actor) }));
     }),
   );
 
@@ -582,7 +574,10 @@ cli
   );
 
 cli
-  .command("layout", "查看 / 设置账号版式（参考线、人脸位置、标题和字幕样式，所有工程共用）")
+  .command(
+    "layout",
+    "查看 / 设置账号版式（参考线、人脸位置、标题和字幕样式、口播倍速、一条字幕最多几个字，所有工程共用）",
+  )
   .option("--file <json>", "用这个 JSON 文件整份替换账号版式")
   .action(
     act(async (o: { file?: string }) => {

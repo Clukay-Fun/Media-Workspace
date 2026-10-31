@@ -116,13 +116,14 @@ textarea:focus-visible {
   display: grid;
   height: 100%;
   padding: 0 2px 2px;
-  grid-template-columns: var(--left-w, 260px) 0 minmax(0, 1fr) 0 var(--side-w, 320px);
+  /* 左栏（素材、样式）平时收起，从左边滑出；AI 出片时很少用到，把宽度留给预览 */
+  grid-template-columns: minmax(0, 1fr) 0 var(--side-w, 320px);
   grid-template-rows: var(--topbar-height) minmax(0, 1fr) 0 var(--tl-h, 260px);
   grid-template-areas:
-    "top top top top top"
-    "left lsplit main split side"
-    "ysplit ysplit ysplit ysplit ysplit"
-    "tl tl tl tl tl";
+    "top top top"
+    "main split side"
+    "ysplit ysplit ysplit"
+    "tl tl tl";
   overflow: hidden;
   background: var(--bg);
 }
@@ -154,10 +155,6 @@ textarea:focus-visible {
 .splitter.x {
   grid-area: split;
   cursor: col-resize;
-}
-
-.splitter.x.left {
-  grid-area: lsplit;
 }
 
 .splitter.x::before {
@@ -351,6 +348,17 @@ textarea:focus-visible {
   min-width: 0;
 }
 
+.topbar-name {
+  min-width: 0;
+  margin: 0 0 0 6px;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .topbar-center {
   display: flex;
   justify-content: center;
@@ -455,7 +463,25 @@ textarea:focus-visible {
 }
 
 .left-panel {
-  grid-area: left;
+  position: absolute;
+  top: var(--topbar-height);
+  left: 6px;
+  bottom: 6px;
+  z-index: 20;
+  width: min(300px, 88%);
+  margin: 0;
+  box-shadow: 0 16px 48px rgb(28 27 24 / 0.22);
+  transform: translateX(calc(-100% - 12px));
+  visibility: hidden;
+  transition:
+    transform 240ms var(--ease-out),
+    visibility 0s linear 240ms;
+}
+
+.left-panel.open {
+  transform: none;
+  visibility: visible;
+  transition: transform 240ms var(--ease-out);
 }
 
 .sidebar {
@@ -471,9 +497,12 @@ textarea:focus-visible {
 }
 
 .drawer-close,
-.drawer-toggle,
-.left-toggle {
+.drawer-toggle {
   display: none;
+}
+
+.left-panel .drawer-close {
+  display: inline-grid;
 }
 
 .drawer-close {
@@ -848,7 +877,7 @@ textarea:focus-visible {
   position: relative;
   flex: 1;
   min-height: 0;
-  margin: 0 6px;
+  margin: 6px 6px 0;
   border-radius: 10px;
   background: var(--raised);
   display: grid;
@@ -891,7 +920,7 @@ textarea:focus-visible {
 
 .preview-settings-panel {
   position: absolute;
-  top: calc(100% + 8px);
+  bottom: calc(100% + 8px);
   right: 0;
   width: 184px;
   padding: 12px;
@@ -2645,50 +2674,7 @@ textarea:focus-visible {
 
 @container (max-width: 1279px) {
   .app {
-    grid-template-columns: var(--left-w, 230px) 0 minmax(0, 1fr) 0 var(--side-w, 290px);
-  }
-}
-
-/* 900–1099：左栏变成从左边滑出的抽屉 */
-@container (max-width: 1099px) {
-  .app {
     grid-template-columns: minmax(0, 1fr) 0 var(--side-w, 290px);
-    grid-template-areas:
-      "top top top"
-      "main split side"
-      "ysplit ysplit ysplit"
-      "tl tl tl";
-  }
-
-  .splitter.x.left {
-    display: none;
-  }
-
-  .left-panel {
-    position: absolute;
-    top: var(--topbar-height);
-    left: 6px;
-    bottom: 6px;
-    z-index: 20;
-    width: min(300px, 88%);
-    margin: 0;
-    box-shadow: 0 16px 48px rgb(28 27 24 / 0.22);
-    transform: translateX(calc(-100% - 12px));
-    visibility: hidden;
-    transition:
-      transform 240ms var(--ease-out),
-      visibility 0s linear 240ms;
-  }
-
-  .left-panel.open {
-    transform: none;
-    visibility: visible;
-    transition: transform 240ms var(--ease-out);
-  }
-
-  .left-panel .drawer-close,
-  .left-toggle {
-    display: inline-grid;
   }
 }
 
@@ -3389,4 +3375,20 @@ textarea:focus-visible {
 
 .layout-actions button:hover {
   background: var(--raised-2);
+}
+
+.more-styles {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+/* 字幕块很短：去掉省略号和左右留白，能放几个字放几个字，扫一眼认得出是哪句 */
+.block.caption {
+  padding-inline: 3px;
+}
+
+.block.caption .block-label {
+  font-size: 11px;
+  letter-spacing: -0.02em;
+  text-overflow: clip;
 }

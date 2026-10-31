@@ -19,7 +19,7 @@ pnpm fonts:check            # 普惠体放进 assets/fonts/alibaba-puhuiti-3/；
 ./bin/mw.mjs models --fetch # 下载识音模型（约 230MB，只需一次）；之后 mw align <工程> 让逐字动画跟着语音走
 ```
 
-### 工作台和 AI 接入（阶段 B，开发中）
+### 工作台和 AI 接入
 
 ```bash
 ./bin/mw.mjs serve <工程>   # 本地工作台，默认 http://127.0.0.1:5170（网页需要先 pnpm web:build）
@@ -27,10 +27,20 @@ pnpm web:dev                # 开发审片台（/api 代理到 mw serve）；VIT
 ./bin/mw.mjs mcp            # MCP stdio 服务
 ```
 
-在 Claude Code 里接入 MCP（Codex 等其他 AI 应用同理，命令是 `<仓库路径>/bin/mw.mjs mcp`）：
+接入 MCP 后，AI 直接调用工作台的工具（`init`、`import`、`transcribe`、`apply`、`preview`、`export` 等，和 `mw` 命令一一对应），
+预览图、烧录字幕检查图会直接给 AI 看。用 `node` 的绝对路径（`which node`），免得 AI 应用启动时找不到：
 
 ```bash
-claude mcp add media-workspace -- node <仓库路径>/bin/mw.mjs mcp
+# Claude Code（-s user：所有目录都能用）
+claude mcp add -s user media-workspace -- /usr/local/bin/node <仓库路径>/bin/mw.mjs mcp
+```
+
+```toml
+# Codex：~/.codex/config.toml
+[mcp_servers.media-workspace]
+command = "/usr/local/bin/node"
+args = ["<仓库路径>/bin/mw.mjs", "mcp"]
+startup_timeout_sec = 60
 ```
 
 **让 AI 接到审片台的批注**：仓库自带对话 hook（Claude Code 用 `.claude/settings.json`，Codex 用 `.codex/hooks.json`）。
