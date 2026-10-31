@@ -47,12 +47,13 @@ lint 改为检查和账号版式的偏差（人脸偏离、字幕 / 标题条位
 ## 分工
 
 - **Claude**（dev）：账号版式（core 格式 + `node/library` 读写 + API），`mw transcribe`，文稿校字，字幕按词换行，
-  `mw frame` 的计算，编排规则和 `mw guide`，最后的验收。
+  `mw frame` 的计算，编排规则和 `mw guide`，工作台里编辑、保存账号版式和参考线，最后的验收。
 - **Codex**（`media-workspace-codex` / `feat/silence-compare`）：按音频静音剪停顿；`mw compare <proj> <参考成片>`
   出对比图，列出时长、剪切点、人物位置、字幕换行的差别。
-- **DeepSeek**（`media-workspace-deepseek` / `feat/layout-ui`）：工作台里编辑、保存账号版式和参考线（等 Claude 的版式格式合进 dev 再开工）。
 - **Grok**（`local/notes/`，不写代码）：量用户的成片 `剪辑后.mp4`——字幕每行字数、断行位置、人物位置（人脸框）、标题条和字幕的位置，
   作为默认版式和断句规则的依据。
+
+DeepSeek 从阶段 F 起不再参与，原来给它的工作台部分由 Claude 做。
 
 ## 验收
 
