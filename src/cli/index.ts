@@ -582,7 +582,10 @@ cli
   );
 
 cli
-  .command("layout", "查看 / 设置账号版式（参考线、人脸位置、标题和字幕样式，所有工程共用）")
+  .command(
+    "layout",
+    "查看 / 设置账号版式（参考线、人脸位置、标题和字幕样式、口播倍速、一条字幕最多几个字，所有工程共用）",
+  )
   .option("--file <json>", "用这个 JSON 文件整份替换账号版式")
   .action(
     act(async (o: { file?: string }) => {
