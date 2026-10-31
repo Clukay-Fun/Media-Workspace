@@ -16,7 +16,8 @@ export function TopBar() {
     useStore.getState();
 
   const open = review?.comments.filter((c) => c.status === "open").length ?? 0;
-  const issues = lint?.issues ?? [];
+  // 只算警告；提示（有账号版式时的通用安全区等）在审阅栏里看
+  const issues = (lint?.issues ?? []).filter((i) => i.level !== "hint");
   const exporting = exportJob !== null && !exportJob.done;
   const canUndoAi = aiChange && aiChange.revision === project?.revision && history?.undo;
 

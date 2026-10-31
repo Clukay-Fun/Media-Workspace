@@ -17,7 +17,33 @@ const STEPS: Record<number, (p: Raw) => Raw> = {
   4: (p) => ({ ...p, version: 5 }),
   // 5 → 6：图片和视频片段新增可选的循环动画 animLoop（docs/decisions/0018），旧数据不用改
   5: (p) => ({ ...p, version: 6 }),
+  // 6 → 7：叠加层新增可选的卡片尺寸 size；封面标题从「叠加层 ID」改成直接写在 cover 里
+  // （原来的 ID 渲染时没有用上，叠加层还会出现在视频里），按 ID 把那个叠加层的模板、样式、内容抄过来（docs/decisions/0022）
+  6: (p) => ({ ...p, version: 7, ...coverV7(p) }),
 };
+
+/** 只有封面标题是旧的叠加层 ID 时才改 cover，其它情况原样不动 */
+function coverV7(p: Raw): Raw {
+  const cover = p.cover as Raw | null | undefined;
+  if (!cover || typeof cover.title !== "string") return {};
+  const id = cover.title;
+  const tracks = Array.isArray(p.tracks) ? (p.tracks as Raw[]) : [];
+  const item = tracks
+    .flatMap((t) => (Array.isArray(t.items) ? (t.items as Raw[]) : []))
+    .find((i) => i.id === id && typeof i.template === "string");
+  const { title: _, ...rest } = cover;
+  if (!item) return { cover: rest };
+  return {
+    cover: {
+      ...rest,
+      title: {
+        template: item.template,
+        ...(typeof item.style === "string" ? { style: item.style } : {}),
+        props: item.props ?? {},
+      },
+    },
+  };
+}
 
 export function migrate(data: unknown): unknown {
   if (typeof data !== "object" || data === null || Array.isArray(data)) return data;

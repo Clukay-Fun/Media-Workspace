@@ -68,6 +68,7 @@ export function emptyProject(): Project {
 export async function initProject(
   dir: string,
   project: Project = emptyProject(),
+  who: { source?: Source; actor?: string } = {},
 ): Promise<Project> {
   const f = projectFiles(dir);
   if (await exists(f.project)) {
@@ -82,8 +83,8 @@ export async function initProject(
   await atomicWrite(f.project, json(project));
   await appendLog(dir, {
     at: new Date().toISOString(),
-    source: "cli",
-    actor: "user",
+    source: who.source ?? "cli",
+    actor: who.actor ?? "user",
     revision: project.revision,
     baseRevision: project.revision,
     kind: "init",
@@ -135,7 +136,11 @@ export async function applyToProject(dir: string, req: ApplyRequest): Promise<Ap
   return withLock(dir, async () => {
     const current = await loadProject(dir);
     checkRevision(current, req.baseRevision);
-    const r = applyOps(current, req.ops, { templates: req.templates });
+    const r = applyOps(current, req.ops, {
+      templates: req.templates,
+      templateAssets: req.templateAssets,
+      templateSizes: req.templateSizes,
+    });
     const next: Project = { ...r.project, revision: current.revision + 1 };
     if (req.dryRun) {
       return {

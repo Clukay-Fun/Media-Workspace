@@ -1,7 +1,9 @@
+import { ease } from "./animate";
 import { slotCenter } from "./safe-area";
 import {
   type Anchor,
   type Caption,
+  type CardSize,
   type FloatClip,
   type Highlight,
   isMainClip,
@@ -94,9 +96,25 @@ export type ResolvedOverlay = Flags & {
   from: number;
   durationInFrames: number;
   style: string | null;
+  /** 没写时为 null，由模板的默认尺寸决定怎么画（默认尺寸不会是半屏，见 templates） */
+  /** 卡片尺寸；null = 不是卡片（标题条等） */
+  size: CardSize | null;
   transform: FullTransform;
   props: Record<string, unknown>;
 };
+
+/**
+ * 半屏卡出现时主画面上移的比例（画面高度，1920 高时 180px）和上移 / 回落用的时间，
+ * 和卡片进场同一段 400ms（docs/decisions/0022）。主画面只移不缩
+ */
+export const HALF_CARD_SHIFT = 180 / 1920;
+const HALF_CARD_RAMP_MS = 400;
+
+/** 主画面上移的时间段：重叠或相接的半屏卡合并成一段，中间不回落 */
+export type ResolvedShift = { from: number; to: number; rampFrames: number };
+
+/** 帧区间 [from, to) */
+export type FrameSpan = { from: number; to: number };
 
 export type ResolvedOutro = {
   asset: string;
@@ -123,6 +141,10 @@ export type ResolvedTimeline = {
   images: ResolvedImage[];
   captions: ResolvedCaption[];
   overlays: ResolvedOverlay[];
+  /** 半屏卡让主画面上移的时间段，按开始时间排序 */
+  mainShifts: ResolvedShift[];
+  /** 有卡片（写了 size 的叠加层）的时间段：这时字幕不显示 */
+  cardSpans: FrameSpan[];
   outro: ResolvedOutro | null;
   chapters: ResolvedChapter[];
   warnings: CompileWarning[];
@@ -494,6 +516,7 @@ export function compile(project: Project): ResolvedTimeline {
           from,
           durationInFrames,
           style: item.style ?? null,
+          size: item.size ?? null,
           transform: full(item.transform, item.slot),
           props: item.props,
         });
@@ -551,6 +574,12 @@ export function compile(project: Project): ResolvedTimeline {
     images,
     captions,
     overlays,
+    mainShifts: mergeSpans(overlays.filter((o) => o.size === "half")).map((s) => ({
+      ...s,
+      // 卡片很短时上移和回落各占一半，不会叠在一起
+      rampFrames: Math.min(f(HALF_CARD_RAMP_MS), Math.floor((s.to - s.from) / 2)),
+    })),
+    cardSpans: mergeSpans(overlays.filter((o) => o.size !== null)),
     outro,
     chapters,
     warnings,
@@ -588,4 +617,50 @@ function applyCaptionTiming(
 
 function stripUndefined<T extends object>(o: T): Partial<T> {
   return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;
+}
+
+/** 显示着的叠加层占的时间段，重叠或相接的合并，按开始时间排序 */
+function mergeSpans(overlays: ResolvedOverlay[]): FrameSpan[] {
+  const spans = overlays
+    .filter((o) => !o.hidden)
+    .map((o) => ({ from: o.from, to: o.from + o.durationInFrames }))
+    .toSorted((a, b) => a.from - b.from);
+  const merged: FrameSpan[] = [];
+  for (const s of spans) {
+    const last = merged.at(-1);
+    if (last && s.from <= last.to) last.to = Math.max(last.to, s.to);
+    else merged.push({ ...s });
+  }
+  return merged;
+}
+
+/** 第 frame 帧有没有卡片（有卡时字幕隐藏） */
+export function cardShownAt(spans: FrameSpan[], frame: number): boolean {
+  return spans.some((s) => frame >= s.from && frame < s.to);
+}
+
+/** 第 frame 帧主画面往上移了多少像素 */
+export function mainLiftAt(tl: Pick<ResolvedTimeline, "mainShifts" | "height">, frame: number) {
+  return mainShiftAt(tl.mainShifts, frame) * HALF_CARD_SHIFT * tl.height;
+}
+
+/**
+ * 主画面上移时同时以顶边为原点放大 (H + lift) / H，底边留在原处，不会露出黑边（阶段 E 验收：
+ * 主画面没放大的工程，半屏卡下面露出一条 180px 的黑边）。y → y × k − lift，x 以画面中线为原点放大
+ */
+export function mainLiftTransform(
+  tl: Pick<ResolvedTimeline, "mainShifts" | "height">,
+  frame: number,
+): { lift: number; scale: number } {
+  const lift = mainLiftAt(tl, frame);
+  return { lift, scale: (tl.height + lift) / tl.height };
+}
+
+/** 第 frame 帧主画面上移了多少（0–1，乘 HALF_CARD_SHIFT × 画面高度）：进出都用缓入缓出 */
+export function mainShiftAt(shifts: ResolvedShift[], frame: number): number {
+  const s = shifts.find((x) => frame >= x.from && frame < x.to);
+  if (!s) return 0;
+  if (s.rampFrames <= 0) return 1;
+  const p = Math.min(1, (frame - s.from) / s.rampFrames, (s.to - frame) / s.rampFrames);
+  return ease("ease-in-out", Math.max(0, p));
 }

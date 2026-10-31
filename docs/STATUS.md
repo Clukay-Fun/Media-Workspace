@@ -5,10 +5,7 @@
 
 | 事项 | 谁在做 | 目录 / 分支 | 状态 | 下一步 / 卡在哪 |
 |---|---|---|---|---|
-| 阶段 D 合到 main | Claude | `media-workspace` / dev → main | 用户已验收（0020），PR #3 已开，待用户合并 | 合并后删掉这一行 |
-| 阶段 E：卡片框架、封面、默认片尾、编排规则（0021） | Claude | `media-workspace` / dev | 进行中 | 框架合进 dev 后 Codex、DeepSeek 开工 |
-| 阶段 E：口播卡片调研（0021） | Grok | `media-workspace/local/notes/2026-10-30-mg-cards/`，不用分支 | 待开工 | — |
-| 阶段 E：模板 金句 / 要点列表 / 大数字（0021） | Codex | 待建 | 等框架 | — |
-| 阶段 E：模板 人名条 / 截图卡片，封面入口（0021） | DeepSeek | 待建 | 等框架 | — |
+| 阶段 E：卡片框架、封面、默认片尾、编排规则（0021） | Claude | `media-workspace` / dev | 四个 AI 一句话验收完成，验收发现的问题已修（0024） | 和阶段 F 一起在 PR #4 |
+| 阶段 F：账号版式、识音出字幕 + 文稿校字、字幕按词换行、`mw frame`（0025） | Claude | `media-workspace` / dev | 三个 AI 验收合格，验收发现的问题已修并复验（0028） | PR #4（dev → main，含阶段 E）已开，等 Codex 合并 |
 | 声音分离可行性实验（0015 第 6 条） | Grok | `media-workspace/local/notes/`，不用分支 | 实验做完，结论：先不做 | 这段样片没有背景音乐，测不出分离效果；要有带背景音乐的样片再复测 |
 | 审查、合并各分支，跑全部测试 | Claude | `media-workspace` / dev | 持续 | 各分支做完后通知 |

@@ -4,8 +4,20 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { MwError } from "../core/errors";
 import { BUILTIN_STYLES } from "../core/presets";
-import { listStyles, removeStyle, saveStyle, textStylesDir, useStyle } from "./library";
-import { emptyProject, initProject, loadProject } from "./store";
+import { attachOutro } from "./actions";
+import {
+  getDefaultOutro,
+  getLayout,
+  layoutFile,
+  listStyles,
+  removeStyle,
+  saveStyle,
+  setDefaultOutro,
+  setLayout,
+  textStylesDir,
+  useStyle,
+} from "./library";
+import { applyToProject, emptyProject, initProject, loadProject } from "./store";
 
 let root: string;
 let a: string;
@@ -78,5 +90,61 @@ describe("样式模板库", () => {
     expect(skipped).toHaveLength(1);
     await removeStyle("t2");
     expect((await listStyles()).styles.some((s) => s.name === "t2")).toBe(false);
+  });
+});
+
+describe("默认片尾", () => {
+  it("没设置时为 null，接默认片尾报 NOT_FOUND", async () => {
+    expect(await getDefaultOutro()).toBeNull();
+    expect(await code(attachOutro(b, who))).toBe("NOT_FOUND");
+  });
+
+  it("文件不存在时不能设置", async () => {
+    expect(await code(setDefaultOutro(join(root, "nope.mp4")))).toBe("MEDIA");
+  });
+
+  it("设置后接上：同一个文件已经导入过就直接用那个素材，按默认设置叠化", async () => {
+    const file = join(root, "outro.mp4");
+    await writeFile(file, "");
+    expect(await setDefaultOutro(file, { fadeMs: 500, gainDb: -6 })).toMatchObject({
+      file,
+      transitionIn: { type: "fade", durationMs: 500 },
+      gainDb: -6,
+    });
+    await applyToProject(b, {
+      ops: [{ op: "asset.add", id: "end", asset: { kind: "video", path: file } }],
+      baseRevision: 0,
+      ...who,
+    });
+    const r = await attachOutro(b, who);
+    expect(r).toMatchObject({ outro: "end", usedDefault: true });
+    expect((await loadProject(b)).outro).toEqual({
+      asset: "end",
+      transitionIn: { type: "fade", durationMs: 500 },
+      gainDb: -6,
+    });
+    // fadeMs 0 = 硬切
+    await attachOutro(b, { ...who, fadeMs: 0 });
+    expect((await loadProject(b)).outro).toEqual({ asset: "end", gainDb: -6 });
+    await setDefaultOutro(file, { fadeMs: 0 });
+    expect((await getDefaultOutro())?.transitionIn).toBeNull();
+  });
+});
+
+describe("账号版式", () => {
+  it("没设置时为 null；设置后补上默认值，坏文件报 VALIDATION", async () => {
+    expect(await getLayout()).toBeNull();
+    const l = await setLayout({
+      guides: [{ id: "top", axis: "h", pos: 0.25, label: "头顶" }],
+      face: { cx: 0.5, top: 0.3, bottom: 0.5 },
+    });
+    expect(l).toMatchObject({ version: 1, titleStyle: null, captionStyle: null });
+    expect(await getLayout()).toEqual(l);
+    expect(await code(setLayout({ face: { cx: 0.5, top: 0.6, bottom: 0.5 } }))).toBe("VALIDATION");
+    expect(await code(setLayout({ guides: [{ id: "x", axis: "h", pos: 960 }] }))).toBe(
+      "VALIDATION",
+    );
+    await writeFile(layoutFile(), '{"version":2}');
+    expect(await code(getLayout())).toBe("VALIDATION");
   });
 });

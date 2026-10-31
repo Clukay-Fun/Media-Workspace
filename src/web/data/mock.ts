@@ -6,13 +6,15 @@ import {
 } from "../../core/api";
 import { compile } from "../../core/compile";
 import { MwError } from "../../core/errors";
+import { Layout } from "../../core/layout";
 import { lintProject } from "../../core/lint";
 import { applyOps } from "../../core/ops";
 import { BUILTIN_STYLES } from "../../core/presets";
 import { addComment, Review, setCommentStatus } from "../../core/review";
 import { Project } from "../../core/schema";
+import { msToFrame } from "../../core/time";
 import { changedIds, undoState } from "../../core/undo";
-import { TEMPLATES } from "../../templates";
+import { overlayBounds, TEMPLATES } from "../../templates";
 import { type Api, ApiFailure, type LiveEvent } from "./client";
 
 // Mock 模式（VITE_MW_MOCK=1）：不连服务端，在浏览器里用 core 的真实逻辑维护一份内存工程。
@@ -43,7 +45,7 @@ function demoProject(): Project {
   });
   const at = (i: number) => captions[i] ?? { startMs: 0, endMs: 0 };
   return Project.parse({
-    version: 6,
+    version: 7,
     revision: 0,
     canvas: { background: "#1a1b1f" },
     assets: {
@@ -147,6 +149,15 @@ export function createMockApi(): Api {
   ];
   let review = Review.parse({});
   let editor = EditorState.parse({});
+  // 示例账号版式：人物中线、头顶、下巴三条参考线
+  let layout: Layout | null = Layout.parse({
+    guides: [
+      { id: "center", axis: "v", pos: 0.5, label: "人物中线" },
+      { id: "head", axis: "h", pos: 0.25, label: "头顶" },
+      { id: "chin", axis: "h", pos: 0.51, label: "下巴" },
+    ],
+    face: { cx: 0.5, top: 0.36, bottom: 0.5 },
+  });
   // 模板库：内置样式 + 一个「之前存过的」样式，演示跨工程套用
   const library: LibraryStyle[] = [
     ...Object.entries(BUILTIN_STYLES).map(([name, style]) => ({
@@ -235,12 +246,9 @@ export function createMockApi(): Api {
       revision: current().revision,
       issues: lintProject(current(), {
         styles: { ...BUILTIN_STYLES, ...current().styles },
-        overlayBounds: (o, style) => {
-          const tpl = TEMPLATES[o.template];
-          const props = tpl?.schema.safeParse(o.props);
-          if (!tpl?.bounds || !props?.success) return { text: [], shapes: [] };
-          return tpl.bounds(props.data, style, current().canvas.width, current().canvas.height);
-        },
+        overlayBounds: (o, style) =>
+          overlayBounds(o, style, current().canvas.width, current().canvas.height),
+        overlayStyle: (t) => TEMPLATES[t]?.meta.defaultStyle,
       }),
       noFaceData: ["outro"],
     }),
@@ -248,6 +256,11 @@ export function createMockApi(): Api {
     editor: async () => ({ ok: true, editor }),
     saveEditor: async (next) => {
       editor = EditorState.parse(next);
+    },
+    layout: async () => ({ ok: true, layout }),
+    saveLayout: async (next) => {
+      layout = Layout.parse({ ...next, savedAt: new Date().toISOString() });
+      return { ok: true, layout };
     },
     libraryStyles: async () => ({ ok: true, styles: [...library], skipped: [] }),
     saveLibraryStyle: async (req) => {
@@ -341,6 +354,16 @@ export function createMockApi(): Api {
       return {
         ok: true,
         comment: review.comments.find((c) => c.id === id) as Review["comments"][number],
+      };
+    },
+    cover: async () => {
+      const c = current();
+      const atMs = c.cover?.atMs ?? 1000;
+      return {
+        ok: true,
+        revision: c.revision,
+        file: `renders/示例-cover-r${c.revision}.png`,
+        frame: msToFrame(atMs, c.canvas.fps),
       };
     },
     exportVideo: async () => {

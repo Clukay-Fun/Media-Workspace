@@ -91,3 +91,24 @@ describe("TextBlock 逐字入场时长（inSlot）", () => {
     expect(opacityOf(html(fixed, 1), "一")).toBeCloseTo(1 / 30, 2);
   });
 });
+
+describe("TextBlock 换行", () => {
+  it("同一个词的字包在一个不换行的 span 里，收尾标点跟着前一个字", () => {
+    const out = renderToStaticMarkup(
+      <TextBlock
+        text="提交申请，保存"
+        style={TextStyle.parse(base)}
+        highlights={[]}
+        frame={59}
+        durationInFrames={60}
+        fps={30}
+      />,
+    );
+    // 只看文字层（最后一层）：每个不换行的 span 里的字连起来
+    const fill = out.slice(out.lastIndexOf('<div style="position:relative">'));
+    const groups = [
+      ...fill.matchAll(/<span style="white-space:nowrap">(.*?)<\/span><\/span>/g),
+    ].map((m) => (m[1] ?? "").replace(/<[^>]+>/g, ""));
+    expect(groups).toEqual(["提交", "申请，", "保存"]);
+  });
+});

@@ -6,6 +6,10 @@ import { isMainClip, Project } from "./schema";
 export type ValidateOptions = {
   /** 已注册的模板名；不传时不检查模板 */
   templates?: readonly string[];
+  /** 模板参数里引用的素材 ID（templates/overlayAssets）；不传时不检查 */
+  templateAssets?: (o: { template: string; props: Record<string, unknown> }) => string[];
+  /** 模板支持的卡片尺寸（meta.sizes）；空 = 不是卡片。不传时不检查 */
+  templateSizes?: (template: string) => readonly string[] | undefined;
 };
 
 export type ValidateResult =
@@ -69,6 +73,22 @@ export function validate(input: unknown, opts: ValidateOptions = {}): ValidateRe
   const style = (id: string | undefined, path: string) => {
     if (id !== undefined && !p.styles[id]) err("REF_MISSING", path, `样式「${id}」不存在`);
   };
+  const template = (
+    o: { template: string; style?: string | undefined; props: Record<string, unknown> },
+    path: string,
+  ) => {
+    style(o.style, `${path}.style`);
+    if (opts.templates && !opts.templates.includes(o.template)) {
+      err(
+        "REF_MISSING",
+        `${path}.template`,
+        `模板「${o.template}」不存在`,
+        "用 mw inspect --templates 查看可用模板",
+      );
+      return;
+    }
+    for (const id of opts.templateAssets?.(o) ?? []) asset(id, `${path}.props`, ["image", "video"]);
+  };
   const range = (inMs: number, outMs: number, durationMs: number | undefined, path: string) => {
     if (outMs <= inMs) err("TIME_RANGE", path, `出点 ${outMs}ms 必须大于入点 ${inMs}ms`);
     else if (durationMs !== undefined && outMs > durationMs)
@@ -100,13 +120,22 @@ export function validate(input: unknown, opts: ValidateOptions = {}): ValidateRe
       }
       if (t.kind === "overlay") {
         const o = item as (typeof t.items)[number];
-        style(o.style, `${path}.style`);
-        if (opts.templates && !opts.templates.includes(o.template))
+        template(o, path);
+        // 卡片必须写尺寸：半屏会让主画面上移、有卡时字幕隐藏，AI 要清楚自己放的是什么（0022）
+        const sizes = opts.templateSizes?.(o.template);
+        if (sizes && sizes.length > 0 && !o.size)
           err(
-            "REF_MISSING",
-            `${path}.template`,
-            `模板「${o.template}」不存在`,
-            "用 mw inspect --templates 查看可用模板",
+            "VALIDATION",
+            `${path}.size`,
+            `「${o.template}」是卡片，要写 size：${sizes.join(" / ")}`,
+          );
+        else if (sizes && o.size && !sizes.includes(o.size))
+          err(
+            "VALIDATION",
+            `${path}.size`,
+            sizes.length > 0
+              ? `「${o.template}」没有 ${o.size} 尺寸，可用：${sizes.join(" / ")}`
+              : `「${o.template}」不是卡片，不能写 size`,
           );
         return;
       }
@@ -133,8 +162,7 @@ export function validate(input: unknown, opts: ValidateOptions = {}): ValidateRe
   });
 
   if (p.outro) asset(p.outro.asset, "outro.asset", ["video", "image"]);
-  if (p.cover?.title && !ids.has(p.cover.title))
-    err("REF_MISSING", "cover.title", `封面标题引用的叠加层「${p.cover.title}」不存在`);
+  if (p.cover?.title) template(p.cover.title, "cover.title");
 
   const captionText = new Map(
     p.tracks.flatMap((t) =>

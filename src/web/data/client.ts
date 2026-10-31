@@ -3,10 +3,12 @@ import {
   type CommentRequest,
   type CommentResponse,
   type CommentStatusRequest,
+  type CoverResponse,
   type EditorResponse,
   type EditorState,
   type ExportStarted,
   type HistoryResponse,
+  type LayoutResponse,
   type LibraryStylesResponse,
   type LintResponse,
   type OpsRequest,
@@ -21,6 +23,7 @@ import {
   type SaveLibraryStyleRequest,
   type ServerEvent,
 } from "../../core/api";
+import type { LayoutInput } from "../../core/layout";
 
 // 界面所有的网络请求都在这里。真实服务端和 mock（VITE_MW_MOCK=1）实现同一个接口，组件不关心是哪一个。
 
@@ -34,6 +37,9 @@ export type Api = {
   saveEditor(editor: EditorState): Promise<void>;
   libraryStyles(): Promise<LibraryStylesResponse>;
   saveLibraryStyle(req: SaveLibraryStyleRequest): Promise<{ ok: true; saved: string }>;
+  /** 账号版式（所有工程共用）；没设置过时 layout 为 null */
+  layout(): Promise<LayoutResponse>;
+  saveLayout(layout: LayoutInput): Promise<LayoutResponse>;
   peaks(assetId: string): Promise<PeaksResponse | null>;
   ops(req: OpsRequest): Promise<OpsResponse>;
   restoreCut(req: RestoreCutRequest): Promise<RestoreCutResponse>;
@@ -41,6 +47,7 @@ export type Api = {
   comment(req: CommentRequest): Promise<CommentResponse>;
   setComment(id: string, req: CommentStatusRequest): Promise<CommentResponse>;
   exportVideo(): Promise<ExportStarted>;
+  cover(): Promise<CoverResponse>;
   /** 订阅推送；返回取消订阅。onStatus 报告连接状态 */
   subscribe(onEvent: (e: LiveEvent) => void, onStatus: (live: boolean) => void): () => void;
 };
@@ -85,6 +92,8 @@ export const httpApi: Api = {
   },
   libraryStyles: () => request(ROUTES.libraryStyles),
   saveLibraryStyle: (req) => request(ROUTES.libraryStyles, { body: req }),
+  layout: () => request(ROUTES.layout),
+  saveLayout: (layout) => request(ROUTES.layout, { method: "PUT", body: layout }),
   peaks: (id) => request<PeaksResponse>(ROUTES.peaks(id)).catch(() => null),
   ops: (req) => request(ROUTES.ops, { body: req }),
   restoreCut: (req) => request(ROUTES.restoreCut, { body: req }),
@@ -92,6 +101,7 @@ export const httpApi: Api = {
   comment: (req) => request(ROUTES.comments, { body: req }),
   setComment: (id, req) => request(ROUTES.comment(id), { body: req }),
   exportVideo: () => request(ROUTES.export, { body: {} }),
+  cover: () => request(ROUTES.cover, { body: {} }),
   subscribe(onEvent, onStatus) {
     const es = new EventSource(ROUTES.events);
     const handle = (m: MessageEvent<string>) => onEvent(JSON.parse(m.data) as ServerEvent);

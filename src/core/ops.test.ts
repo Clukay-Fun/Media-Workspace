@@ -6,7 +6,7 @@ import { type MainClip, Project } from "./schema";
 
 const project = (locked = false) =>
   Project.parse({
-    version: 6,
+    version: 7,
     revision: 3,
     canvas: {},
     assets: { a1: { kind: "video", path: "/raw.mov", probe: { durationMs: 20_000 } } },
@@ -121,6 +121,43 @@ describe("applyOps：原子性和锁定", () => {
   });
 });
 
+describe("卡片尺寸和模板素材（v7）", () => {
+  const opts = {
+    templates: ["card", "bar"],
+    templateSizes: (t: string) => (t === "card" ? ["small", "half"] : []),
+    templateAssets: (o: { props: Record<string, unknown> }) =>
+      typeof o.props.image === "string" ? [o.props.image] : [],
+  };
+  const add = (item: object) =>
+    applyOps(
+      project(),
+      [
+        { op: "track.add", track: { id: "ov", kind: "overlay", items: [] } },
+        {
+          op: "item.add",
+          track: "ov",
+          item: { id: "k", at: { ms: 0 }, durationMs: 1000, ...item },
+        },
+      ],
+      opts,
+    );
+  const issue = (item: object) => fail(() => add(item)).issues[0];
+
+  it("卡片要写 size，尺寸要在模板支持的范围里；不是卡片不能写 size", () => {
+    expect(add({ template: "card", size: "half" }).project).toBeDefined();
+    expect(add({ template: "bar" }).project).toBeDefined();
+    expect(issue({ template: "card" })?.path).toMatch(/size$/);
+    expect(issue({ template: "card", size: "full" })?.path).toMatch(/size$/);
+    expect(issue({ template: "bar", size: "small" })?.path).toMatch(/size$/);
+  });
+
+  it("模板引用的素材要存在", () => {
+    expect(issue({ template: "card", size: "small", props: { image: "zz" } })?.code).toBe(
+      "REF_MISSING",
+    );
+  });
+});
+
 describe("clip.split", () => {
   it("在时间线位置分割，考虑倍速；字幕不需要重新绑定", () => {
     const p = applyOps(project(), [{ op: "item.update", id: "c1", set: { speed: 2 } }]).project;
@@ -213,6 +250,26 @@ describe("字幕快剪", () => {
       ["c1-1", 3900, 10_000],
     ]);
   });
+
+  it("cut.removeSilence 按 PCM 分析后给出的源区间剪主轨，不依赖字幕轨", () => {
+    const p = project();
+    p.tracks = p.tracks.filter((track) => track.kind !== "caption");
+    const r = applyOps(p, [
+      {
+        op: "cut.removeSilence",
+        asset: "a1",
+        ranges: [{ startMs: 3000, endMs: 4000 }],
+        minPauseMs: 600,
+        keepMs: 100,
+      },
+    ]);
+    expect(mainClips(r.project)).toEqual([
+      ["c1", 0, 3000],
+      ["c1-1", 4000, 10_000],
+    ]);
+    expect(r.project.tracks[0]?.items[1]).toMatchObject({ cutBefore: "停顿" });
+    expect(r.project.tracks.some((track) => track.kind === "caption")).toBe(false);
+  });
 });
 
 describe("字幕编辑", () => {
@@ -224,7 +281,7 @@ describe("字幕编辑", () => {
     ]);
   });
 
-  it("逐字时间：拆分时跟着字走、默认在后半句第一个字处断开；合并时拼接；改字数时去掉", () => {
+  it("逐字时间：拆分时跟着字走、默认在后半句第一个字处断开；合并时拼接；改字数时重新分配", () => {
     const p = project();
     const cap = p.tracks[1]?.items as { charStartMs?: number[] }[];
     (cap[0] as { charStartMs?: number[] }).charStartMs = [1000, 1200, 1500, 1700];
@@ -242,11 +299,67 @@ describe("字幕编辑", () => {
     expect(noTiming.tracks[1]?.items[1]).not.toHaveProperty("charStartMs");
     const sameLen = applyOps(p, [{ op: "caption.update", id: "s1", set: { text: "第一句子" } }]);
     expect(sameLen.project.tracks[1]?.items[0]).toHaveProperty("charStartMs");
-    const longer = applyOps(p, [{ op: "caption.update", id: "s1", set: { text: "第一句话呀" } }]);
-    expect(longer.project.tracks[1]?.items[0]).not.toHaveProperty("charStartMs");
+    const longer = applyOps(p, [{ op: "caption.update", id: "s1", set: { text: "第一话呀" } }]);
+    // 没改的字保留时间，删掉的「句」丢掉，新加的「呀」排在后面
+    const times = (longer.project.tracks[1]?.items[0] as { charStartMs: number[] }).charStartMs;
+    expect(times.slice(0, 3)).toEqual([1000, 1200, 1700]);
+    expect(times[3]).toBeGreaterThan(1700);
     expect(() =>
       applyOps(p, [{ op: "caption.update", id: "s2", set: { charStartMs: [1, 2] } }]),
     ).toThrow(MwError);
+  });
+
+  it("caption.split 断开后前半句末尾的顿号不显示", () => {
+    const p = project();
+    (p.tracks[1]?.items[0] as { text: string }).text = "第一、句话";
+    const r = applyOps(p, [{ op: "caption.split", id: "s1", at: 3 }]);
+    expect(r.project.tracks[1]?.items.slice(0, 2)).toEqual([
+      expect.objectContaining({ text: "第一" }),
+      expect.objectContaining({ text: "句话" }),
+    ]);
+  });
+
+  it("caption.reflow 一步按给定的几行重排相邻字幕，逐字时间跟着字走", () => {
+    const p = project();
+    const cap = p.tracks[1]?.items as { charStartMs?: number[] }[];
+    (cap[0] as { charStartMs?: number[] }).charStartMs = [1000, 1200, 1500, 1700];
+    (cap[1] as { charStartMs?: number[] }).charStartMs = [2100, 2400, 2700];
+    const r = applyOps(p, [
+      { op: "caption.reflow", ids: ["s1", "s2"], lines: ["第一句", "话、第二句"] },
+    ]);
+    expect(r.project.tracks[1]?.items.slice(0, 3)).toEqual([
+      expect.objectContaining({
+        id: "s1",
+        startMs: 1000,
+        endMs: 1700,
+        text: "第一句",
+        charStartMs: [1000, 1200, 1500],
+      }),
+      expect.objectContaining({
+        id: "s2",
+        startMs: 1700,
+        endMs: 3000,
+        text: "话、第二句",
+        charStartMs: [1700, 1700, 2100, 2400, 2700],
+      }),
+      expect.objectContaining({ id: "s3" }),
+    ]);
+    // 三行：多出来的一句用新 id
+    const three = applyOps(p, [
+      { op: "caption.reflow", ids: ["s1", "s2"], lines: ["第一", "句话", "第二句"] },
+    ]).project.tracks[1]?.items;
+    expect(three?.map((c) => (c as { text: string }).text)).toEqual([
+      "第一",
+      "句话",
+      "第二句",
+      "第三句",
+    ]);
+    expect(() =>
+      applyOps(p, [{ op: "caption.reflow", ids: ["s1", "s2"], lines: ["第一句话第三句"] }]),
+    ).toThrow(MwError);
+    expect(() =>
+      applyOps(p, [{ op: "caption.reflow", ids: ["s1", "s3"], lines: ["第一句话第三句"] }]),
+    ).toThrow(/相邻/);
   });
 
   it("caption.split 按字数比例分时间，高亮跟着文字走", () => {
@@ -279,6 +392,24 @@ describe("字幕编辑", () => {
     expect(r.project.tracks[1]?.items).toEqual([
       { id: "s1", asset: "a1", startMs: 3100, endMs: 4200, text: "你好", highlights: [] },
     ]);
+  });
+
+  it("caption.add 带逐字时间加字幕，按时间排好；replace 清空原有的", () => {
+    const item = { asset: "a1", startMs: 100, endMs: 600, text: "你好", charStartMs: [100, 300] };
+    const late = { ...item, startMs: 700, endMs: 900, text: "再见", charStartMs: [700, 800] };
+    const r = applyOps(project(), [
+      { op: "caption.add", track: "cap", items: [late, item], mode: "replace" },
+    ]);
+    const caps = r.project.tracks[1]?.items ?? [];
+    expect(caps).toEqual([
+      { ...item, id: expect.any(String), highlights: [] },
+      { ...late, id: expect.any(String), highlights: [] },
+    ]);
+    const more = applyOps(r.project, [{ op: "caption.add", track: "cap", items: [item] }]);
+    expect(more.project.tracks[1]?.items).toHaveLength(3);
+    expect(
+      fail(() => applyOps(project(), [{ op: "caption.add", track: "main", items: [item] }])).code,
+    ).toBe("INVALID_OP");
   });
 
   it("SRT 格式错误报 SRT_PARSE", () => {

@@ -27,6 +27,46 @@ export function alignChars(
 }
 
 /**
+ * 字幕改了字以后重新分配逐字时间：把原来的字和时间当成「识音结果」，和新文字对齐。
+ * 没改的字保留原来的时间，新加的字在前后之间插值，删掉的字丢掉
+ */
+export function remapCharTimes(
+  oldText: string,
+  oldTimes: number[],
+  newText: string,
+  startMs: number,
+  endMs: number,
+): number[] {
+  // 和识音对齐不同，这里只认一模一样的字（最长公共子序列），换掉的字当作新字插值
+  const was = [...oldText].flatMap((c, i) =>
+    SILENT.test(c) ? [] : [{ c: norm(c), ms: oldTimes[i] ?? startMs }],
+  );
+  const chars = [...newText];
+  const voiced = chars.flatMap((c, i) => (SILENT.test(c) ? [] : [i]));
+  const want = voiced.map((i) => norm(chars[i] ?? ""));
+  const n = want.length;
+  const m = was.length;
+  const lcs: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  const at = (i: number, j: number) => lcs[i]?.[j] ?? 0;
+  for (let i = n - 1; i >= 0; i--)
+    for (let j = m - 1; j >= 0; j--)
+      (lcs[i] as number[])[j] =
+        want[i] === was[j]?.c ? at(i + 1, j + 1) + 1 : Math.max(at(i + 1, j), at(i, j + 1));
+  const known: (number | null)[] = new Array(n).fill(null);
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    if (want[i] === was[j]?.c) {
+      known[i] = was[j]?.ms ?? null;
+      i++;
+      j++;
+    } else if (at(i + 1, j) >= at(i, j + 1)) i++;
+    else j++;
+  }
+  return finish(chars, voiced, known, startMs, endMs);
+}
+
+/**
  * 这句话第一个字实际开始念的时间（没对上时为 null）。不限制在字幕范围里：
  * 字幕的开始时间常常比真正开口晚一点，删前一句时会把这句的第一个字剪掉一半（0013 验收发现）
  */
@@ -123,4 +163,35 @@ function finish(
     out.push(prev);
   });
   return out;
+}
+
+/**
+ * 按响度找这一段里最后一处在说话的时刻（毫秒，和 fromMs 同一时间轴），只看 [fromMs, toMs)。
+ * 用 20ms 一窗的 RMS，阈值取这段峰值的 12%（再不低于 0.004，免得把底噪当成说话）；没有声音时返回 null。
+ * SRT 常把句间停顿算进上一句（结束时间 = 下一句开始），按这个时刻收回结束时间，停顿才剪得掉（阶段 E 验收发现）
+ */
+export function speechEndMs(
+  samples: Float32Array,
+  sampleRate: number,
+  startMs: number,
+  fromMs: number,
+  toMs: number,
+): number | null {
+  const win = Math.max(1, Math.round(sampleRate * 0.02));
+  const at = (ms: number) => Math.round(((ms - startMs) / 1000) * sampleRate);
+  const a = Math.max(0, at(fromMs));
+  const b = Math.min(samples.length, at(toMs));
+  const rms: number[] = [];
+  for (let i = a; i + win <= b; i += win) {
+    let sum = 0;
+    for (let j = i; j < i + win; j++) sum += (samples[j] ?? 0) ** 2;
+    rms.push(Math.sqrt(sum / win));
+  }
+  const peak = Math.max(0, ...rms);
+  const threshold = Math.max(peak * 0.12, 0.004);
+  if (peak < threshold) return null;
+  for (let k = rms.length - 1; k >= 0; k--) {
+    if ((rms[k] ?? 0) >= threshold) return startMs + ((a + (k + 1) * win) / sampleRate) * 1000;
+  }
+  return null;
 }

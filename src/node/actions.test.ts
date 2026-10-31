@@ -10,7 +10,7 @@ let root: string;
 let dir: string;
 
 const start = Project.parse({
-  version: 6,
+  version: 7,
   revision: 0,
   canvas: {},
   assets: { a1: { kind: "video", path: "/raw.mov", probe: { durationMs: 20_000 } } },

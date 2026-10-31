@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { compile, layoutMainTrack, mapTimelineMs } from "./compile";
+import { compile, layoutMainTrack, mainShiftAt, mapTimelineMs } from "./compile";
+import { coverView } from "./cover";
 import { Project } from "./schema";
 import { sourceFrameAt } from "./time";
 
 const base = {
-  version: 6,
+  version: 7,
   revision: 0,
   canvas: {},
   assets: {
@@ -415,5 +416,74 @@ describe("schema", () => {
       durationMs: 2400,
     });
     expect(Project.safeParse({ ...base, ...pip("pop") }).success).toBe(false);
+  });
+});
+
+describe("卡片尺寸和半屏让位（v7）", () => {
+  const card = (id: string, ms: number, durationMs: number, size?: string) => ({
+    id,
+    template: "title-bar",
+    at: { ms },
+    durationMs,
+    ...(size ? { size } : {}),
+    props: { lines: ["x"] },
+  });
+  const project = make({
+    tracks: [
+      {
+        id: "main",
+        kind: "video",
+        main: true,
+        items: [{ id: "c1", type: "clip", asset: "a1", inMs: 0, outMs: 10_000 }],
+      },
+      {
+        id: "o",
+        kind: "overlay",
+        items: [
+          card("a", 1000, 2000, "half"),
+          card("b", 2500, 1500, "half"),
+          card("c", 6000, 100, "half"),
+          card("d", 7000, 1000, "small"),
+          card("e", 8000, 1000),
+        ],
+      },
+    ],
+  });
+  const tl = compile(project);
+
+  it("重叠的半屏卡合并成一段，小卡和不是卡片的不让位", () => {
+    expect(tl.overlays.map((o) => o.size)).toEqual(["half", "half", "half", "small", null]);
+    expect(tl.mainShifts).toEqual([
+      { from: 30, to: 120, rampFrames: 12 },
+      { from: 180, to: 183, rampFrames: 1 },
+    ]);
+    // 有卡片（写了 size）的时间段字幕隐藏；没写 size 的不是卡片
+    expect(tl.cardSpans).toEqual([
+      { from: 30, to: 120 },
+      { from: 180, to: 183 },
+      { from: 210, to: 240 },
+    ]);
+  });
+
+  it("上移量：进出缓动，中间保持，段外为 0", () => {
+    expect(mainShiftAt(tl.mainShifts, 29)).toBe(0);
+    expect(mainShiftAt(tl.mainShifts, 30)).toBe(0);
+    expect(mainShiftAt(tl.mainShifts, 36)).toBeCloseTo(0.5);
+    expect(mainShiftAt(tl.mainShifts, 60)).toBe(1);
+    expect(mainShiftAt(tl.mainShifts, 114)).toBeCloseTo(0.5);
+    expect(mainShiftAt(tl.mainShifts, 120)).toBe(0);
+  });
+
+  it("封面只留主轨，再加封面标题", () => {
+    const v = coverView({
+      ...project,
+      cover: { atMs: 1000, title: { template: "title-bar", props: { lines: ["封面"] } } },
+    });
+    expect(v.tracks.map((t) => t.kind)).toEqual(["video", "overlay"]);
+    expect(v.outro).toBeNull();
+    const c = compile(v);
+    expect(c.overlays).toHaveLength(1);
+    expect(c.overlays[0]).toMatchObject({ from: 0, props: { lines: ["封面"] } });
+    expect(coverView({ ...project, cover: null }).tracks).toHaveLength(1);
   });
 });

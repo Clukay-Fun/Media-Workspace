@@ -13,7 +13,7 @@ const styles: Record<string, TextStyle> = {
 
 function make(captions: object[], overlays: object[] = []) {
   return Project.parse({
-    version: 6,
+    version: 7,
     revision: 0,
     canvas: {},
     assets: {
@@ -53,6 +53,58 @@ describe("质检", () => {
     expect(estimateLines("一句", caption).lines).toBe(1);
     // 12 × 84 = 1008 > 859
     expect(estimateLines("一二三四五六七八九十一二", caption).lines).toBe(2);
+  });
+
+  it("有卡时字幕不显示，不算重叠；不是卡片的叠加层照样算", () => {
+    const ov = (size?: string) => ({
+      id: "k",
+      template: "x",
+      ...(size ? { size } : {}),
+      at: { ms: 0 },
+      durationMs: 1000,
+      props: {},
+    });
+    // 盖住字幕位置（约 1115–1215）
+    const bounds: OverlayBounds = () => ({
+      text: [],
+      shapes: [{ x0: 54, y0: 1000, x1: 1026, y1: 1766 }],
+    });
+    const p = (size?: string) => make([cap("s1", 0, "一句")], [ov(size)]);
+    expect(codes(p("half"), { overlayBounds: bounds })).toEqual([]);
+    expect(codes(p("small"), { overlayBounds: bounds })).toEqual([]);
+    expect(codes(p(), { overlayBounds: bounds })).toEqual(["OVERLAP:k"]);
+  });
+
+  it("全屏卡盖住标题条不算遮挡", () => {
+    const ov = (id: string, size?: string) => ({
+      id,
+      template: "x",
+      ...(size ? { size } : {}),
+      at: { ms: 0 },
+      durationMs: 1000,
+      props: {},
+    });
+    const bounds: OverlayBounds = () => ({
+      text: [{ x0: 100, y0: 200, x1: 900, y1: 300 }],
+      shapes: [],
+    });
+    expect(codes(make([], [ov("t"), ov("f", "full")]), { overlayBounds: bounds })).toEqual([]);
+    expect(codes(make([], [ov("t"), ov("f")]), { overlayBounds: bounds })).toEqual(["OVERLAP:f"]);
+  });
+
+  it("卡片太多：10 秒的视频最多 2 张", () => {
+    const ov = (id: string, ms: number) => ({
+      id,
+      template: "x",
+      size: "small",
+      at: { ms },
+      durationMs: 1000,
+      props: {},
+    });
+    expect(codes(make([], [ov("a", 0), ov("b", 3000)]))).toEqual([]);
+    expect(codes(make([], [ov("a", 0), ov("b", 3000), ov("c", 6000)]))).toEqual([
+      "TOO_MANY_CARDS:c",
+    ]);
   });
 
   it("正常字幕没有问题", () => {
@@ -133,5 +185,60 @@ describe("质检", () => {
     expect(codes(p, { faces: { a1: face(0.58) } })).toEqual(["FACE_COVERED:s1"]);
     // 脸在画面上方
     expect(codes(p, { faces: { a1: face(0.2) } })).toEqual([]);
+  });
+});
+
+describe("质检：账号版式", () => {
+  const face: FaceTrack = {
+    intervalMs: 500,
+    frames: [250, 750, 1250].map((ms) => ({ ms, boxes: [{ x: 0.4, y: 0.4, w: 0.2, h: 0.1 }] })),
+  };
+  const layout = (f: { cx: number; top: number; bottom: number }) => ({
+    face: f,
+    captionStyle: null,
+    titleStyle: null,
+  });
+
+  it("人物位置偏离版式时报 FACE_OFF_LAYOUT，按版式摆好就不报", () => {
+    const p = make([]);
+    // 没缩放时脸在 x 中心 0.5、上沿 0.4、高 0.1
+    expect(
+      codes(p, { faces: { a1: face }, layout: layout({ cx: 0.5, top: 0.4, bottom: 0.5 }) }),
+    ).toEqual([]);
+    const off = lintProject(p, {
+      styles,
+      faces: { a1: face },
+      layout: layout({ cx: 0.5, top: 0.36, bottom: 0.5 }),
+    });
+    expect(off.map((i) => i.code)).toEqual(["FACE_OFF_LAYOUT"]);
+    expect(off[0]?.message).toContain("偏下");
+    expect(off[0]?.message).toContain("脸小了 29%");
+  });
+
+  it("主轨倍速和账号设置不一致时提示", () => {
+    const p = make([]);
+    const r = lintProject(p, {
+      styles,
+      layout: { face: null, captionStyle: null, titleStyle: null, speed: 1.1 },
+    });
+    expect(r.find((i) => i.code === "SPEED_NOT_LAYOUT")).toMatchObject({ id: "c1", level: "hint" });
+    expect(
+      codes(p, { layout: { face: null, captionStyle: null, titleStyle: null, speed: 1 } }),
+    ).toEqual([]);
+  });
+
+  it("有账号版式时安全区降为提示；字幕样式和版式不一致时提示", () => {
+    const p = make([cap("s1", 0, "一句", "low")]);
+    const plain = lintProject(p, { styles });
+    expect(plain.find((i) => i.code === "TEXT_OUTSIDE_SAFE_AREA")?.level).toBeUndefined();
+    const withLayout = lintProject(p, {
+      styles,
+      layout: { face: null, captionStyle: "caption-word-yellow", titleStyle: null },
+    });
+    expect(withLayout.find((i) => i.code === "TEXT_OUTSIDE_SAFE_AREA")?.level).toBe("hint");
+    expect(withLayout.find((i) => i.code === "STYLE_NOT_LAYOUT")).toMatchObject({
+      id: "s1",
+      level: "hint",
+    });
   });
 });

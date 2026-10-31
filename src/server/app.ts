@@ -18,9 +18,10 @@ import {
   UndoRequest,
 } from "../core/api";
 import { MwError } from "../core/errors";
+import { Layout } from "../core/layout";
 import { zodIssues } from "../core/validate";
-import { lintDir, restoreCut, templateOpts } from "../node/actions";
-import { listStyles, saveStyle } from "../node/library";
+import { coverProject, lintDir, restoreCut, templateOpts } from "../node/actions";
+import { getLayout, listStyles, saveStyle, setLayout } from "../node/library";
 import { buildProps } from "../node/render";
 import {
   applyToProject,
@@ -132,6 +133,11 @@ export function createApp(ctx: AppContext): Hono {
     return c.json({ ok: true, saved: saved.name });
   });
 
+  app.get(ROUTES.layout, async (c) => c.json({ ok: true, layout: await getLayout() }));
+  app.put(ROUTES.layout, async (c) =>
+    c.json({ ok: true, layout: await setLayout(await body(c, Layout)) }),
+  );
+
   app.get(ROUTES.lint, async (c) => c.json(await lintDir(ctx.dir)));
 
   app.get(ROUTES.comments, async (c) => c.json({ ok: true, review: await loadReview(ctx.dir) }));
@@ -192,6 +198,8 @@ export function createApp(ctx: AppContext): Hono {
     const req = await body(c, ExportRequest);
     return c.json({ ok: true, jobId: ctx.exports.start(req.out) });
   });
+
+  app.post(ROUTES.cover, async (c) => c.json(await coverProject(ctx.dir)));
 
   app.get(ROUTES.events, (c) =>
     streamSSE(c, async (stream) => {

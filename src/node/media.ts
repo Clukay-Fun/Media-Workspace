@@ -343,6 +343,42 @@ function runFfmpeg(args: string[]): Promise<void> {
 
 export type Peaks = { msPerPeak: number; peaks: number[] };
 
+/** 解码成 8kHz 单声道归一化 PCM，供静音分析使用；原始素材保持只读。 */
+export async function decodeAudioSamples(file: string, sampleRate = 8000): Promise<Float32Array> {
+  let stdout: Buffer;
+  try {
+    ({ stdout } = await run(
+      ffmpegBin(),
+      [
+        "-v",
+        "error",
+        "-i",
+        file,
+        "-map",
+        "0:a:0",
+        "-vn",
+        "-ac",
+        "1",
+        "-ar",
+        String(sampleRate),
+        "-f",
+        "f32le",
+        "-",
+      ],
+      { maxBuffer: 1 << 30, encoding: "buffer" },
+    ));
+  } catch (e) {
+    throw new MwError("MEDIA", `无法解码音频：${file}`, {
+      hint: String((e as Error).message).slice(0, 300),
+    });
+  }
+  const bytes = stdout.byteLength - (stdout.byteLength % 4);
+  const view = new DataView(stdout.buffer, stdout.byteOffset, bytes);
+  const samples = new Float32Array(bytes / 4);
+  for (let i = 0; i < samples.length; i++) samples[i] = view.getFloat32(i * 4, true);
+  return samples;
+}
+
 /** 波形：每 10ms 取一个峰值（0–1），时间线上显示，帮助找停顿 */
 export async function computePeaks(file: string, msPerPeak = 10): Promise<Peaks> {
   const rate = 8000;

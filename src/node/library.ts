@@ -1,10 +1,12 @@
+import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { z } from "zod";
 import type { LibraryStyle } from "../core/api";
 import { MwError } from "../core/errors";
+import { Layout, type LayoutInput } from "../core/layout";
 import { BUILTIN_STYLES } from "../core/presets";
-import { Id } from "../core/schema";
+import { Id, Transition } from "../core/schema";
 import { TextStyle } from "../core/text-style";
 import { mwHome } from "./paths";
 import { applyToProject, loadProject, type Source } from "./store";
@@ -120,4 +122,83 @@ export async function removeStyle(name: string): Promise<{ ok: true; removed: st
   const s = await getStyle(name);
   await rm(fileOf(s.name));
   return { ok: true, removed: s.name };
+}
+
+// 默认片尾（阶段 E，docs/decisions/0023）：~/MediaWorkspace/library/outro.json 记一个视频文件的路径和接上去的方式。
+// 「接上默认片尾」时导入这个文件（原文件只读，标准化文件放进工程 cache），再 outro.set。
+
+export function outroDefaultFile(): string {
+  return join(mwHome(), "library", "outro.json");
+}
+
+export const OutroDefault = z.strictObject({
+  file: z.string().min(1),
+  /** null = 硬切 */
+  transitionIn: Transition.nullable().default({ type: "fade", durationMs: 300 }),
+  gainDb: z.number().min(-60).max(20).default(0),
+  savedAt: z.string(),
+});
+export type OutroDefault = z.infer<typeof OutroDefault>;
+
+/** 没设置过时返回 null；文件坏了报错（不要悄悄当成没有） */
+export async function getDefaultOutro(): Promise<OutroDefault | null> {
+  const f = outroDefaultFile();
+  if (!existsSync(f)) return null;
+  const r = OutroDefault.safeParse(JSON.parse(await readFile(f, "utf8")));
+  if (!r.success) {
+    throw new MwError("VALIDATION", `默认片尾的设置文件坏了：${f}`, {
+      hint: "用 mw outro-default <视频文件> 重新设置",
+    });
+  }
+  return r.data;
+}
+
+/** 设置默认片尾：只记路径，不复制文件；fadeMs = 0 表示硬切 */
+export async function setDefaultOutro(
+  file: string,
+  o: { fadeMs?: number; gainDb?: number } = {},
+): Promise<OutroDefault> {
+  const abs = resolve(file);
+  if (!existsSync(abs)) throw new MwError("MEDIA", `文件不存在：${abs}`);
+  const entry = OutroDefault.parse({
+    file: abs,
+    ...(o.fadeMs === undefined
+      ? {}
+      : { transitionIn: o.fadeMs > 0 ? { type: "fade", durationMs: o.fadeMs } : null }),
+    ...(o.gainDb === undefined ? {} : { gainDb: o.gainDb }),
+    savedAt: new Date().toISOString(),
+  });
+  await mkdir(join(mwHome(), "library"), { recursive: true });
+  await writeFile(outroDefaultFile(), `${JSON.stringify(entry, null, 2)}\n`);
+  return entry;
+}
+
+// 账号版式（阶段 F，docs/decisions/0025）：~/MediaWorkspace/library/layout.json，所有工程共用。
+
+export function layoutFile(): string {
+  return join(mwHome(), "library", "layout.json");
+}
+
+/** 没设置过时返回 null；文件坏了报错 */
+export async function getLayout(): Promise<Layout | null> {
+  const f = layoutFile();
+  if (!existsSync(f)) return null;
+  const r = Layout.safeParse(JSON.parse(await readFile(f, "utf8")));
+  if (!r.success) {
+    throw new MwError("VALIDATION", `账号版式文件坏了：${f}`, {
+      hint: "用 mw layout --file <json> 重新设置",
+    });
+  }
+  return r.data;
+}
+
+/** 整份替换账号版式 */
+export async function setLayout(input: LayoutInput): Promise<Layout> {
+  const r = Layout.safeParse({ ...input, savedAt: new Date().toISOString() });
+  if (!r.success) {
+    throw new MwError("VALIDATION", `版式不合法：${r.error.issues[0]?.message ?? ""}`);
+  }
+  await mkdir(join(mwHome(), "library"), { recursive: true });
+  await writeFile(layoutFile(), `${JSON.stringify(r.data, null, 2)}\n`);
+  return r.data;
 }

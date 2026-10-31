@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alignChars, speechOnsetMs } from "./align";
+import { alignChars, speechEndMs, speechOnsetMs } from "./align";
 
 const tok = (s: string, times: number[]) =>
   [...s].map((text, i) => ({ text, startMs: times[i] ?? 0 }));
@@ -53,13 +53,32 @@ describe("alignChars", () => {
 
 describe("speechOnsetMs", () => {
   it("第一个字实际开口的时间，可以早于字幕开始；前面多识别出的上一句的字不算", () => {
-    // 字幕从 1000 开始，「涉」在 880 就念了；「呢」是上一句的尾巴
-    const heard = tok("呢涉及取得", [700, 880, 1040, 1200, 1350]);
-    expect(speechOnsetMs("涉及取得", heard, 2000)).toBe(880);
-    expect(alignChars("涉及取得", heard, 1000, 2000)[0]).toBe(1000);
+    // 字幕从 1000 开始，「今」在 880 就念了；「吧」是上一句的尾巴
+    const heard = tok("吧今天出门", [700, 880, 1040, 1200, 1350]);
+    expect(speechOnsetMs("今天出门", heard, 2000)).toBe(880);
+    expect(alignChars("今天出门", heard, 1000, 2000)[0]).toBe(1000);
   });
 
   it("什么都没对上时为 null", () => {
-    expect(speechOnsetMs("涉及", [], 2000)).toBeNull();
+    expect(speechOnsetMs("今天", [], 2000)).toBeNull();
+  });
+});
+
+describe("speechEndMs", () => {
+  // 16k：0–1000ms 有声音（正弦），之后 1000ms 静音，再加一点底噪
+  const rate = 16_000;
+  const samples = new Float32Array(rate * 2).map((_, i) =>
+    i < rate ? 0.3 * Math.sin(i / 5) : 0.001 * Math.sin(i),
+  );
+
+  it("找到最后一处说话的时刻（按 20ms 一窗）", () => {
+    const end = speechEndMs(samples, rate, 500, 500, 2500);
+    expect(end).toBeGreaterThanOrEqual(1480);
+    expect(end).toBeLessThanOrEqual(1520);
+  });
+
+  it("只看给定的范围；全是静音时返回 null", () => {
+    expect(speechEndMs(samples, rate, 500, 1600, 2500)).toBeNull();
+    expect(speechEndMs(new Float32Array(rate), rate, 0, 0, 1000)).toBeNull();
   });
 });

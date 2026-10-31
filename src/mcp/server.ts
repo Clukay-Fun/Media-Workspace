@@ -3,23 +3,38 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { MwError } from "../core/errors";
+import { Layout, LayoutFace } from "../core/layout";
 import {
   alignProject,
+  attachOutro,
   commentsInfo,
+  compareProject,
   coverProject,
   exportProject,
   facesProject,
+  frameProject,
   guideInfo,
   importAsset,
   inspectProject,
   lintDir,
   previewProject,
+  removeOutro,
+  removeSilenceProject,
   restoreCut,
   templateOpts,
   templatesInfo,
+  transcribeProject,
   validateDir,
 } from "../node/actions";
-import { listStyles, removeStyle, saveStyle, useStyle } from "../node/library";
+import {
+  getLayout,
+  layoutFile,
+  listStyles,
+  removeStyle,
+  saveStyle,
+  setLayout,
+  useStyle,
+} from "../node/library";
 import { resolveProjectDir } from "../node/paths";
 import {
   applyToProject,
@@ -202,21 +217,91 @@ export function createMcpServer(): McpServer {
   );
 
   server.registerTool(
-    "import",
+    "remove-silence",
     {
       description:
-        "导入素材文件（视频、音频、图片）：probe、必要时转标准化文件和预览代理，然后提交 asset.add",
+        "从主轨视频素材的音频中找静音并剪掉停顿，不依赖字幕或识音模型。minPauseMs 是最短静音时长，keepMs 是静音段两端各保留的时长（默认 120，edgesOnly 时 300）；" +
+        "edgesOnly 只剪开头和结尾的空白、句中停顿保留（人没说要剪停顿时用这个），不会剪进字幕",
       inputSchema: {
         project,
-        file: z.string().min(1).describe("素材的绝对路径"),
-        id: z.string().optional(),
+        minPauseMs: z.number().int().positive().default(400),
+        keepMs: z.number().int().nonnegative().optional(),
+        edgesOnly: z.boolean().default(false),
         baseRevision: base.optional(),
         actor,
       },
     },
-    ({ project: p, file, id, baseRevision, actor: a }) =>
+    ({ project: p, minPauseMs, keepMs, edgesOnly, baseRevision, actor: a }) =>
+      call(() =>
+        removeSilenceProject(dirOf(p), {
+          minPauseMs,
+          keepMs,
+          edgesOnly,
+          baseRevision,
+          source: "mcp",
+          actor: a,
+        }),
+      ),
+  );
+
+  server.registerTool(
+    "compare",
+    {
+      description:
+        "比较工程和参考成片，生成同一时间点并排 PNG，并返回时长、剪切点、人脸位置和字幕换行差异 JSON",
+      inputSchema: {
+        project,
+        reference: z.string().min(1).describe("参考成片的绝对路径"),
+        atMs: z.number().int().nonnegative().optional(),
+        out: z.string().optional(),
+        sceneThreshold: z.number().positive().max(1).default(0.3),
+        cutToleranceMs: z.number().int().nonnegative().default(500),
+        faceIntervalMs: z.number().int().min(250).default(1000),
+      },
+    },
+    ({ project: p, reference, atMs, out, sceneThreshold, cutToleranceMs, faceIntervalMs }) =>
       call(async () => {
-        const r = await importAsset(dirOf(p), file, { id, baseRevision, source: "mcp", actor: a });
+        const result = await compareProject(dirOf(p), reference, {
+          atMs,
+          out,
+          sceneThreshold,
+          cutToleranceMs,
+          faceIntervalMs,
+        });
+        const data = (await readFile(result.comparisonImage)).toString("base64");
+        return {
+          content: [
+            { type: "text", text: JSON.stringify(result, null, 2) },
+            { type: "image", data, mimeType: "image/png" },
+          ],
+        } satisfies Result;
+      }),
+  );
+
+  server.registerTool(
+    "import",
+    {
+      description:
+        "导入素材文件（视频、音频、图片）：probe、必要时转标准化文件和预览代理，然后提交 asset.add；" +
+        "主轨空着时视频整段放上主轨（倍速按账号设置，返回 mainClip），main=false 只导入",
+      inputSchema: {
+        project,
+        file: z.string().min(1).describe("素材的绝对路径"),
+        id: z.string().optional(),
+        main: z.boolean().optional(),
+        baseRevision: base.optional(),
+        actor,
+      },
+    },
+    ({ project: p, file, id, main, baseRevision, actor: a }) =>
+      call(async () => {
+        const r = await importAsset(dirOf(p), file, {
+          id,
+          main,
+          baseRevision,
+          source: "mcp",
+          actor: a,
+        });
         const content: Content[] = [{ type: "text", text: JSON.stringify(r, null, 2) }];
         // 烧录字幕检查图直接给 AI 看
         if (r.subtitleCheck) {
@@ -271,6 +356,84 @@ export function createMcpServer(): McpServer {
   );
 
   server.registerTool(
+    "layout",
+    {
+      description:
+        "账号版式（所有工程共用）：参考线、人脸框该落在哪、标题和字幕用哪个样式。不给 layout 时读；给了整份替换。" +
+        "位置都是占画面宽 / 高的比例（0–1）",
+      inputSchema: {
+        layout: Layout.optional().describe("新的整份版式；不给时只读"),
+      },
+    },
+    ({ layout }) =>
+      call(async () => ({
+        ok: true,
+        file: layoutFile(),
+        layout: layout ? await setLayout(layout) : await getLayout(),
+      })),
+  );
+
+  server.registerTool(
+    "frame",
+    {
+      description:
+        "按账号版式摆人物：按人脸检测算主轨片段的缩放和位置，让人脸框落在版式的 face 上（同一素材的片段用同一套取景，有关键帧的不动）。" +
+        "人物位置一律用它，不要手调 transform；clamped 为 true 表示为了不露黑边脸会偏大或偏一点",
+      inputSchema: {
+        project,
+        face: LayoutFace.optional().describe("这次用的人脸位置，不给时用账号版式的 face"),
+        baseRevision: base.optional(),
+        actor,
+        dryRun: z.boolean().default(false),
+      },
+    },
+    ({ project: p, face, baseRevision, actor: a, dryRun }) =>
+      call(() =>
+        frameProject(dirOf(p), {
+          ...(face ? { face } : {}),
+          baseRevision,
+          dryRun,
+          source: "mcp",
+          actor: a,
+        }),
+      ),
+  );
+
+  server.registerTool(
+    "transcribe",
+    {
+      description:
+        "从原片识音出字幕（不需要 SRT）：按停顿、标点、词边界断成一行一句，带逐字时间，默认清空原有字幕。" +
+        "给文稿（纯文本）时字以文稿为准、时间用识音的；返回的 check 是漏读 / 多读 / 改口，要给用户确认；" +
+        "splitLines 是太长被切开的行，读一遍不顺就用 caption.split / caption.merge 调",
+      inputSchema: {
+        project,
+        script: z.string().optional().describe("文稿纯文本；不给时用工程里存过的 script.txt"),
+        asset: z.string().optional().describe("识哪个素材，默认主轨第一段视频"),
+        maxChars: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("一行最多几个字，默认按字幕样式算"),
+        mode: z.enum(["replace", "append"]).default("replace"),
+        baseRevision: base.optional(),
+        actor,
+        dryRun: z.boolean().default(false),
+      },
+    },
+    ({ project: p, baseRevision, actor: a, ...o }) =>
+      call(() =>
+        transcribeProject(dirOf(p), {
+          ...o,
+          baseRevision,
+          source: "mcp",
+          actor: a,
+        }),
+      ),
+  );
+
+  server.registerTool(
     "preview",
     {
       description:
@@ -313,6 +476,32 @@ export function createMcpServer(): McpServer {
       inputSchema: { project, out: z.string().optional() },
     },
     ({ project: p, out }) => call(() => coverProject(dirOf(p), { out })),
+  );
+
+  server.registerTool(
+    "outro",
+    {
+      description:
+        "接上片尾：不给 file 时用用户设置的默认片尾（没设置会报 NOT_FOUND，请用户用 mw outro-default 设置）；remove 去掉片尾。fadeMs 叠化时长，0 = 硬切",
+      inputSchema: {
+        project,
+        file: z.string().optional(),
+        fadeMs: z.number().int().min(0).max(5000).optional(),
+        remove: z.boolean().optional(),
+        actor,
+      },
+    },
+    ({ project: p, file, fadeMs, remove, actor: a }) =>
+      call(() =>
+        remove
+          ? removeOutro(dirOf(p), { source: "mcp", actor: a })
+          : attachOutro(dirOf(p), {
+              source: "mcp",
+              actor: a,
+              ...(file === undefined ? {} : { file }),
+              ...(fadeMs === undefined ? {} : { fadeMs }),
+            }),
+      ),
   );
 
   server.registerTool(

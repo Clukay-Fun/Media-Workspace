@@ -4,20 +4,26 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 import { compile, type ResolvedTimeline } from "../core/compile";
+import { coverView } from "../core/cover";
 import { MwError } from "../core/errors";
+import { type FramePlan, planFrame, typicalFace } from "../core/frame";
+import { guidesInPx, type LayoutFace } from "../core/layout";
 import { lintProject } from "../core/lint";
 import { Op } from "../core/ops";
 import { BUILTIN_STYLES } from "../core/presets";
 import { SAFE_AREAS, type SafeAreaName, safeAreaFor } from "../core/safe-area";
-import type { Caption, MainClip } from "../core/schema";
-import { AnimPresetName, TextStyle } from "../core/text-style";
+import { type Caption, isMainClip, type MainClip } from "../core/schema";
+import { detectSilence, edgeCutRanges, edgeSilences, silenceCutRanges } from "../core/silence";
+import { AnimPresetName, charsPerLine, TextStyle } from "../core/text-style";
 import { msToFrame } from "../core/time";
+import { alignScript, type ScriptDiff, segmentLines } from "../core/transcribe";
 import { validate } from "../core/validate";
 import { PROJECT_FORMAT_VERSION } from "../core/version";
-import { TEMPLATE_NAMES, TEMPLATES } from "../templates";
-import { alignCaptions } from "./asr";
+import { overlayAssets, overlayBounds, TEMPLATE_NAMES, TEMPLATES } from "../templates";
+import { alignCaptions, transcribeFile } from "./asr";
 import { detectFaces, readFaces } from "./faces";
-import { importMedia } from "./media";
+import { getDefaultOutro, getLayout } from "./library";
+import { decodeAudioSamples, importMedia, probeMedia } from "./media";
 import { projectFiles } from "./paths";
 import { exportVideo, renderStills } from "./render";
 import {
@@ -30,10 +36,17 @@ import {
   type Source,
 } from "./store";
 
+export type { CompareProjectOptions } from "./compare";
+export { compareProject } from "./compare";
+
 // CLI、MCP、本地服务共用的操作（AGENTS.md 第 2 节：三个外壳只做参数解析和输出格式）。
 
 const run = promisify(execFile);
-export const templateOpts = { templates: TEMPLATE_NAMES };
+export const templateOpts = {
+  templates: TEMPLATE_NAMES,
+  templateAssets: overlayAssets,
+  templateSizes: (t: string) => TEMPLATES[t]?.meta.sizes,
+};
 
 export type Actor = { source: Source; actor: string };
 
@@ -41,7 +54,14 @@ export type Actor = { source: Source; actor: string };
 export async function importAsset(
   dir: string,
   file: string,
-  o: Actor & { id?: string; baseRevision?: number; proxy?: boolean; onLog?: (s: string) => void },
+  o: Actor & {
+    id?: string;
+    baseRevision?: number;
+    proxy?: boolean;
+    /** 主轨还空着时把这段视频整段放上主轨（按账号设置的倍速）；false = 只导入素材 */
+    main?: boolean;
+    onLog?: (s: string) => void;
+  },
 ) {
   const p = await loadProject(dir);
   const r = await importMedia(dir, resolve(file), {
@@ -49,8 +69,47 @@ export async function importAsset(
     fps: p.canvas.fps,
     onLog: o.onLog,
   });
+  const taken = new Set([
+    ...Object.keys(p.assets),
+    ...p.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)]),
+  ]);
+  const fresh = (prefix: string) => {
+    let n = 1;
+    while (taken.has(`${prefix}${n}`)) n++;
+    taken.add(`${prefix}${n}`);
+    return `${prefix}${n}`;
+  };
+  const id = o.id ?? fresh("a");
+  const main = p.tracks.find((t) => t.kind === "video" && t.main);
+  const durationMs = r.asset.probe?.durationMs ?? 0;
+  const toMain =
+    o.main !== false &&
+    r.asset.kind === "video" &&
+    durationMs > 0 &&
+    main &&
+    main.items.length === 0;
+  const speed = toMain ? ((await getLayout().catch(() => null))?.speed ?? 1) : 1;
+  const clip = toMain ? fresh("c") : undefined;
   const res = await applyToProject(dir, {
-    ops: [{ op: "asset.add", ...(o.id ? { id: o.id } : {}), asset: r.asset }],
+    ops: [
+      { op: "asset.add", id, asset: r.asset },
+      ...(toMain && main && clip
+        ? [
+            {
+              op: "item.add" as const,
+              track: main.id,
+              item: {
+                id: clip,
+                type: "clip",
+                asset: id,
+                inMs: 0,
+                outMs: durationMs,
+                speed,
+              },
+            },
+          ]
+        : []),
+    ],
     baseRevision: o.baseRevision ?? p.revision,
     source: o.source,
     actor: o.actor,
@@ -58,7 +117,9 @@ export async function importAsset(
   });
   return {
     ...res,
-    asset: res.changed[0],
+    asset: id,
+    // 主轨原来是空的：整段放上了主轨，倍速按账号设置
+    ...(clip ? { mainClip: clip, speed } : {}),
     probe: r.probe,
     created: r.created,
     ...(r.subtitleCheck
@@ -68,6 +129,195 @@ export async function importAsset(
         }
       : {}),
   };
+}
+
+/** 按主轨视频素材的音频静音段剪停顿，不需要字幕轨或识音模型。 */
+export async function removeSilenceProject(
+  dir: string,
+  o: Actor & {
+    minPauseMs?: number;
+    keepMs?: number;
+    /** 只剪开头和结尾的空白，句中停顿保留 */
+    edgesOnly?: boolean;
+    baseRevision?: number;
+    onLog?: (s: string) => void;
+  },
+) {
+  const minPauseMs = o.minPauseMs ?? 400;
+  // 头尾留得比句中停顿多：用户自己剪的片子开口前、说完后各留大约 0.3 秒（样片实测），尾音不会被切掉
+  const keepMs = o.keepMs ?? (o.edgesOnly ? 300 : 120);
+  if (!Number.isInteger(minPauseMs) || minPauseMs <= 0)
+    throw new MwError("USAGE", "minPauseMs 必须是正整数");
+  if (!Number.isInteger(keepMs) || keepMs < 0) throw new MwError("USAGE", "keepMs 必须是非负整数");
+
+  const project = await loadProject(dir);
+  const main = project.tracks.find((track) => track.kind === "video" && track.main);
+  if (!main || main.kind !== "video") throw new MwError("NOT_FOUND", "工程里没有主轨");
+  if (main.locked) {
+    throw new MwError("TRACK_LOCKED", `轨道「${main.name ?? main.id}」已锁定`, {
+      hint: "先解锁主轨，再剪停顿",
+    });
+  }
+
+  const assetIds = [...new Set(main.items.filter(isMainClip).map((clip) => clip.asset))];
+  const reports: {
+    asset: string;
+    path: string;
+    status: "analyzed" | "no-audio";
+    silences: number;
+    ranges: { startMs: number; endMs: number }[];
+  }[] = [];
+  const ops: Extract<Op, { op: "cut.removeSilence" }>[] = [];
+  for (const assetId of assetIds) {
+    const asset = project.assets[assetId];
+    if (!asset) continue;
+    const file = resolve(dir, asset.path);
+    const probe = asset.probe?.hasAudio === undefined ? await probeMedia(file) : null;
+    const hasAudio = asset.probe?.hasAudio ?? probe?.hasAudio ?? false;
+    if (!hasAudio) {
+      reports.push({ asset: assetId, path: file, status: "no-audio", silences: 0, ranges: [] });
+      continue;
+    }
+    o.onLog?.(`分析静音：${file}`);
+    const sampleRate = 8000;
+    const samples = await decodeAudioSamples(file, sampleRate);
+    const found = detectSilence(samples, sampleRate, { minPauseMs });
+    const totalMs = (samples.length / sampleRate) * 1000;
+    const silences = o.edgesOnly ? edgeSilences(found, totalMs) : found;
+    // 剪头尾时不剪进字幕：第一句出现之前、最后一句消失之后才剪
+    const caps = project.tracks
+      .flatMap((t) => (t.kind === "caption" ? t.items : []))
+      .filter((c) => c.asset === assetId);
+    const firstCap = Math.min(...caps.map((c) => c.startMs));
+    const lastCap = Math.max(...caps.map((c) => c.endMs));
+    const ranges = (
+      o.edgesOnly
+        ? edgeCutRanges(silences, totalMs, keepMs).map((r) =>
+            r.startMs === 0
+              ? { ...r, endMs: Math.min(r.endMs, firstCap) }
+              : { ...r, startMs: Math.max(r.startMs, lastCap) },
+          )
+        : silenceCutRanges(silences, keepMs)
+    )
+      .map((range) => ({
+        startMs: Math.max(0, Math.ceil(range.startMs)),
+        endMs: Math.floor(range.endMs),
+      }))
+      .filter((range) => range.endMs > range.startMs);
+    reports.push({
+      asset: assetId,
+      path: file,
+      status: "analyzed",
+      silences: silences.length,
+      ranges,
+    });
+    if (ranges.length > 0)
+      ops.push({ op: "cut.removeSilence", asset: assetId, ranges, minPauseMs, keepMs });
+  }
+
+  if (ops.length === 0) {
+    return {
+      ok: true as const,
+      revision: project.revision,
+      changed: [] as string[],
+      minPauseMs,
+      keepMs,
+      assets: reports,
+      removedPauseCount: 0,
+      removedMs: 0,
+    };
+  }
+  const result = await applyToProject(dir, {
+    ops,
+    baseRevision: o.baseRevision ?? project.revision,
+    source: o.source,
+    actor: o.actor,
+    ...templateOpts,
+  });
+  return {
+    ...result,
+    minPauseMs,
+    keepMs,
+    assets: reports,
+    removedPauseCount: ops.reduce((sum, op) => sum + op.ranges.length, 0),
+    removedMs: ops.reduce(
+      (sum, op) => sum + op.ranges.reduce((total, range) => total + range.endMs - range.startMs, 0),
+      0,
+    ),
+  };
+}
+
+/**
+ * 接上片尾：不给文件时用默认片尾（mw outro-default）。同一个文件已经导入过就直接用那个素材，
+ * 否则先导入（素材 ID 优先用 outro）。fadeMs 不写时用默认片尾的设置，0 = 硬切
+ */
+export async function attachOutro(
+  dir: string,
+  o: Actor & { file?: string; fadeMs?: number; onLog?: (s: string) => void },
+) {
+  const def = o.file === undefined ? await getDefaultOutro() : null;
+  if (o.file === undefined && !def) {
+    throw new MwError("NOT_FOUND", "还没有设置默认片尾", {
+      hint: "用 mw outro-default <视频文件> 设置一个，或者直接给出片尾文件",
+    });
+  }
+  const file = resolve(o.file ?? def?.file ?? "");
+  let p = await loadProject(dir);
+  let asset = Object.entries(p.assets).find(([, a]) => resolve(dir, a.path) === file)?.[0];
+  if (!asset) {
+    const r = await importAsset(dir, file, {
+      ...(p.assets.outro ? {} : { id: "outro" }),
+      main: false,
+      source: o.source,
+      actor: o.actor,
+      onLog: o.onLog,
+    });
+    asset = r.asset;
+    p = await loadProject(dir);
+  }
+  const transitionIn =
+    o.fadeMs === undefined
+      ? def
+        ? def.transitionIn
+        : { type: "fade" as const, durationMs: 300 }
+      : o.fadeMs > 0
+        ? { type: "fade" as const, durationMs: o.fadeMs }
+        : null;
+  const res = await applyToProject(dir, {
+    ops: [
+      {
+        op: "outro.set",
+        outro: {
+          asset,
+          ...(transitionIn ? { transitionIn } : {}),
+          ...(def ? { gainDb: def.gainDb } : {}),
+        },
+      },
+    ],
+    baseRevision: p.revision,
+    source: o.source,
+    actor: o.actor,
+    ...templateOpts,
+  });
+  // outro.set 不改任何条目，changed 里写上片尾素材，免得看起来什么都没改（素材是新导入时版本号会加 2）
+  return {
+    ...res,
+    changed: [...new Set([asset, ...res.changed])],
+    outro: asset,
+    file,
+    usedDefault: def !== null,
+  };
+}
+
+export async function removeOutro(dir: string, o: Actor) {
+  const p = await loadProject(dir);
+  return applyToProject(dir, {
+    ops: [{ op: "outro.remove" }],
+    baseRevision: p.revision,
+    source: o.source,
+    actor: o.actor,
+    ...templateOpts,
+  });
 }
 
 /** 质检（docs/decisions/0007）：字号、安全区、字幕行数、遮挡、挡脸。都是警告，不阻止导出 */
@@ -81,12 +331,9 @@ export async function lintDir(dir: string) {
   const issues = lintProject(p, {
     styles: { ...BUILTIN_STYLES, ...p.styles },
     faces,
-    overlayBounds: (o, style) => {
-      const tpl = TEMPLATES[o.template];
-      const props = tpl?.schema.safeParse(o.props);
-      if (!tpl?.bounds || !props?.success) return { text: [], shapes: [] };
-      return tpl.bounds(props.data, style, p.canvas.width, p.canvas.height);
-    },
+    layout: await getLayout().catch(() => null),
+    overlayBounds: (o, style) => overlayBounds(o, style, p.canvas.width, p.canvas.height),
+    overlayStyle: (t) => TEMPLATES[t]?.meta.defaultStyle,
   });
   const videos = Object.entries(p.assets).filter(([, a]) => a.kind === "video");
   return {
@@ -126,6 +373,91 @@ export async function facesProject(dir: string, o: Actor & { onLog?: (s: string)
     ...templateOpts,
   });
   return { ...r, detected: ops.map((x) => (x as { id: string }).id), skipped };
+}
+
+/**
+ * 按账号版式摆人物（阶段 F，docs/decisions/0025）：按人脸检测结果算主轨片段的缩放和位置，让人脸框落在版式的 face 上。
+ * 同一个素材的片段用同一套取景（剪辑点前后人物不跳），有关键帧的片段不动（列在 skipped 里）。
+ * 还没有人脸数据时先做检测。
+ */
+export async function frameProject(
+  dir: string,
+  o: Actor & {
+    face?: LayoutFace;
+    baseRevision?: number;
+    dryRun?: boolean;
+    onLog?: (s: string) => void;
+  },
+) {
+  const target = o.face ?? (await getLayout())?.face ?? null;
+  if (!target) {
+    throw new MwError("NOT_FOUND", "账号版式里还没有人脸位置", {
+      hint: "用 mw layout --file <json> 设置 face（人脸框的中心 x、上沿 y、下沿 y，占画面比例）",
+    });
+  }
+  let p = await loadProject(dir);
+  if (o.baseRevision !== undefined && o.baseRevision !== p.revision) {
+    throw new MwError("CONFLICT", `工程已经是第 ${p.revision} 版，不是 ${o.baseRevision}`, {
+      hint: "重新 inspect 再来",
+    });
+  }
+  const clipsOf = () =>
+    ((p.tracks.find((t) => t.kind === "video" && t.main)?.items ?? []) as MainClip[]).filter(
+      (c) => c.type === "clip" && p.assets[c.asset]?.kind === "video",
+    );
+  if (clipsOf().some((c) => !p.assets[c.asset]?.cache?.faces)) {
+    await facesProject(dir, { source: o.source, actor: o.actor, onLog: o.onLog });
+    p = await loadProject(dir);
+  }
+  const byAsset = new Map<string, MainClip[]>();
+  for (const c of clipsOf()) byAsset.set(c.asset, [...(byAsset.get(c.asset) ?? []), c]);
+  const ops: Op[] = [];
+  const plans: (FramePlan & { asset: string; clips: string[] })[] = [];
+  const skipped: { id: string; reason: string }[] = [];
+  for (const [assetId, clips] of byAsset) {
+    const a = p.assets[assetId];
+    const faces = a?.cache?.faces ? await readFaces(join(dir, a.cache.faces)) : null;
+    const box = faces
+      ? typicalFace(
+          faces,
+          clips.map((c) => ({ fromMs: c.inMs, toMs: c.outMs })),
+        )
+      : null;
+    const sw = a?.probe?.width;
+    const sh = a?.probe?.height;
+    if (!box || !sw || !sh) {
+      for (const c of clips)
+        skipped.push({ id: c.id, reason: box ? "素材没有尺寸信息" : "没有检测到人脸" });
+      continue;
+    }
+    const plan = planFrame(box, { width: sw, height: sh }, p.canvas, target);
+    const moved: string[] = [];
+    for (const c of clips) {
+      if (c.keyframes.length > 0) {
+        skipped.push({ id: c.id, reason: "有关键帧，没动" });
+        continue;
+      }
+      ops.push({
+        op: "item.update",
+        id: c.id,
+        set: { transform: { ...c.transform, ...plan.transform } },
+      });
+      moved.push(c.id);
+    }
+    plans.push({ asset: assetId, clips: moved, ...plan });
+  }
+  if (ops.length === 0) {
+    return { ok: true as const, revision: p.revision, target, plans, skipped, changed: [] };
+  }
+  const r = await applyToProject(dir, {
+    ops,
+    baseRevision: p.revision,
+    source: o.source,
+    actor: o.actor,
+    dryRun: Boolean(o.dryRun),
+    ...templateOpts,
+  });
+  return { ...r, target, plans, skipped };
 }
 
 /**
@@ -233,6 +565,94 @@ export async function alignProject(
     check: report.filter((x) => x.match < 0.8),
     // 真正开口比字幕早、开始时间往前挪过的句子
     moved: report.filter((x) => x.startMovedMs > 0).map((x) => ({ id: x.id, ms: x.startMovedMs })),
+    // 念完比字幕结束早、结束时间收回过的句子：之后 cut.removePauses 才找得到句间停顿
+    trimmed: report.filter((x) => x.endMovedMs > 0).map((x) => ({ id: x.id, ms: x.endMovedMs })),
+  };
+}
+
+/**
+ * 从原片识音出字幕（阶段 F，docs/decisions/0025）：识音 → 有文稿时按文稿校字 → 按标点、停顿、词边界断成一行一句，
+ * 带逐字时间写进字幕轨（默认清空原有字幕）。文稿存一份在工程目录的 script.txt，之后可以不再给。
+ * 对不上的地方（漏读、多读、改口）在 diffs 里列出来，给用户确认，不自己改。
+ */
+export async function transcribeProject(
+  dir: string,
+  o: Actor & {
+    asset?: string;
+    script?: string;
+    track?: string;
+    maxChars?: number;
+    mode?: "replace" | "append";
+    baseRevision?: number;
+    dryRun?: boolean;
+    onLog?: (s: string) => void;
+  },
+) {
+  const p = await loadProject(dir);
+  const main = p.tracks.find((t) => t.kind === "video" && t.main);
+  const firstClip = ((main?.items ?? []) as MainClip[]).find((c) => c.type === "clip");
+  const assetId = o.asset ?? (firstClip?.type === "clip" ? firstClip.asset : undefined);
+  if (!assetId) {
+    throw new MwError("NOT_FOUND", "主轨上没有视频", {
+      hint: "先导入原片放到主轨，或者用 --asset 指定素材",
+    });
+  }
+  const a = p.assets[assetId];
+  if (!a) throw new MwError("REF_MISSING", `素材「${assetId}」不存在`);
+  if (a.kind !== "video" && a.kind !== "audio")
+    throw new MwError("USAGE", `素材「${assetId}」不是音视频`);
+  const capTrack = p.tracks.find((t) => t.kind === "caption" && (!o.track || t.id === o.track));
+  if (!capTrack || capTrack.kind !== "caption")
+    throw new MwError("NOT_FOUND", o.track ? `没有字幕轨道「${o.track}」` : "工程里没有字幕轨道");
+  const track = capTrack.id;
+  // 一条最多几个字：账号设置了就照用（长的折成两行），没设置按字幕样式一行放得下的字数，每条只占一行；
+  // 都不超过样式允许的行数
+  const styleId = capTrack.style ?? "caption-word-yellow";
+  const capStyle = p.styles[styleId] ?? (BUILTIN_STYLES as Record<string, TextStyle>)[styleId];
+  const perLine = capStyle ? charsPerLine(capStyle) : 14;
+  const fit = capStyle ? perLine * capStyle.layout.maxLines : 28;
+  const wanted = (await getLayout().catch(() => null))?.captionMaxChars ?? perLine;
+  const maxChars = o.maxChars ?? Math.min(wanted, fit);
+
+  const scriptFile = join(dir, "script.txt");
+  const script = o.script ?? (await readFile(scriptFile, "utf8").catch(() => undefined));
+  const file = a.cache?.mez ? join(dir, a.cache.mez) : a.path;
+  const { heard, regions, text } = await transcribeFile(resolve(dir, file), { onLog: o.onLog });
+  let spoken = heard;
+  let diffs: ScriptDiff[] = [];
+  if (script?.trim()) {
+    ({ spoken, diffs } = alignScript(script, heard));
+  }
+  const lines = segmentLines(spoken, regions, { maxChars });
+  if (lines.length === 0) throw new MwError("MEDIA", "没有识别出说话的声音", { path: a.path });
+  const r = await applyToProject(dir, {
+    ops: [
+      {
+        op: "caption.add",
+        track,
+        mode: o.mode ?? "replace",
+        items: lines.map(({ split: _s, ...l }) => ({ asset: assetId, ...l, highlights: [] })),
+      },
+    ],
+    baseRevision: o.baseRevision ?? p.revision,
+    source: o.source,
+    actor: o.actor,
+    dryRun: Boolean(o.dryRun),
+    ...templateOpts,
+  });
+  if (o.script?.trim() && !o.dryRun) await writeFile(scriptFile, o.script);
+  return {
+    ...r,
+    asset: assetId,
+    captions: lines.length,
+    maxChars,
+    usedScript: Boolean(script?.trim()),
+    heard: text,
+    // fixed 是识音认错、已经按文稿改的字；missing / extra 要用户看一下（漏读、多读、改口）
+    diffs,
+    check: diffs.filter((d) => d.kind !== "fixed"),
+    // 一句话太长切成了几行：切点按词边界估的，读一遍，不顺就用 caption.split / caption.merge 调
+    splitLines: lines.filter((l) => l.split).map((l) => l.text),
   };
 }
 
@@ -311,9 +731,13 @@ export async function previewProject(dir: string, o: PreviewOptions) {
   const tmp = join(stills, `tmp-${process.pid}-${Date.now()}`);
   const pngs = await renderStills(dir, p, frames, tmp, o.onLog);
   const editor = await loadEditor(dir);
+  // 参考线：账号版式的（所有工程共用）加上这个工程自己的
+  const layout = o.guides ? await getLayout() : null;
   const overlays = overlayFilters(tl, {
     safeArea: o.safeArea ?? null,
-    guides: o.guides ? editor.guides.items : [],
+    guides: o.guides
+      ? [...(layout ? guidesInPx(layout, tl.width, tl.height) : []), ...editor.guides.items]
+      : [],
   });
   const outFile =
     o.out !== undefined
@@ -379,7 +803,10 @@ export async function exportProject(dir: string, o: ExportOptions = {}) {
     revision: p.revision,
     file: r.out,
     frames: r.frames,
-    seconds: (Date.now() - t0) / 1000,
+    /** 成片时长 */
+    durationMs: Math.round((r.frames / p.canvas.fps) * 1000),
+    /** 渲染用了多久（不是成片时长） */
+    renderSeconds: (Date.now() - t0) / 1000,
     warnings: v.warnings,
   };
 }
@@ -389,14 +816,14 @@ export async function coverProject(
   o: { out?: string; onLog?: (s: string) => void } = {},
 ) {
   const p = await loadProject(dir);
-  const tl = compile(p);
-  const frame = msToFrame(p.cover?.atMs ?? 1000, tl.fps);
+  const view = coverView(p);
+  const frame = msToFrame(p.cover?.atMs ?? 1000, view.canvas.fps);
   const file = o.out
     ? resolve(o.out)
     : join(projectFiles(dir).renders, `${basename(dir, ".mwproj")}-cover-r${p.revision}.png`);
   const tmp = join(projectFiles(dir).stills, `cover-${process.pid}-${Date.now()}`);
   try {
-    const [png] = await renderStills(dir, p, [frame], tmp, o.onLog);
+    const [png] = await renderStills(dir, view, [frame], tmp, o.onLog);
     await mkdir(dirname(file), { recursive: true });
     await ffmpeg(["-i", png ?? "", file]);
   } finally {
@@ -428,7 +855,12 @@ export function guideInfo() {
       "提交后用 validate、preview（sheet）自查，只修一轮；修的时候不要改动已经确定的时长",
       "字段名拼错会返回 UNKNOWN_FIELD，不会被悄悄忽略；item.update 的 set 里写 null 表示去掉这个字段（比如去掉转场 transitionIn: null）",
       "逐字节奏默认用剪映的前快后慢（stagger: { fraction: 0.75 } + inSlot），不看语音；要严格跟着念的速度出字时改用 spread 并跑 align，改了字幕文字后需要重新 align",
-      "加标题、卡片之前先列方案（哪句话 → 加什么画面 → 用哪个模板 → 什么时间），给用户确认后再 apply",
+      "加标题、卡片之前先列方案（哪句话 → 加什么画面 → 用哪个模板 → 什么时间），给用户确认后再 apply；人已经写明了标题文字、要求直接出片时照用，不用再停下来问",
+      "import 视频时主轨空着会自动整段放上主轨（倍速按账号设置，返回 mainClip），接着就能 transcribe",
+      "只有原片（或原片 + 文稿）时用 transcribe 出字幕（不需要 SRT、不用再 align）：人给了文稿就传 script，字以文稿为准；返回的 check（漏读 / 多读 / 改口）列给人确认，不要自己改；一条最多几个字按账号设置（layout 的 captionMaxChars，比一行长的折成两行），没设置时每条一行",
+      "transcribe 返回的 splitLines 是一句话太长被切开的地方，读一遍，断在词中间或不顺时用 caption.reflow 一步改：{ ids: [相邻几句的 ID], lines: [新的几行] }，字要和原来一样（标点可以不同），逐字时间跟着字走；行尾的顿号、逗号去掉",
+      "人没说要剪停顿时只剪开头结尾的空白：remove-silence 加 edgesOnly（mw remove-silence --edges），句中停顿是说话节奏，保留；头尾各留 300ms，不会剪进字幕",
+      "人要求剪句间停顿时用 remove-silence：按音频静音找，不依赖字幕；可调 minPauseMs（默认 400）和 keepMs（默认 120，静音两端各保留）。明确要按字幕空隙剪时才先 align 再用 cut.removePauses（minGapMs: 150、keepMs: 40）",
       "删句（cut.removeCaptions）之前先跑 align：它会把字幕开始时间挪到真正开口的地方，否则下一句的第一个字可能被剪掉一半",
       "剪错了用 uncut 恢复那一刀（片段 ID 是剪辑点后面那段），字幕会从历史里找回；不要整体 undo，会把后面的修改一起撤掉",
       "粗剪时在主轨片段的 cutBefore 写上前面剪掉的是什么（口误、重复、停顿，16 字以内），审片台会标在时间线上",
@@ -442,7 +874,13 @@ export function guideInfo() {
       "画中画：非主轨视频轨道（没有就 track.add 一条 kind: video）上放 FloatClip，transform 定中心点和缩放（素材按比例完整放进画布再缩放）；空镜、录屏写 gainDb: -60 静音；滑动入场不写方向时从最近的画面边缘滑进来",
       "图片和画中画可以加循环动画 animLoop（v6）：只有 breathe（呼吸），durationMs 是周期，默认 2400、intensity 2（±6%，±3% 看不出来）；一条视频里别多处同时呼吸",
       "关键帧（keyframe.set，atMs 相对元素开始）：元素有关键帧后 transform 不再起作用，以关键帧为准；推近 1.5–2.5 秒、幅度 10–20%（4 秒以上显得拖）",
-      "提交后跑 lint：字太小、出安全区、字幕放不下、互相遮挡、挡脸；导入新视频时看一眼 subtitleCheck，原片已有字幕会重影",
+      "卡片：先看 templates 的 useFor / sizes / example 选模板；卡片必须写 size（v7）：small 金句 / 数字 / 人名 / 提示，half 要点 / 截图 / 长金句（主画面自动上移），full 只给整段原文（盖住标题条）；有卡时字幕自动隐藏；按内容需要才用，30 秒左右的短视频默认不加（没有值得停下来看的数字、清单、金句时建议人不加），加的话 30 秒 0–2 张、60 秒不超过 4 张；字数守住 schema 的上限",
+      "主轨倍速默认用账号设置（mw layout 的 speed，用户习惯 1.1 倍整体加速）：import 自动放上主轨时已经用了；自己加的主轨片段要 item.update speed；人另有要求时听人的",
+      "人物位置一律用 frame（按账号版式把人脸摆到参考线上），不要自己估 transform；clamped 为 true 时告诉人脸会偏大或偏一点；看效果用 preview --guides",
+      "「第 N 个观点」按章节定位：开场之后的第 N 章（没分章先 chapters.set），卡片锚在亮出观点的那句字幕上，内容只从这一章的字幕里提炼",
+      "片尾：人说接上默认片尾时用 outro（不给 file 用默认片尾，默认叠化 300ms，fadeMs: 0 硬切）；没设置默认片尾会报 NOT_FOUND，请人用 mw outro-default <视频文件> 设置",
+      "封面：cover.update 写 atMs（1 秒以后、表情好的一帧）和 title: { template, style, props }，再跑 cover；封面只有主画面和封面标题",
+      "提交后跑 lint：字太小、出安全区、字幕放不下、互相遮挡、挡脸、人物偏离账号版式（FACE_OFF_LAYOUT → 跑 frame）；level 为 hint 的只是提示，有账号版式时以版式为准；导入新视频时看一眼 subtitleCheck，原片已有字幕会重影",
     ],
     ops: z.toJSONSchema(Op, { io: "input" }),
     textStyle: z.toJSONSchema(TextStyle, { io: "input" }),

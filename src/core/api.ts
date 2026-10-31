@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ResolvedTimeline } from "./compile";
 import type { ErrorCode, Issue } from "./errors";
+import type { Layout } from "./layout";
 import type { LintIssue } from "./lint";
 import { Ops } from "./ops";
 import { type Comment, NewComment, type Review } from "./review";
@@ -146,6 +147,9 @@ export type HistoryResponse = {
 
 export type ExportStarted = { ok: true; jobId: string };
 
+/** 导出封面（POST /api/cover）：file 是生成的 PNG 绝对路径，frame 是截的那一帧 */
+export type CoverResponse = { ok: true; revision: number; file: string; frame: number };
+
 /** 样式模板库里的一项（跨工程共用；内置样式不能覆盖或删除） */
 export type LibraryStyle = {
   name: string;
@@ -164,6 +168,9 @@ export const SaveLibraryStyleRequest = z.strictObject({
   overwrite: z.boolean().default(false),
 });
 export type SaveLibraryStyleRequest = z.input<typeof SaveLibraryStyleRequest>;
+
+/** 账号版式（GET 读，PUT 整份替换）；没设置过时 layout 为 null */
+export type LayoutResponse = { ok: true; layout: Layout | null };
 
 /** 质检结果（GET /api/lint）：界面可以在时间线上标出 atMs 的位置 */
 export type LintResponse = {
@@ -215,11 +222,13 @@ export const ROUTES = {
   redo: "/api/redo",
   peaks: (assetId: string) => `/api/media/${encodeURIComponent(assetId)}/peaks`,
   export: "/api/export",
+  cover: "/api/cover",
   lint: "/api/lint",
   comments: "/api/comments",
   comment: (id: string) => `/api/comments/${encodeURIComponent(id)}`,
   events: "/api/events",
   libraryStyles: "/api/library/styles",
+  layout: "/api/library/layout",
   restoreCut: "/api/restore-cut",
 } as const;
 

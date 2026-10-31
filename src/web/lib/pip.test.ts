@@ -4,11 +4,11 @@ import { applyOps } from "../../core/ops";
 import { Project } from "../../core/schema";
 import { containBox, cornerPlacement, placeAsset, resizeFromCorner } from "./pip";
 
-const canvas = Project.parse({ version: 6, revision: 0, canvas: {} }).canvas;
+const canvas = Project.parse({ version: 7, revision: 0, canvas: {} }).canvas;
 
 const videoProject = () =>
   Project.parse({
-    version: 6,
+    version: 7,
     revision: 0,
     canvas: {},
     assets: {
@@ -183,7 +183,7 @@ describe("素材放到画面上", () => {
     const project = videoProject();
     project.tracks.push(
       ...Project.parse({
-        version: 6,
+        version: 7,
         revision: 0,
         canvas: {},
         tracks: [

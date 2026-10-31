@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type { HistoryResponse, LintResponse, PreviewProps } from "../core/api";
 import type { ResolvedTimeline } from "../core/compile";
 import { planSplit } from "../core/edit";
+import { Layout, type LayoutInput } from "../core/layout";
 import type { Op } from "../core/ops";
 import type { NewComment, Review } from "../core/review";
 import type { Project } from "../core/schema";
@@ -80,6 +81,12 @@ type State = {
   reviewedRev: number | null;
   safeArea: boolean;
   referenceGuides: { horizontal: boolean; vertical: boolean };
+  /** 账号版式（所有工程共用，docs/decisions/0027）；没设置过为 null */
+  layout: Layout | null;
+  /** 画面上显示账号版式的参考线 */
+  accountGuides: boolean;
+  /** 正在编辑账号版式：参考线可以拖动，显示人脸位置 */
+  layoutEditing: boolean;
   /** 时间线拖动时吸附到字幕边界、播放头 */
   snap: boolean;
   /** 选中字幕时显示全部字幕列表 */
@@ -112,6 +119,10 @@ type State = {
   confirmAiChanges(): void;
   toggleSafeArea(): void;
   toggleReferenceGuide(axis: "horizontal" | "vertical"): void;
+  toggleAccountGuides(): void;
+  setLayoutEditing(on: boolean): void;
+  /** 整份保存账号版式；界面先改本地，失败时提示并重新读取 */
+  saveLayout(next: LayoutInput): Promise<void>;
   setCaptionList(on: boolean): void;
   toggleSnap(): void;
   setAnnotating(on: boolean): void;
@@ -212,6 +223,9 @@ export const useStore = create<State>((set, get) => {
     reviewedRev: null,
     safeArea: false,
     referenceGuides: { horizontal: false, vertical: false },
+    layout: null,
+    accountGuides: true,
+    layoutEditing: false,
     captionList: false,
     snap: true,
     annotating: false,
@@ -220,6 +234,10 @@ export const useStore = create<State>((set, get) => {
 
     init() {
       void get().refresh();
+      void get()
+        .api.layout()
+        .then((r) => set({ layout: r.layout }))
+        .catch(() => {});
       return get().api.subscribe(onEvent, (live) => set({ live }));
     },
 
@@ -369,6 +387,27 @@ export const useStore = create<State>((set, get) => {
       set((s) => ({
         referenceGuides: { ...s.referenceGuides, [axis]: !s.referenceGuides[axis] },
       })),
+    toggleAccountGuides: () => set((s) => ({ accountGuides: !s.accountGuides })),
+    setLayoutEditing: (layoutEditing) =>
+      set((s) => ({ layoutEditing, accountGuides: layoutEditing || s.accountGuides })),
+    async saveLayout(next) {
+      const { api } = get();
+      const before = get().layout;
+      const parsed = Layout.safeParse(next);
+      if (!parsed.success) {
+        get().toast(`版式不合法：${parsed.error.issues[0]?.message ?? ""}`, "error");
+        return;
+      }
+      // 先改本地，拖动时不等网络
+      set({ layout: parsed.data });
+      try {
+        const r = await api.saveLayout(next);
+        set({ layout: r.layout });
+      } catch (e) {
+        set({ layout: before });
+        get().toast(e instanceof Error ? e.message : String(e), "error");
+      }
+    },
     setCaptionList: (captionList) => set({ captionList }),
     toggleSnap: () => set((s) => ({ snap: !s.snap })),
     setAnnotating: (annotating) =>

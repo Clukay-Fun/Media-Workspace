@@ -5,10 +5,10 @@ import { cuesToCaptions, formatSrt, parseSrt, SrtError } from "./srt";
 describe("parseSrt", () => {
   it("容忍 BOM、CRLF、缺序号、多余空行和时间轴后的位置参数", () => {
     const text =
-      "﻿1\r\n00:00:00,333 --> 00:00:01,366\r\n拿到海外身份\r\n\r\n\r\n" +
+      "﻿1\r\n00:00:00,333 --> 00:00:01,366\r\n今天天气真好\r\n\r\n\r\n" +
       "00:00:01.400 --> 00:00:02,000 X1:0 Y1:0\n第二句\n第二行\n";
     expect(parseSrt(text)).toEqual([
-      { index: 1, startMs: 333, endMs: 1366, text: "拿到海外身份" },
+      { index: 1, startMs: 333, endMs: 1366, text: "今天天气真好" },
       { index: 2, startMs: 1400, endMs: 2000, text: "第二句\n第二行" },
     ]);
   });
@@ -33,7 +33,7 @@ describe("parseSrt", () => {
 
 describe("cuesToCaptions", () => {
   const project = Project.parse({
-    version: 6,
+    version: 7,
     revision: 0,
     canvas: {},
     assets: { a1: { kind: "video", path: "/raw.mov" } },

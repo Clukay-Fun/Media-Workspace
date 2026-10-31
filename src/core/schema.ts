@@ -162,9 +162,13 @@ export const Caption = z.strictObject({
   charStartMs: z.array(Ms).optional(),
 });
 
+/** 卡片尺寸（v7，docs/decisions/0022）：小卡占一小块；半屏卡出现时主画面上移让位；全屏卡盖住整个画面 */
+export const CardSize = z.enum(["small", "half", "full"]);
+
 export const Overlay = z.strictObject({
   id: Id,
   template: z.string().min(1),
+  size: CardSize.optional(),
   at: Anchor,
   /** toEnd = 一直显示到主轨结束（不含片尾） */
   durationMs: z.union([z.number().int().positive(), z.literal("toEnd")]),
@@ -222,10 +226,16 @@ export const Outro = z.strictObject({
   gainDb: z.number().min(-60).max(20).default(0),
 });
 
+/** 封面：取 atMs 那一帧的主画面（不带字幕和其它叠加层），再压上封面标题（v7） */
 export const Cover = z.strictObject({
   atMs: Ms,
-  /** 封面上额外显示的叠加层 ID */
-  title: Id.optional(),
+  title: z
+    .strictObject({
+      template: z.string().min(1),
+      style: Id.optional(),
+      props: z.record(z.string(), z.unknown()).default({}),
+    })
+    .optional(),
 });
 
 /** 章节（开场、讲第一点…）：预览上方的章节条，点一下跳过去（v4）。锚到字幕，剪辑后跟着走 */
@@ -264,6 +274,8 @@ export type Transition = z.infer<typeof Transition>;
 export type Anchor = z.infer<typeof Anchor>;
 export type Chapter = z.infer<typeof Chapter>;
 export type Slot = z.infer<typeof Slot>;
+export type CardSize = z.infer<typeof CardSize>;
+export type Cover = z.infer<typeof Cover>;
 
 export function isMainClip(item: VideoTrack["items"][number]): item is MainClip {
   return item.type === "clip" && !("at" in item);

@@ -97,7 +97,7 @@ pnpm test:e2e     # 改到渲染、媒体、模板时必须跑
   `local/` 在 `.gitignore` 里，不会进仓库。需要公开的结论写进 `docs/decisions/`，只写文字和数字。
 - **不要把样片相关的图放进 `docs/`**：仓库是公开的，样片和从样片截出来的图都是用户的私有内容。
 - **每个写代码的 AI 用自己的工作目录**（git worktree，由 Claude 统一创建和删除），不要在别人的目录里切分支、提交：
-  `media-workspace`（Claude，dev）、`media-workspace-codex`（Codex）、`media-workspace-deepseek`（DeepSeek），
+  `media-workspace`（Claude，dev）、`media-workspace-codex`（Codex），
   当前对应关系见 `docs/STATUS.md` 的「目录」一列。同一个目录同一时间只能有一个 AI 写代码。
-- 分支合进 dev 后，Claude 马上删除对应的工作目录和分支；临时目录和生成的文件用完就删。
+- 分支合进 dev 后，Claude 马上删除对应的工作目录和分支；删之前先把那个目录里的 `local/notes/` 挪到主目录的 `local/notes/`（`git worktree remove` 会连同被忽略的文件一起删掉）。临时目录和生成的文件用完就删。
 - `docs/STATUS.md` 只在主目录 `media-workspace`（dev）里改，不要在自己分支里改它，避免合并时冲突。

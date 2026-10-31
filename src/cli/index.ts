@@ -3,25 +3,45 @@ import { dirname, resolve } from "node:path";
 import cac from "cac";
 import { API_PORT } from "../core/api";
 import { MwError } from "../core/errors";
+import { LayoutFace } from "../core/layout";
 import { BUILTIN_STYLES } from "../core/presets";
 import { runMcpStdio } from "../mcp/server";
 import {
   alignProject,
+  attachOutro,
   commentsInfo,
+  compareProject,
   coverProject,
   exportProject,
   facesProject,
+  frameProject,
   guideInfo,
   importAsset,
   inspectProject,
   lintDir,
   previewProject,
+  removeOutro,
+  removeSilenceProject,
   restoreCut,
+  templateOpts,
   templatesInfo,
+  transcribeProject,
   validateDir,
 } from "../node/actions";
 import { ASR_MODEL, asrModelDir, fetchAsrModel, hasAsrModel } from "../node/asr";
-import { listStyles, removeStyle, saveStyle, textStylesDir, useStyle } from "../node/library";
+import {
+  getDefaultOutro,
+  getLayout,
+  layoutFile,
+  listStyles,
+  outroDefaultFile,
+  removeStyle,
+  saveStyle,
+  setDefaultOutro,
+  setLayout,
+  textStylesDir,
+  useStyle,
+} from "../node/library";
 import { resolveProjectDir } from "../node/paths";
 import {
   clearServing,
@@ -45,7 +65,6 @@ import {
   undoProject,
 } from "../node/store";
 import { startServer } from "../server/index";
-import { TEMPLATE_NAMES } from "../templates";
 
 // mw：stdout 只输出 JSON（给 AI 解析），进度和日志写 stderr。
 // 退出码（PLAN 7）：0 成功，1 校验失败，2 参数错误，3 版本冲突，4 媒体错误，5 渲染失败，6 轨道已锁定。
@@ -94,15 +113,16 @@ const act =
   (...args: A) =>
     fn(...args).catch(fail);
 
-const templates = { templates: TEMPLATE_NAMES };
+const templates = templateOpts;
 
 const cli = cac("mw");
 
 cli
   .command("init <name>", "新建工程（名字或路径）")
   .option("--no-styles", "不复制内置样式")
+  .option("--actor <name>", "操作者", { default: "user" })
   .action(
-    act(async (name: string, o: { styles: boolean }) => {
+    act(async (name: string, o: { styles: boolean; actor: string }) => {
       const dir = resolveProjectDir(name);
       const p = emptyProject();
       if (o.styles) p.styles = { ...BUILTIN_STYLES };
@@ -111,29 +131,34 @@ cli
         const cap = p.tracks.find((t) => t.kind === "caption");
         if (cap && cap.kind === "caption") cap.style = "caption-word-yellow";
       }
-      await initProject(dir, p);
+      await initProject(dir, p, { source: "cli", actor: String(o.actor) });
       out({ ok: true, project: dir, revision: 0 });
     }),
   );
 
 cli
-  .command("import <proj> <file>", "导入素材：probe、必要时转标准化文件，然后提交 asset.add")
+  .command(
+    "import <proj> <file>",
+    "导入素材：probe、必要时转标准化文件，然后提交 asset.add；主轨空着时视频整段放上主轨",
+  )
   .option("--id <id>", "素材 ID（不写时自动生成）")
   .option("--base <rev>", "基于哪个 revision 提交（不写时取当前版本）")
   .option("--actor <name>", "操作者", { default: "user" })
   .option("--no-proxy", "不生成预览代理")
+  .option("--no-main", "主轨空着时也不放上主轨（默认整段放上主轨，倍速按账号设置）")
   .action(
     act(
       async (
         proj: string,
         file: string,
-        o: { id?: string; base?: number; actor: string; proxy: boolean },
+        o: { id?: string; base?: number; actor: string; proxy: boolean; main: boolean },
       ) => {
         out(
           await importAsset(resolveProjectDir(proj), file, {
             id: o.id === undefined ? undefined : String(o.id),
             baseRevision: o.base === undefined ? undefined : Number(o.base),
             proxy: o.proxy,
+            main: o.main,
             source: "cli",
             actor: o.actor,
             onLog: log,
@@ -218,6 +243,66 @@ cli.command("lint <proj>", "质检：字太小、出安全区、字幕放不下�
 );
 
 cli
+  .command("remove-silence <proj>", "从主轨视频素材的音频中找静音并剪掉停顿，不依赖字幕")
+  .option("--min-pause <ms>", "作为停顿的最短静音时长", { default: 400 })
+  .option("--keep <ms>", "每段静音两端各保留的时长（默认 120；--edges 时 300，且不剪进字幕）")
+  .option("--edges", "只剪开头和结尾的空白，句中停顿保留")
+  .option("--base <rev>", "基于哪个 revision（默认当前）")
+  .option("--actor <name>", "操作者", { default: "user" })
+  .action(
+    act(
+      async (
+        proj: string,
+        o: { minPause: number; keep?: number; edges?: boolean; base?: number; actor: string },
+      ) =>
+        out(
+          await removeSilenceProject(resolveProjectDir(proj), {
+            minPauseMs: Number(o.minPause),
+            keepMs: o.keep === undefined ? undefined : Number(o.keep),
+            edgesOnly: Boolean(o.edges),
+            baseRevision: o.base === undefined ? undefined : Number(o.base),
+            source: "cli",
+            actor: o.actor,
+            onLog: log,
+          }),
+        ),
+    ),
+  );
+
+cli
+  .command("compare <proj> <reference>", "对比工程与参考成片：输出并排帧和差异 JSON")
+  .option("--at <ms>", "并排截图的时间点；默认取较短视频的中点")
+  .option("--out <file>", "对比 PNG 输出路径")
+  .option("--scene-threshold <value>", "参考成片场景切换检测阈值（0–1）", { default: 0.3 })
+  .option("--cut-tolerance <ms>", "剪切点匹配容差（毫秒）", { default: 500 })
+  .option("--face-interval <ms>", "人脸位置采样间隔（毫秒）", { default: 1000 })
+  .action(
+    act(
+      async (
+        proj: string,
+        reference: string,
+        o: {
+          at?: number;
+          out?: string;
+          sceneThreshold: number;
+          cutTolerance: number;
+          faceInterval: number;
+        },
+      ) =>
+        out(
+          await compareProject(resolveProjectDir(proj), reference, {
+            atMs: o.at === undefined ? undefined : Number(o.at),
+            out: o.out,
+            sceneThreshold: Number(o.sceneThreshold),
+            cutToleranceMs: Number(o.cutTolerance),
+            faceIntervalMs: Number(o.faceInterval),
+            onLog: log,
+          }),
+        ),
+    ),
+  );
+
+cli
   .command("faces <proj>", "给还没有人脸数据的视频素材补做人脸检测（macOS）")
   .option("--actor <name>", "操作者", { default: "user" })
   .action(
@@ -278,6 +363,89 @@ cli
   );
 
 cli
+  .command(
+    "transcribe <proj>",
+    "从原片识音出字幕：按停顿、标点、词边界断成一行一句；给文稿时按文稿校字，对不上的地方列出来",
+  )
+  .option("--script <file>", "文稿（纯文本，- = 从标准输入读）；不给时用工程里存过的 script.txt")
+  .option("--asset <id>", "识哪个素材，默认主轨第一段视频")
+  .option("--max-chars <n>", "一行最多几个字（默认按字幕样式一行放得下的字数）")
+  .option("--append", "加在原有字幕后面（默认清空原有字幕）")
+  .option("--base <rev>", "基于哪个 revision（默认当前）")
+  .option("--actor <name>", "操作者", { default: "user" })
+  .option("--dry-run", "只识音和断句，不写入")
+  .action(
+    act(
+      async (
+        proj: string,
+        o: {
+          script?: string;
+          asset?: string;
+          maxChars?: number;
+          append?: boolean;
+          base?: number;
+          actor: string;
+          dryRun?: boolean;
+        },
+      ) => {
+        const script =
+          o.script === undefined
+            ? undefined
+            : o.script === "-"
+              ? await readStdin()
+              : await readFile(o.script, "utf8");
+        out(
+          await transcribeProject(resolveProjectDir(proj), {
+            ...(script === undefined ? {} : { script }),
+            ...(o.asset === undefined ? {} : { asset: String(o.asset) }),
+            ...(o.maxChars === undefined ? {} : { maxChars: Number(o.maxChars) }),
+            mode: o.append ? "append" : "replace",
+            baseRevision: o.base === undefined ? undefined : Number(o.base),
+            dryRun: Boolean(o.dryRun),
+            source: "cli",
+            actor: o.actor,
+            onLog: log,
+          }),
+        );
+      },
+    ),
+  );
+
+cli
+  .command("frame <proj>", "按账号版式摆人物：按人脸位置算主画面的缩放和位置，让脸落在参考线上")
+  .option("--face <cx,top,bottom>", "这次用的人脸位置（占画面比例），不写时用账号版式的 face")
+  .option("--base <rev>", "基于哪个 revision（默认当前）")
+  .option("--actor <name>", "操作者", { default: "user" })
+  .option("--dry-run", "只计算，不写入")
+  .action(
+    act(
+      async (
+        proj: string,
+        o: { face?: string; base?: number; actor: string; dryRun?: boolean },
+      ) => {
+        let face: { cx: number; top: number; bottom: number } | undefined;
+        if (o.face !== undefined) {
+          const [cx, top, bottom] = String(o.face).split(",").map(Number);
+          const r = LayoutFace.safeParse({ cx, top, bottom });
+          if (!r.success)
+            throw new MwError("USAGE", "--face 要写成 cx,top,bottom（0–1，上沿小于下沿）");
+          face = r.data;
+        }
+        out(
+          await frameProject(resolveProjectDir(proj), {
+            ...(face ? { face } : {}),
+            baseRevision: o.base === undefined ? undefined : Number(o.base),
+            dryRun: Boolean(o.dryRun),
+            source: "cli",
+            actor: o.actor,
+            onLog: log,
+          }),
+        );
+      },
+    ),
+  );
+
+cli
   .command("models", "查看或下载本地模型（识音）")
   .option("--fetch", "下载缺少的模型")
   .action(
@@ -296,7 +464,7 @@ cli
   .option("--frame <n>", "帧号")
   .option("--sheet [n]", "均匀截 n 帧拼成网格图（默认 12）")
   .option("--safe-area [preset]", "叠加安全区（all/douyin/channels/xiaohongshu）")
-  .option("--guides", "叠加 editor.json 里的参考线")
+  .option("--guides", "叠加参考线（账号版式的和这个工程 editor.json 里的）")
   .option("--out <file>", "输出 PNG")
   .action(
     act(
@@ -366,6 +534,62 @@ cli
   .action(
     act(async (proj: string, o: { out?: string }) => {
       out(await coverProject(resolveProjectDir(proj), { out: o.out, onLog: log }));
+    }),
+  );
+
+cli
+  .command("outro <proj> [file]", "接上片尾：不给文件时用默认片尾（mw outro-default）")
+  .option("--fade <ms>", "叠化时长，0 = 硬切；不写时用默认片尾的设置（300ms）")
+  .option("--remove", "去掉片尾")
+  .option("--actor <name>", "操作者", { default: "user" })
+  .action(
+    act(
+      async (
+        proj: string,
+        file: string | undefined,
+        o: { fade?: number; remove?: boolean; actor: string },
+      ) => {
+        const dir = resolveProjectDir(proj);
+        const who = { source: "cli" as const, actor: String(o.actor) };
+        if (o.remove) return out(await removeOutro(dir, who));
+        out(
+          await attachOutro(dir, {
+            ...who,
+            ...(file === undefined ? {} : { file }),
+            ...(o.fade === undefined ? {} : { fadeMs: Number(o.fade) }),
+            onLog: log,
+          }),
+        );
+      },
+    ),
+  );
+
+cli
+  .command("outro-default [file]", "查看 / 设置默认片尾（只记路径，不复制文件）")
+  .option("--fade <ms>", "接上时的叠化时长，0 = 硬切（默认 300）")
+  .option("--gain <db>", "片尾音量（dB，默认 0）")
+  .action(
+    act(async (file: string | undefined, o: { fade?: number; gain?: number }) => {
+      if (file === undefined) {
+        return out({ ok: true, file: outroDefaultFile(), outro: await getDefaultOutro() });
+      }
+      const outro = await setDefaultOutro(file, {
+        ...(o.fade === undefined ? {} : { fadeMs: Number(o.fade) }),
+        ...(o.gain === undefined ? {} : { gainDb: Number(o.gain) }),
+      });
+      out({ ok: true, file: outroDefaultFile(), outro });
+    }),
+  );
+
+cli
+  .command("layout", "查看 / 设置账号版式（参考线、人脸位置、标题和字幕样式，所有工程共用）")
+  .option("--file <json>", "用这个 JSON 文件整份替换账号版式")
+  .action(
+    act(async (o: { file?: string }) => {
+      if (o.file === undefined)
+        return out({ ok: true, file: layoutFile(), layout: await getLayout() });
+      const input = JSON.parse(await readFile(o.file, "utf8"));
+      out({ ok: true, file: layoutFile(), layout: await setLayout(input) });
     }),
   );
 
@@ -621,7 +845,9 @@ try {
         : [a],
   );
   cli.parse(argv, { run: false });
-  if (!cli.matchedCommand) {
+  if (cli.options.help || cli.options.version) {
+    // --help / --version 已经由 cac 输出，不再当成未知命令
+  } else if (!cli.matchedCommand) {
     if (process.argv.length <= 2) cli.outputHelp();
     else throw new UsageError(`不认识的命令：${process.argv[2]}，用 mw --help 查看`);
   } else {

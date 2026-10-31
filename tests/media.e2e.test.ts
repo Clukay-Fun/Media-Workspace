@@ -3,8 +3,10 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { importAsset } from "../src/node/actions";
+import { setLayout } from "../src/node/library";
 import { importMedia, needsNormalize, probeMedia } from "../src/node/media";
-import { initProject } from "../src/node/store";
+import { initProject, loadProject } from "../src/node/store";
 
 let root: string;
 let dir: string;
@@ -95,6 +97,39 @@ describe("素材导入", () => {
     const r = await importMedia(dir, src, { proxy: false });
     expect(r.asset.cache?.mez).toBeUndefined();
     expect(r.asset.kind).toBe("video");
+  });
+
+  it("mw import：主轨空着时视频整段放上主轨，倍速按账号设置；主轨有片段后只导入", async () => {
+    const home = process.env.MW_HOME;
+    process.env.MW_HOME = join(root, "home");
+    try {
+      await setLayout({ speed: 1.2 });
+      const proj = join(root, "auto-main.mwproj");
+      await initProject(proj);
+      const src = make(join(root, "auto.mp4"), [
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc2=size=360x640:rate=30:duration=1",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+      ]);
+      const who = { source: "cli" as const, actor: "test" };
+      const first = await importAsset(proj, src, { ...who, proxy: false });
+      expect(first).toMatchObject({ asset: "a1", mainClip: "c1", speed: 1.2 });
+      const second = await importAsset(proj, src, { ...who, proxy: false });
+      expect(second).not.toHaveProperty("mainClip");
+      const p = await loadProject(proj);
+      const main = p.tracks.find((t) => t.kind === "video" && t.main);
+      expect(main?.items).toEqual([
+        expect.objectContaining({ id: "c1", asset: "a1", inMs: 0, speed: 1.2 }),
+      ]);
+    } finally {
+      if (home === undefined) delete process.env.MW_HOME;
+      else process.env.MW_HOME = home;
+    }
   });
 
   it("图片只记录尺寸", async () => {

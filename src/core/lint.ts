@@ -1,5 +1,15 @@
 import { transformAt } from "./animate";
-import { compile, layoutMainTrack, mapTimelineMs, type ResolvedOverlay } from "./compile";
+import {
+  compile,
+  type FrameSpan,
+  layoutMainTrack,
+  mainLiftTransform,
+  mainShiftAt,
+  mapTimelineMs,
+  type ResolvedOverlay,
+} from "./compile";
+import { typicalFace } from "./frame";
+import type { Layout } from "./layout";
 import { safeAreaFor } from "./safe-area";
 import type { Project } from "./schema";
 import type { TextStyle } from "./text-style";
@@ -17,7 +27,13 @@ export type LintIssue = {
     | "TEXT_OUTSIDE_SAFE_AREA"
     | "CAPTION_OVERFLOW"
     | "OVERLAP"
-    | "FACE_COVERED";
+    | "FACE_COVERED"
+    | "TOO_MANY_CARDS"
+    | "FACE_OFF_LAYOUT"
+    | "STYLE_NOT_LAYOUT"
+    | "SPEED_NOT_LAYOUT";
+  /** hint = 只是提示（有账号版式时，通用安全区以版式为准）；不写 = 警告 */
+  level?: "hint";
   /** 有问题的条目 */
   id: string;
   /** 遮挡时，另一方的条目 ID */
@@ -42,10 +58,18 @@ export type OverlayBounds = (
 export type LintOptions = {
   styles: Record<string, TextStyle>;
   overlayBounds?: OverlayBounds;
+  /** 叠加层没写样式时用的样式 ID（模板的 meta.defaultStyle）；不传时按标题条 */
+  overlayStyle?: (template: string) => string | undefined;
   faces?: Record<string, FaceTrack>;
   /** 1080 宽画面上的最小字号，其他宽度按比例 */
   minFontSize?: number;
+  /** 账号版式（docs/decisions/0027）：有的话检查人物位置和样式是否和版式一致，通用安全区降为提示 */
+  layout?: (Pick<Layout, "face" | "captionStyle" | "titleStyle"> & { speed?: number }) | null;
 };
+
+/** 人脸偏离版式多少算偏（占画面比例）：约 27px 横向、48px 纵向；人脸大小差 10% 以上 */
+const FACE_POS_TOLERANCE = 0.025;
+const FACE_SIZE_TOLERANCE = 0.1;
 
 const CJK = /[⺀-鿿가-힯豈-﫿＀-￯　-〿]/;
 
@@ -123,6 +147,10 @@ type Placed = {
   style: TextStyle;
   text: Box[];
   shapes: Box[];
+  /** 全屏卡：本来就要盖住画面，不算遮挡、挡脸 */
+  full?: boolean;
+  /** 半屏卡：主画面上移到位之后才算挡脸（上移的 400ms 里卡片还在淡入） */
+  half?: boolean;
 };
 
 export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
@@ -147,16 +175,20 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
     const styleId = c.style ?? "caption-word-yellow";
     const st = styleOf(c.style, "caption-word-yellow");
     if (!st) continue;
-    placed.push({
-      id: c.id,
-      kind: "caption",
-      styleId,
-      from: c.from,
-      to: c.from + c.durationInFrames,
-      style: st,
-      text: [textBox(c.text, st)],
-      shapes: [],
-    });
+    // 有卡片时字幕不显示（v7）：只检查没有卡片的那几段
+    const box = textBox(c.text, st);
+    for (const s of spansOutside(c.from, c.from + c.durationInFrames, tl.cardSpans)) {
+      placed.push({
+        id: c.id,
+        kind: "caption",
+        styleId,
+        from: s.from,
+        to: s.to,
+        style: st,
+        text: [box],
+        shapes: [],
+      });
+    }
     const { lines } = estimateLines(c.text, st);
     if (lines > st.layout.maxLines) {
       add({
@@ -169,17 +201,33 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
   }
   for (const o of tl.overlays) {
     if (o.hidden) continue;
-    const st = styleOf(o.style, "title-bar-yellow");
+    const styleId = o.style ?? opts.overlayStyle?.(o.template) ?? "title-bar-yellow";
+    const st = styleOf(styleId, "title-bar-yellow");
     if (!st) continue;
     const b = opts.overlayBounds?.(o, st) ?? { text: [], shapes: [] };
     placed.push({
       id: o.id,
       kind: "overlay",
-      styleId: o.style ?? "title-bar-yellow",
+      styleId,
       from: o.from,
       to: o.from + o.durationInFrames,
       style: st,
       ...b,
+      full: o.size === "full",
+      half: o.size === "half",
+    });
+  }
+
+  // 卡片太多：30 秒以内最多 2 张，之后每 15 秒多 1 张（Grok 的口播卡片调研）
+  const cards = tl.overlays.filter((o) => o.size !== null && !o.hidden);
+  const maxCards = Math.max(2, Math.floor(frameToMs(tl.mainEndFrame, fps) / 15_000));
+  const extra = cards.toSorted((a, b) => a.from - b.from)[maxCards];
+  if (extra) {
+    add({
+      code: "TOO_MANY_CARDS",
+      id: extra.id,
+      atMs: ms(extra.from),
+      message: `卡片有 ${cards.length} 张，这么长的视频最多 ${maxCards} 张，挑最要紧的留下`,
     });
   }
 
@@ -223,7 +271,11 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
         code: "TEXT_OUTSIDE_SAFE_AREA",
         id: p.id,
         atMs: ms(p.from),
-        message: `文字超出了「${project.canvas.safeArea.preset}」安全区（${out.join("、")}），可能被平台的按钮或标题挡住`,
+        message: opts.layout
+          ? `文字超出了通用「${project.canvas.safeArea.preset}」安全区（${out.join("、")}）；位置按账号版式，只作参考，不用改`
+          : `文字超出了「${project.canvas.safeArea.preset}」安全区（${out.join("、")}），可能被平台的按钮或标题挡住`,
+        // 有账号版式时位置以版式为准，通用安全区只作参考（0025）
+        ...(opts.layout ? { level: "hint" as const } : {}),
       });
     }
   }
@@ -235,7 +287,9 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
         placed.find((p) => p.id === x.id)?.styleId === styleId,
     );
     if (i)
-      i.message += `；用样式「${styleId}」的字幕共 ${g.count} 条有同样的问题，建议调整样式的 maxWidth 或位置`;
+      i.message += opts.layout
+        ? `；用样式「${styleId}」的字幕共 ${g.count} 条`
+        : `；用样式「${styleId}」的字幕共 ${g.count} 条有同样的问题，建议调整样式的 maxWidth 或位置`;
   }
 
   // 画面元素（图片、画中画）：按 contain 后的真实画面区域算，带关键帧的会动
@@ -272,7 +326,7 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
     for (let j = i + 1; j < placed.length; j++) {
       const a = placed[i] as Placed;
       const b = placed[j] as Placed;
-      if (a.id === b.id) continue;
+      if (a.id === b.id || a.full || b.full) continue;
       const from = Math.max(a.from, b.from);
       if (from >= Math.min(a.to, b.to)) continue;
       const hit = [...a.text, ...a.shapes].some((x) =>
@@ -315,12 +369,21 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
     const segs = layoutMainTrack(project);
     const mains = tl.videos.filter((v) => v.main);
     const covering = [
-      ...placed.map((p) => ({ id: p.id, from: p.from, to: p.to, boxes: [...p.text, ...p.shapes] })),
-      ...visuals.map((v) => ({ id: v.id, from: v.from, to: v.to, boxes: [v.box] })),
+      ...placed
+        .filter((p) => !p.full)
+        .map((p) => ({
+          id: p.id,
+          from: p.from,
+          to: p.to,
+          half: p.half === true,
+          boxes: [...p.text, ...p.shapes],
+        })),
+      ...visuals.map((v) => ({ id: v.id, from: v.from, to: v.to, half: false, boxes: [v.box] })),
     ];
     for (const p of covering) {
       const boxes = p.boxes;
       for (let f = p.from; f < p.to; f += step) {
+        if (p.half && mainShiftAt(tl.mainShifts, f) < 1) continue;
         const src = mapTimelineMs(segs, frameToMs(f, fps));
         if (!src) continue;
         const track = opts.faces[src.asset];
@@ -335,9 +398,11 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
         const k = Math.min(width / sw, height / sh);
         const ox = (width - sw * k) / 2;
         const oy = (height - sh * k) / 2;
+        // 半屏卡出现时主画面整体上移并略放大（v7，见 mainLiftTransform）
+        const m = mainLiftTransform(tl, f);
         const toCanvas = (nx: number, ny: number) => ({
-          x: t.x + t.scale * (ox + nx * sw * k - width / 2),
-          y: t.y + t.scale * (oy + ny * sh * k - height / 2),
+          x: width / 2 + m.scale * (t.x + t.scale * (ox + nx * sw * k - width / 2) - width / 2),
+          y: m.scale * (t.y + t.scale * (oy + ny * sh * k - height / 2)) - m.lift,
         });
         for (const fb of sample.boxes) {
           const a0 = toCanvas(fb.x, fb.y);
@@ -356,6 +421,94 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
       }
     }
   }
+  // 5. 账号版式：人物位置、标题和字幕样式
+  const layout = opts.layout;
+  if (layout?.face && opts.faces) {
+    const target = layout.face;
+    const mains = tl.videos.filter((v) => v.main);
+    for (const seg of layoutMainTrack(project)) {
+      const clip = seg.clip;
+      if (clip.type !== "clip") continue;
+      const track = opts.faces[clip.asset];
+      const v = mains.find((x) => x.id === clip.id);
+      const a = project.assets[clip.asset];
+      if (!track || !v || !a?.probe?.width || !a.probe.height) continue;
+      const face = typicalFace(track, [{ fromMs: clip.inMs, toMs: clip.outMs }]);
+      if (!face) continue;
+      const sw = a.probe.width;
+      const sh = a.probe.height;
+      const t = transformAt(v.transform, v.keyframes, Math.round(v.durationInFrames / 2));
+      const k = Math.min(width / sw, height / sh);
+      const ox = (width - sw * k) / 2;
+      const oy = (height - sh * k) / 2;
+      const cx = (t.x + t.scale * (ox + (face.x + face.w / 2) * sw * k - width / 2)) / width;
+      const top = (t.y + t.scale * (oy + face.y * sh * k - height / 2)) / height;
+      const h = (t.scale * face.h * sh * k) / height;
+      const want = target.bottom - target.top;
+      const off = [
+        Math.abs(cx - target.cx) > FACE_POS_TOLERANCE &&
+          `${cx < target.cx ? "偏左" : "偏右"} ${Math.round(Math.abs(cx - target.cx) * width)}px`,
+        Math.abs(top - target.top) > FACE_POS_TOLERANCE &&
+          `${top < target.top ? "偏上" : "偏下"} ${Math.round(Math.abs(top - target.top) * height)}px`,
+        Math.abs(h / want - 1) > FACE_SIZE_TOLERANCE &&
+          `脸${h > want ? "大" : "小"}了 ${Math.round(Math.abs(h / want - 1) * 100)}%`,
+      ].filter(Boolean);
+      if (off.length === 0) continue;
+      add({
+        code: "FACE_OFF_LAYOUT",
+        id: clip.id,
+        atMs: ms(v.from),
+        message: `人物位置和账号版式不一致（${off.join("、")}），用 mw frame 按版式重新摆`,
+      });
+    }
+  }
+  if (layout?.speed !== undefined) {
+    const want = layout.speed;
+    const clip = layoutMainTrack(project)
+      .map((s) => s.clip)
+      .find((c) => c.type === "clip" && Math.abs(c.speed - want) > 0.001);
+    if (clip && clip.type === "clip") {
+      add({
+        code: "SPEED_NOT_LAYOUT",
+        id: clip.id,
+        atMs: 0,
+        message: `主轨片段的倍速是 ${clip.speed}，账号设置是 ${want}（人没特别要求时用账号设置）`,
+        level: "hint",
+      });
+    }
+  }
+  if (layout?.captionStyle) {
+    const c = tl.captions.find(
+      (x) => !x.hidden && (x.style ?? "caption-word-yellow") !== layout.captionStyle,
+    );
+    if (c) {
+      add({
+        code: "STYLE_NOT_LAYOUT",
+        id: c.id,
+        atMs: ms(c.from),
+        message: `字幕用的样式「${c.style ?? "caption-word-yellow"}」不是账号版式规定的「${layout.captionStyle}」`,
+        level: "hint",
+      });
+    }
+  }
+  if (layout?.titleStyle) {
+    const o = tl.overlays.find(
+      (x) =>
+        !x.hidden &&
+        x.template === "title-bar" &&
+        (x.style ?? "title-bar-yellow") !== layout.titleStyle,
+    );
+    if (o) {
+      add({
+        code: "STYLE_NOT_LAYOUT",
+        id: o.id,
+        atMs: ms(o.from),
+        message: `标题条用的样式「${o.style ?? "title-bar-yellow"}」不是账号版式规定的「${layout.titleStyle}」`,
+        level: "hint",
+      });
+    }
+  }
+
   return issues.toSorted((a, b) => a.atMs - b.atMs);
 }
 
@@ -366,4 +519,17 @@ function nearest(track: FaceTrack, ms: number): FaceTrack["frames"][number] | nu
     if (!best || Math.abs(f.ms - ms) < Math.abs(best.ms - ms)) best = f;
   }
   return best;
+}
+
+/** [from, to) 去掉 spans 之后剩下的几段（spans 已排序、不重叠） */
+function spansOutside(from: number, to: number, spans: FrameSpan[]): FrameSpan[] {
+  const out: FrameSpan[] = [];
+  let cur = from;
+  for (const s of spans) {
+    if (s.to <= cur || s.from >= to) continue;
+    if (s.from > cur) out.push({ from: cur, to: s.from });
+    cur = Math.max(cur, s.to);
+  }
+  if (cur < to) out.push({ from: cur, to });
+  return out;
 }

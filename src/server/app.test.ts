@@ -51,6 +51,24 @@ function setup(run?: Parameters<typeof createExportJobs>[2]) {
 }
 
 describe("本地服务接口", () => {
+  it("账号版式：读、整份替换，不合法返回 422", async () => {
+    const old = process.env.MW_HOME;
+    process.env.MW_HOME = root;
+    try {
+      const { req } = setup();
+      expect(await (await req("/api/library/layout")).json()).toEqual({ ok: true, layout: null });
+      const guides = [{ id: "c", axis: "v", pos: 0.5, label: "中线" }];
+      const put = await req("/api/library/layout", { method: "PUT", body: { guides } });
+      expect((await put.json()).layout).toMatchObject({ version: 1, guides, face: null });
+      expect((await (await req("/api/library/layout")).json()).layout.guides).toEqual(guides);
+      const bad = await req("/api/library/layout", { method: "PUT", body: { face: { cx: 2 } } });
+      expect(bad.status).toBe(422);
+    } finally {
+      if (old === undefined) delete process.env.MW_HOME;
+      else process.env.MW_HOME = old;
+    }
+  });
+
   it("读工程、提交操作、版本冲突返回 409", async () => {
     const { req } = setup();
     const p = await (await req("/api/project")).json();
@@ -273,7 +291,15 @@ describe("推送", () => {
       await new Promise<void>((ok) => {
         finish = ok;
       });
-      return { ok: true, revision: 0, file: "/out.mp4", frames: 20, seconds: 1, warnings: [] };
+      return {
+        ok: true,
+        revision: 0,
+        file: "/out.mp4",
+        frames: 20,
+        durationMs: 667,
+        renderSeconds: 1,
+        warnings: [],
+      };
     });
     const r = await (await req("/api/export", { body: {} })).json();
     expect(r.jobId).toMatch(/^export-/);

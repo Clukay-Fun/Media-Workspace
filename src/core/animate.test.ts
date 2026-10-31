@@ -14,8 +14,8 @@ import {
 
 describe("splitUnits", () => {
   it("中文按词拆分，标点不单独占节拍", () => {
-    const u = splitUnits("房产取得时间、身份情况", "word");
-    expect(u.map((x) => x.text)).toEqual(["房产", "取得", "时间", "、", "身份", "情况"]);
+    const u = splitUnits("活动报名时间、联系方式", "word");
+    expect(u.map((x) => x.text)).toEqual(["活动", "报名", "时间", "、", "联系", "方式"]);
     expect(u.filter((x) => x.silent).map((x) => x.text)).toEqual(["、"]);
     expect(u.map((x) => [x.start, x.end])).toEqual([
       [0, 2],
@@ -36,25 +36,25 @@ describe("splitUnits", () => {
 });
 
 describe("unitStarts", () => {
-  const u = splitUnits("房产取得时间、身份情况", "word");
+  const u = splitUnits("活动报名时间、联系方式", "word");
   it("totalMs：在给定时间内全部出现，标点跟着前一个词", () => {
     expect(unitStarts(u, { totalMs: 500 }, 1600, 100)).toEqual([0, 100, 200, 200, 300, 400]);
   });
   it("spread：按字数分配字幕时长，标点不占时间", () => {
     expect(unitStarts(u, "spread", 1100, 100)).toEqual([0, 200, 400, 400, 600, 800]);
-    // 「移民财产转移的条件」：的 只有一个字，占的时间是两字词的一半
-    const v = splitUnits("移民财产转移的条件", "word");
-    expect(v.map((x) => x.text)).toEqual(["移民", "财产", "转移", "的", "条件"]);
+    // 「出行物品检查的清单」：的 只有一个字，占的时间是两字词的一半
+    const v = splitUnits("出行物品检查的清单", "word");
+    expect(v.map((x) => x.text)).toEqual(["出行", "物品", "检查", "的", "清单"]);
     expect(unitStarts(v, "spread", 900, 0)).toEqual([0, 200, 400, 600, 700]);
   });
 });
 
 describe("highlightAt", () => {
   it("只出现一次不写 nth；出现多次时写第几次，标出来的正好是选中的那处", () => {
-    expect(highlightAt("拿到海外身份", 4, 6)).toEqual({ text: "身份" });
-    const h = highlightAt("身份和身份", 3, 5);
-    expect(h).toEqual({ text: "身份", nth: 1 });
-    expect(highlightMask("身份和身份", h ? [h] : [])).toEqual([false, false, false, true, true]);
+    expect(highlightAt("今天出门走走", 2, 4)).toEqual({ text: "出门" });
+    const h = highlightAt("出门和出门", 3, 5);
+    expect(h).toEqual({ text: "出门", nth: 1 });
+    expect(highlightMask("出门和出门", h ? [h] : [])).toEqual([false, false, false, true, true]);
   });
 
   it("空选择、只选了空格返回 null；越界时截到句子范围", () => {
@@ -66,14 +66,14 @@ describe("highlightAt", () => {
 
 describe("highlightMask", () => {
   it("按文字匹配，nth 只匹配第几次出现", () => {
-    expect(highlightMask("身份和身份", [{ text: "身份", nth: 1 }])).toEqual([
+    expect(highlightMask("出门和出门", [{ text: "出门", nth: 1 }])).toEqual([
       false,
       false,
       false,
       true,
       true,
     ]);
-    expect(highlightMask("身份和身份", [{ text: "身份" }]).filter(Boolean)).toHaveLength(4);
+    expect(highlightMask("出门和出门", [{ text: "出门" }]).filter(Boolean)).toHaveLength(4);
   });
 });
 
@@ -135,9 +135,9 @@ describe("卡拉 OK 扫色和荧光笔", () => {
   });
 
   it("荧光笔：连续的关键词字从左往右依次画完", () => {
-    const text = "海外身份";
+    const text = "今天出门";
     const units = splitUnits(text, "char");
-    const mask = highlightMask(text, [{ text: "身份" }]);
+    const mask = highlightMask(text, [{ text: "出门" }]);
     const starts = [0, 100, 200, 300];
     expect(markerProgress(mask, units, starts, 200, 300)).toEqual([0, 0, 0, 0]);
     expect(markerProgress(mask, units, starts, 275, 300)).toEqual([0, 0, 0.5, 0]);

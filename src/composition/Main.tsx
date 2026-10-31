@@ -4,18 +4,21 @@ import type React from "react";
 import { AbsoluteFill, Freeze, Img, Sequence, useCurrentFrame } from "remotion";
 import { type AnimState, ease, elementState, outwardDirection, transformAt } from "../core/animate";
 import type { PreviewProps } from "../core/api";
-import type {
-  FullTransform,
-  ResolvedCaption,
-  ResolvedImage,
-  ResolvedOverlay,
-  ResolvedTimeline,
-  ResolvedTransition,
-  ResolvedVideo,
+import {
+  cardShownAt,
+  type FrameSpan,
+  type FullTransform,
+  mainLiftTransform,
+  type ResolvedCaption,
+  type ResolvedImage,
+  type ResolvedOverlay,
+  type ResolvedTimeline,
+  type ResolvedTransition,
+  type ResolvedVideo,
 } from "../core/compile";
 import { BUILTIN_STYLES } from "../core/presets";
 import type { Anim, TextStyle } from "../core/text-style";
-import { TEMPLATES } from "../templates";
+import { overlaySize, TEMPLATES } from "../templates";
 import { TextBlock } from "./TextBlock";
 
 // 预览和导出共用的合成组件（PLAN 9）：输入是 compile 的结果，不再做任何毫秒 → 帧换算。
@@ -179,10 +182,11 @@ const CaptionLayer: React.FC<{ c: ResolvedCaption; style: TextStyle; fps: number
 const OverlayLayer: React.FC<{
   o: ResolvedOverlay;
   style: TextStyle;
+  srcs: Record<string, string>;
   fps: number;
   width: number;
   height: number;
-}> = ({ o, style, fps, width, height }) => {
+}> = ({ o, style, srcs, fps, width, height }) => {
   const frame = useCurrentFrame();
   const tpl = TEMPLATES[o.template];
   if (!tpl) return null;
@@ -193,6 +197,8 @@ const OverlayLayer: React.FC<{
       <tpl.Component
         props={props}
         style={style}
+        size={overlaySize(tpl, o.size)}
+        src={(id) => srcs[id]}
         frame={frame}
         durationInFrames={o.durationInFrames}
         fps={fps}
@@ -274,6 +280,31 @@ const MainClipLayer: React.FC<{
   );
 };
 
+/** 半屏卡出现时主轨整体上移让位（docs/decisions/0022）；用全局帧号，跨段时不跳 */
+const MainShift: React.FC<{
+  tl: Pick<ResolvedTimeline, "mainShifts" | "height">;
+  children: React.ReactNode;
+}> = ({ tl, children }) => {
+  const { lift, scale } = mainLiftTransform(tl, useCurrentFrame());
+  return (
+    <AbsoluteFill
+      style={
+        lift > 0
+          ? { transform: `translateY(${-lift}px) scale(${scale})`, transformOrigin: "50% 0" }
+          : undefined
+      }
+    >
+      {children}
+    </AbsoluteFill>
+  );
+};
+
+/** 有卡片时字幕不显示（docs/decisions/0022）：只是看不见，逐字动画照常按时间走 */
+const CardGate: React.FC<{ spans: FrameSpan[]; children: React.ReactNode }> = ({
+  spans,
+  children,
+}) => (cardShownAt(spans, useCurrentFrame()) ? null : <AbsoluteFill>{children}</AbsoluteFill>);
+
 const OutroLayer: React.FC<{
   outro: NonNullable<ResolvedTimeline["outro"]>;
   src: string;
@@ -317,22 +348,24 @@ export const Main: React.FC<MainProps> = ({ timeline, styles, srcs, fonts }) => 
       z: mainZ,
       key: v.id,
       node: (
-        <Sequence
-          key={v.id}
-          from={v.from}
-          durationInFrames={v.durationInFrames}
-          premountFor={premount}
-        >
-          <MainClipLayer
-            v={v}
-            prev={mains[i - 1] ?? null}
-            exit={last ? (outro?.transitionIn ?? null) : null}
-            srcs={srcs}
-            width={width}
-            height={height}
-            fps={fps}
-          />
-        </Sequence>
+        <MainShift tl={timeline}>
+          <Sequence
+            key={v.id}
+            from={v.from}
+            durationInFrames={v.durationInFrames}
+            premountFor={premount}
+          >
+            <MainClipLayer
+              v={v}
+              prev={mains[i - 1] ?? null}
+              exit={last ? (outro?.transitionIn ?? null) : null}
+              srcs={srcs}
+              width={width}
+              height={height}
+              fps={fps}
+            />
+          </Sequence>
+        </MainShift>
       ),
     });
   });
@@ -398,9 +431,11 @@ export const Main: React.FC<MainProps> = ({ timeline, styles, srcs, fonts }) => 
       z: c.z,
       key: `${c.id}-${c.part}`,
       node: (
-        <Sequence key={`${c.id}-${c.part}`} from={c.from} durationInFrames={c.durationInFrames}>
-          <CaptionLayer c={c} style={styleOf(c.style, "caption-word-yellow")} fps={fps} />
-        </Sequence>
+        <CardGate spans={timeline.cardSpans}>
+          <Sequence key={`${c.id}-${c.part}`} from={c.from} durationInFrames={c.durationInFrames}>
+            <CaptionLayer c={c} style={styleOf(c.style, "caption-word-yellow")} fps={fps} />
+          </Sequence>
+        </CardGate>
       ),
     });
   }
@@ -408,13 +443,15 @@ export const Main: React.FC<MainProps> = ({ timeline, styles, srcs, fonts }) => 
     if (o.hidden) continue;
     const def = TEMPLATES[o.template]?.meta.defaultStyle as keyof typeof BUILTIN_STYLES | undefined;
     layers.push({
-      z: o.z,
+      // 全屏卡盖住同一层的标题条
+      z: o.size === "full" ? o.z + 0.5 : o.z,
       key: o.id,
       node: (
         <Sequence key={o.id} from={o.from} durationInFrames={o.durationInFrames}>
           <OverlayLayer
             o={o}
             style={styleOf(o.style, def ?? "title-bar-yellow")}
+            srcs={srcs}
             fps={fps}
             width={width}
             height={height}
