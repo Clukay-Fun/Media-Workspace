@@ -5,11 +5,15 @@ import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { transformAt } from "../core/animate";
 import {
+  captionBandLines,
   compareCaptionWrap,
   compareCutPoints,
   type FaceBox,
   faceCenterDelta,
+  fitTiming,
+  loudnessEnvelope,
   matchCaptionLines,
+  type TimingFit,
   transformFaceBoxToCanvas,
 } from "../core/compare";
 import { compile, layoutMainTrack } from "../core/compile";
@@ -17,7 +21,7 @@ import { MwError } from "../core/errors";
 import { isMainClip, type Project } from "../core/schema";
 import { frameToMs, msToFrame } from "../core/time";
 import { detectFaces, readFaces } from "./faces";
-import { probeMedia } from "./media";
+import { decodeAudioSamples, probeMedia } from "./media";
 import { recognizeText } from "./ocr";
 import { projectFiles } from "./paths";
 import { renderStills } from "./render";
@@ -40,8 +44,12 @@ type CaptionShot = {
   text: string;
   frame: number;
   atMs: number;
+  /** 参考成片里说到同一处的时间（按音频对齐估的；估不出来时和 atMs 一样） */
+  referenceAtMs: number;
   expectedY?: number;
 };
+
+const SHEET_COUNT = 6;
 
 /** 比较工程与参考成片，输出同一时刻并排图及可解析的差异 JSON。 */
 export async function compareProject(
@@ -72,11 +80,31 @@ export async function compareProject(
   const atMs = Math.min(requestedAtMs, comparisonEndMs - 1);
   const atFrame = Math.min(timeline.durationInFrames - 1, msToFrame(atMs, timeline.fps));
   const renderedAtMs = Math.round(frameToMs(atFrame, timeline.fps));
-  const captionShots = collectCaptionShots(project, timeline).filter(
-    (shot) => shot.atMs < comparisonEndMs,
+  options.onLog?.("用音频对齐估计起点和倍速");
+  const timing = await compareTiming(dir, project, reference, referenceProbe.durationMs);
+  const toReferenceMs = (atMsInProject: number) => {
+    const fit = timing.reference;
+    const sourceMs = projectSourceMs(project, atMsInProject);
+    if (!fit || fit.score < 0.4 || sourceMs === null) return atMsInProject;
+    return Math.round((sourceMs - fit.sourceStartMs) / fit.speed);
+  };
+  const captionShots = collectCaptionShots(project, timeline)
+    .map((shot) => ({ ...shot, referenceAtMs: toReferenceMs(shot.atMs) }))
+    .filter(
+      (shot) =>
+        shot.atMs < comparisonEndMs &&
+        shot.referenceAtMs >= 0 &&
+        shot.referenceAtMs < referenceProbe.durationMs,
+    );
+  // 并排小图：均匀取几处，同一成片时间
+  const sheetFrames = Array.from({ length: SHEET_COUNT }, (_, i) =>
+    msToFrame(Math.round((comparisonEndMs * (i + 0.5)) / SHEET_COUNT), timeline.fps),
   );
-  const frames = [...new Set([atFrame, ...captionShots.map((shot) => shot.frame)])];
-  const sampleTimes = [...new Set([renderedAtMs, ...captionShots.map((shot) => shot.atMs)])];
+  const sheetTimes = sheetFrames.map((f) => Math.round(frameToMs(f, timeline.fps)));
+  const frames = [...new Set([atFrame, ...sheetFrames, ...captionShots.map((shot) => shot.frame)])];
+  const sampleTimes = [
+    ...new Set([renderedAtMs, ...sheetTimes, ...captionShots.map((shot) => shot.referenceAtMs)]),
+  ];
   const temp = await mkdtemp(join(tmpdir(), "mw-compare-"));
   const projectFramesDir = join(temp, "project-frames");
   const referenceFramesDir = join(temp, "reference-frames");
@@ -107,6 +135,14 @@ export async function compareProject(
       image,
       timeline.height,
     );
+    const sheet = image.replace(/\.png$/i, "") + "-sheet.png";
+    await combineSheet(
+      sheetFrames.map((f, i) => [
+        projectFrameByNumber.get(f) ?? "",
+        referenceFrameByTime.get(sheetTimes[i] ?? 0) ?? "",
+      ]),
+      sheet,
+    );
 
     options.onLog?.("检测参考成片剪切点");
     const [referenceCutPoints, faces, captionWrap] = await Promise.all([
@@ -125,6 +161,20 @@ export async function compareProject(
     const projectCutPoints = layoutMainTrack(project)
       .slice(1)
       .map((segment) => Math.round(segment.startMs));
+    const cuts = compareCutPoints(projectCutPoints, referenceCutPoints, cutToleranceMs);
+    // 参考成片里没对上的画面变化，能判断的标上是什么，免得当成漏剪
+    const outroMs = project.outro
+      ? (project.assets[project.outro.asset]?.probe?.durationMs ?? 0)
+      : 0;
+    const referenceOnlyNotes = cuts.referenceOnly.map((ms) => ({
+      ms,
+      note:
+        ms < 300
+          ? "开头的画面变化（标题等出现），不是剪辑"
+          : outroMs > 0 && Math.abs(referenceProbe.durationMs - ms - outroMs) < 400
+            ? "大概是接片尾的地方"
+            : null,
+    }));
 
     return {
       ok: true as const,
@@ -147,8 +197,12 @@ export async function compareProject(
           caveat: "只检测明显的画面变化，同机位剪辑可能无法识别",
         },
         toleranceMs: cutToleranceMs,
-        ...compareCutPoints(projectCutPoints, referenceCutPoints, cutToleranceMs),
+        ...cuts,
+        referenceOnlyNotes,
       },
+      timing,
+      comparisonSheet: sheet,
+      comparisonSheetTimesMs: sheetTimes,
       faces,
       captionWrap,
     };
@@ -171,6 +225,7 @@ function collectCaptionShots(
       text: caption.text,
       frame,
       atMs: Math.round(frameToMs(frame, timeline.fps)),
+      referenceAtMs: Math.round(frameToMs(frame, timeline.fps)),
       ...(style ? { expectedY: style.layout.y / project.canvas.height } : {}),
     });
   }
@@ -426,25 +481,34 @@ async function compareCaptionWraps(
   projectFrameByNumber: Map<number, string>,
   referenceFrameByTime: Map<number, string>,
 ) {
-  if (shots.length === 0) return { available: true, compared: 0, differences: [], warnings: [] };
+  if (shots.length === 0)
+    return { available: true, total: 0, compared: 0, same: [], differences: [], warnings: [] };
   const images = shots.flatMap((shot) => [
     projectFrameByNumber.get(shot.frame) ?? "",
-    referenceFrameByTime.get(shot.atMs) ?? "",
+    referenceFrameByTime.get(shot.referenceAtMs) ?? "",
   ]);
   const recognizedByFrame = await recognizeText(images);
   if (!recognizedByFrame) {
     return {
       available: false,
+      total: shots.length,
       compared: 0,
+      same: [],
       differences: [],
       warnings: ["字幕 OCR 使用 macOS Vision，仅在支持 swiftc 的 macOS 上可用"],
     };
   }
-  const differences = shots.map((shot, index) => {
+  const rows = shots.map((shot, index) => {
     const projectRows = recognizedByFrame[index * 2] ?? [];
     const referenceRows = recognizedByFrame[index * 2 + 1] ?? [];
     const projectLines = matchCaptionLines(projectRows, shot.text, shot.expectedY);
-    const referenceLines = matchCaptionLines(referenceRows, shot.text);
+    // 参考成片的断句可能和工程不同：对不上工程的字时，直接取字幕那一带识别出的文字
+    const matched = matchCaptionLines(referenceRows, shot.text);
+    const band =
+      matched.length === 0 && shot.expectedY !== undefined
+        ? captionBandLines(referenceRows, shot.expectedY)
+        : [];
+    const referenceLines = matched.length > 0 ? matched : band;
     const wrap = compareCaptionWrap(projectLines, referenceLines);
     const recognizedProject = projectLines.length > 0;
     const recognizedReference = referenceLines.length > 0;
@@ -452,6 +516,7 @@ async function compareCaptionWraps(
     return {
       id: shot.id,
       atMs: shot.atMs,
+      referenceAtMs: shot.referenceAtMs,
       text: shot.text,
       projectLines,
       referenceLines,
@@ -460,23 +525,133 @@ async function compareCaptionWraps(
       wrapComparable,
       recognizedProject,
       recognizedReference,
+      /** 参考这一侧的字和工程这句对不上，是按字幕位置取的原文 */
+      referenceFromBand: matched.length === 0 && band.length > 0,
     };
   });
-  const recognizedPairs = differences.filter(
-    (row) => row.recognizedProject && row.recognizedReference,
-  );
+  const differences = rows.filter((row) => !row.sameWrap);
+  const recognizedPairs = rows.filter((row) => row.recognizedProject && row.recognizedReference);
   const warnings: string[] = [];
-  const unrecognizedCount = differences.length - recognizedPairs.length;
+  const unrecognizedCount = rows.length - recognizedPairs.length;
   const textMismatchCount = recognizedPairs.filter((row) => !row.sameText).length;
   if (unrecognizedCount > 0)
-    warnings.push(`${unrecognizedCount} 条字幕至少一侧 OCR 未匹配，已跳过换行比较`);
+    warnings.push(`${unrecognizedCount} 条字幕至少一侧 OCR 没认出来，已跳过换行比较`);
   if (textMismatchCount > 0)
-    warnings.push(`${textMismatchCount} 条字幕 OCR 文本不一致，无法可靠判断换行`);
+    warnings.push(
+      `${textMismatchCount} 条两边的字不一样（参考成片断句不同，或 OCR 认错字），看 referenceLines`,
+    );
   return {
     available: true,
-    compared: differences.filter((row) => row.wrapComparable).length,
+    total: rows.length,
+    compared: rows.filter((row) => row.wrapComparable).length,
     recognized: recognizedPairs.length,
+    /** 两边字和换行都一样的字幕 */
+    same: rows.filter((row) => row.sameWrap).map((row) => row.id),
+    /** 只列不一样或没法比的 */
     differences,
     warnings,
   };
+}
+
+/** 工程成片某一时刻放的是原片的哪一毫秒（主轨上不是视频时为 null） */
+function projectSourceMs(project: Project, atMs: number): number | null {
+  const segment = layoutMainTrack(project).find((s) => atMs >= s.startMs && atMs < s.endMs);
+  if (!segment) return null;
+  return segment.clip.inMs + (atMs - segment.startMs) * segment.clip.speed;
+}
+
+/**
+ * 用音频对齐估计参考成片从原片哪里开始、几倍速，和工程主轨的第一段对照。
+ * 假设参考成片中间没有剪；score 低说明有剪辑或音频不是同一段
+ */
+async function compareTiming(
+  dir: string,
+  project: Project,
+  reference: string,
+  referenceDurationMs: number,
+) {
+  const segments = layoutMainTrack(project);
+  const first = segments[0];
+  const asset = first ? project.assets[first.clip.asset] : undefined;
+  const projectFit = first
+    ? {
+        sourceStartMs: Math.round(first.clip.inMs),
+        speed: first.clip.speed,
+        segments: segments.length,
+      }
+    : null;
+  if (!first || !asset) return { available: false as const, project: projectFit, reference: null };
+  const outroMs = project.outro ? (project.assets[project.outro.asset]?.probe?.durationMs ?? 0) : 0;
+  let fit: TimingFit | null = null;
+  try {
+    const rate = 8000;
+    const [source, edited] = await Promise.all([
+      decodeAudioSamples(resolve(dir, asset.path), rate),
+      decodeAudioSamples(reference, rate),
+    ]);
+    fit = fitTiming(loudnessEnvelope(source, rate), loudnessEnvelope(edited, rate), {
+      // 避开片尾：至少去掉和工程片尾一样长的一段
+      usedMs: Math.max(3000, referenceDurationMs - Math.max(outroMs, 2000)),
+    });
+  } catch {
+    fit = null;
+  }
+  return {
+    available: fit !== null,
+    project: projectFit,
+    reference: fit,
+    ...(fit && projectFit
+      ? {
+          startDeltaMs: projectFit.sourceStartMs - fit.sourceStartMs,
+          speedDelta: Math.round((projectFit.speed - fit.speed) * 100) / 100,
+        }
+      : {}),
+    caveat: "按整段线性对齐估的：参考成片中间有剪时只对前面一段准，score 低于 0.4 不可信",
+  };
+}
+
+/** 几处同一时刻的并排小图（每对左边是工程、右边是参考），排成 3 列 */
+async function combineSheet(pairs: [string, string][], output: string) {
+  if (pairs.some(([a, b]) => !a || !b)) throw new MwError("RENDER", "没有找到用于合成的对比帧");
+  const h = 480;
+  const inputs = pairs.flat().flatMap((file) => ["-i", file]);
+  const scaled = pairs
+    .flat()
+    .map((_, i) => `[${i}:v]scale=-2:${h}:flags=lanczos,setsar=1[v${i}]`)
+    .join(";");
+  const pairsFilter = pairs
+    .map((_, i) => `[v${i * 2}][v${i * 2 + 1}]hstack=inputs=2[p${i}]`)
+    .join(";");
+  const cols = 3;
+  const layout = pairs
+    .map(
+      (_, i) =>
+        `${i % cols === 0 ? "0" : Array.from({ length: i % cols }, (_, k) => `w${k}`).join("+")}_${Math.floor(i / cols) === 0 ? "0" : "h0"}`,
+    )
+    .join("|");
+  const filter = `${scaled};${pairsFilter};${pairs.map((_, i) => `[p${i}]`).join("")}xstack=inputs=${pairs.length}:layout=${layout}[out]`;
+  try {
+    await run(
+      ffmpegBin(),
+      [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        ...inputs,
+        "-filter_complex",
+        filter,
+        "-map",
+        "[out]",
+        "-frames:v",
+        "1",
+        output,
+      ],
+      { maxBuffer: 1 << 24 },
+    );
+  } catch (e) {
+    throw new MwError("MEDIA", "无法合成对比小图", {
+      hint: String((e as Error).message).slice(0, 300),
+    });
+  }
 }

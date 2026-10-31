@@ -271,7 +271,9 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
         code: "TEXT_OUTSIDE_SAFE_AREA",
         id: p.id,
         atMs: ms(p.from),
-        message: `文字超出了「${project.canvas.safeArea.preset}」安全区（${out.join("、")}），可能被平台的按钮或标题挡住`,
+        message: opts.layout
+          ? `文字超出了通用「${project.canvas.safeArea.preset}」安全区（${out.join("、")}）；位置按账号版式，只作参考，不用改`
+          : `文字超出了「${project.canvas.safeArea.preset}」安全区（${out.join("、")}），可能被平台的按钮或标题挡住`,
         // 有账号版式时位置以版式为准，通用安全区只作参考（0025）
         ...(opts.layout ? { level: "hint" as const } : {}),
       });
@@ -285,7 +287,9 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
         placed.find((p) => p.id === x.id)?.styleId === styleId,
     );
     if (i)
-      i.message += `；用样式「${styleId}」的字幕共 ${g.count} 条有同样的问题，建议调整样式的 maxWidth 或位置`;
+      i.message += opts.layout
+        ? `；用样式「${styleId}」的字幕共 ${g.count} 条`
+        : `；用样式「${styleId}」的字幕共 ${g.count} 条有同样的问题，建议调整样式的 maxWidth 或位置`;
   }
 
   // 画面元素（图片、画中画）：按 contain 后的真实画面区域算，带关键帧的会动

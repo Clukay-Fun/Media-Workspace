@@ -54,7 +54,14 @@ export type Actor = { source: Source; actor: string };
 export async function importAsset(
   dir: string,
   file: string,
-  o: Actor & { id?: string; baseRevision?: number; proxy?: boolean; onLog?: (s: string) => void },
+  o: Actor & {
+    id?: string;
+    baseRevision?: number;
+    proxy?: boolean;
+    /** 主轨还空着时把这段视频整段放上主轨（按账号设置的倍速）；false = 只导入素材 */
+    main?: boolean;
+    onLog?: (s: string) => void;
+  },
 ) {
   const p = await loadProject(dir);
   const r = await importMedia(dir, resolve(file), {
@@ -62,8 +69,47 @@ export async function importAsset(
     fps: p.canvas.fps,
     onLog: o.onLog,
   });
+  const taken = new Set([
+    ...Object.keys(p.assets),
+    ...p.tracks.flatMap((t) => [t.id, ...t.items.map((i) => i.id)]),
+  ]);
+  const fresh = (prefix: string) => {
+    let n = 1;
+    while (taken.has(`${prefix}${n}`)) n++;
+    taken.add(`${prefix}${n}`);
+    return `${prefix}${n}`;
+  };
+  const id = o.id ?? fresh("a");
+  const main = p.tracks.find((t) => t.kind === "video" && t.main);
+  const durationMs = r.asset.probe?.durationMs ?? 0;
+  const toMain =
+    o.main !== false &&
+    r.asset.kind === "video" &&
+    durationMs > 0 &&
+    main &&
+    main.items.length === 0;
+  const speed = toMain ? ((await getLayout().catch(() => null))?.speed ?? 1) : 1;
+  const clip = toMain ? fresh("c") : undefined;
   const res = await applyToProject(dir, {
-    ops: [{ op: "asset.add", ...(o.id ? { id: o.id } : {}), asset: r.asset }],
+    ops: [
+      { op: "asset.add", id, asset: r.asset },
+      ...(toMain && main && clip
+        ? [
+            {
+              op: "item.add" as const,
+              track: main.id,
+              item: {
+                id: clip,
+                type: "clip",
+                asset: id,
+                inMs: 0,
+                outMs: durationMs,
+                speed,
+              },
+            },
+          ]
+        : []),
+    ],
     baseRevision: o.baseRevision ?? p.revision,
     source: o.source,
     actor: o.actor,
@@ -71,7 +117,9 @@ export async function importAsset(
   });
   return {
     ...res,
-    asset: res.changed[0],
+    asset: id,
+    // 主轨原来是空的：整段放上了主轨，倍速按账号设置
+    ...(clip ? { mainClip: clip, speed } : {}),
     probe: r.probe,
     created: r.created,
     ...(r.subtitleCheck
@@ -96,7 +144,8 @@ export async function removeSilenceProject(
   },
 ) {
   const minPauseMs = o.minPauseMs ?? 400;
-  const keepMs = o.keepMs ?? 120;
+  // 头尾留得比句中停顿多：用户自己剪的片子开口前、说完后各留大约 0.3 秒（样片实测），尾音不会被切掉
+  const keepMs = o.keepMs ?? (o.edgesOnly ? 300 : 120);
   if (!Number.isInteger(minPauseMs) || minPauseMs <= 0)
     throw new MwError("USAGE", "minPauseMs 必须是正整数");
   if (!Number.isInteger(keepMs) || keepMs < 0) throw new MwError("USAGE", "keepMs 必须是非负整数");
@@ -135,8 +184,20 @@ export async function removeSilenceProject(
     const found = detectSilence(samples, sampleRate, { minPauseMs });
     const totalMs = (samples.length / sampleRate) * 1000;
     const silences = o.edgesOnly ? edgeSilences(found, totalMs) : found;
+    // 剪头尾时不剪进字幕：第一句出现之前、最后一句消失之后才剪
+    const caps = project.tracks
+      .flatMap((t) => (t.kind === "caption" ? t.items : []))
+      .filter((c) => c.asset === assetId);
+    const firstCap = Math.min(...caps.map((c) => c.startMs));
+    const lastCap = Math.max(...caps.map((c) => c.endMs));
     const ranges = (
-      o.edgesOnly ? edgeCutRanges(silences, totalMs, keepMs) : silenceCutRanges(silences, keepMs)
+      o.edgesOnly
+        ? edgeCutRanges(silences, totalMs, keepMs).map((r) =>
+            r.startMs === 0
+              ? { ...r, endMs: Math.min(r.endMs, firstCap) }
+              : { ...r, startMs: Math.max(r.startMs, lastCap) },
+          )
+        : silenceCutRanges(silences, keepMs)
     )
       .map((range) => ({
         startMs: Math.max(0, Math.ceil(range.startMs)),
@@ -206,6 +267,7 @@ export async function attachOutro(
   if (!asset) {
     const r = await importAsset(dir, file, {
       ...(p.assets.outro ? {} : { id: "outro" }),
+      main: false,
       source: o.source,
       actor: o.actor,
       onLog: o.onLog,
@@ -237,7 +299,14 @@ export async function attachOutro(
     actor: o.actor,
     ...templateOpts,
   });
-  return { ...res, outro: asset, file, usedDefault: def !== null };
+  // outro.set 不改任何条目，changed 里写上片尾素材，免得看起来什么都没改（素材是新导入时版本号会加 2）
+  return {
+    ...res,
+    changed: [...new Set([asset, ...res.changed])],
+    outro: asset,
+    file,
+    usedDefault: def !== null,
+  };
 }
 
 export async function removeOutro(dir: string, o: Actor) {
@@ -536,10 +605,14 @@ export async function transcribeProject(
   if (!capTrack || capTrack.kind !== "caption")
     throw new MwError("NOT_FOUND", o.track ? `没有字幕轨道「${o.track}」` : "工程里没有字幕轨道");
   const track = capTrack.id;
-  // 一行最多几个字：默认按这条轨道的字幕样式一行放得下的字数，保证每句只占一行
+  // 一条最多几个字：账号设置了就照用（长的折成两行），没设置按字幕样式一行放得下的字数，每条只占一行；
+  // 都不超过样式允许的行数
   const styleId = capTrack.style ?? "caption-word-yellow";
   const capStyle = p.styles[styleId] ?? (BUILTIN_STYLES as Record<string, TextStyle>)[styleId];
-  const maxChars = o.maxChars ?? (capStyle ? charsPerLine(capStyle) : 14);
+  const perLine = capStyle ? charsPerLine(capStyle) : 14;
+  const fit = capStyle ? perLine * capStyle.layout.maxLines : 28;
+  const wanted = (await getLayout().catch(() => null))?.captionMaxChars ?? perLine;
+  const maxChars = o.maxChars ?? Math.min(wanted, fit);
 
   const scriptFile = join(dir, "script.txt");
   const script = o.script ?? (await readFile(scriptFile, "utf8").catch(() => undefined));
@@ -730,7 +803,10 @@ export async function exportProject(dir: string, o: ExportOptions = {}) {
     revision: p.revision,
     file: r.out,
     frames: r.frames,
-    seconds: (Date.now() - t0) / 1000,
+    /** 成片时长 */
+    durationMs: Math.round((r.frames / p.canvas.fps) * 1000),
+    /** 渲染用了多久（不是成片时长） */
+    renderSeconds: (Date.now() - t0) / 1000,
     warnings: v.warnings,
   };
 }
@@ -779,9 +855,11 @@ export function guideInfo() {
       "提交后用 validate、preview（sheet）自查，只修一轮；修的时候不要改动已经确定的时长",
       "字段名拼错会返回 UNKNOWN_FIELD，不会被悄悄忽略；item.update 的 set 里写 null 表示去掉这个字段（比如去掉转场 transitionIn: null）",
       "逐字节奏默认用剪映的前快后慢（stagger: { fraction: 0.75 } + inSlot），不看语音；要严格跟着念的速度出字时改用 spread 并跑 align，改了字幕文字后需要重新 align",
-      "加标题、卡片之前先列方案（哪句话 → 加什么画面 → 用哪个模板 → 什么时间），给用户确认后再 apply",
-      "只有原片（或原片 + 文稿）时用 transcribe 出字幕（不需要 SRT、不用再 align）：人给了文稿就传 script，字以文稿为准；返回的 check（漏读 / 多读 / 改口）列给人确认，不要自己改；splitLines 读一遍，不顺用 caption.split / caption.merge 调",
-      "人没说要剪停顿时只剪开头结尾的空白：remove-silence 加 edgesOnly（mw remove-silence --edges），句中停顿是说话节奏，保留",
+      "加标题、卡片之前先列方案（哪句话 → 加什么画面 → 用哪个模板 → 什么时间），给用户确认后再 apply；人已经写明了标题文字、要求直接出片时照用，不用再停下来问",
+      "import 视频时主轨空着会自动整段放上主轨（倍速按账号设置，返回 mainClip），接着就能 transcribe",
+      "只有原片（或原片 + 文稿）时用 transcribe 出字幕（不需要 SRT、不用再 align）：人给了文稿就传 script，字以文稿为准；返回的 check（漏读 / 多读 / 改口）列给人确认，不要自己改；一条最多几个字按账号设置（layout 的 captionMaxChars，比一行长的折成两行），没设置时每条一行",
+      "transcribe 返回的 splitLines 是一句话太长被切开的地方，读一遍，断在词中间或不顺时用 caption.reflow 一步改：{ ids: [相邻几句的 ID], lines: [新的几行] }，字要和原来一样（标点可以不同），逐字时间跟着字走；行尾的顿号、逗号去掉",
+      "人没说要剪停顿时只剪开头结尾的空白：remove-silence 加 edgesOnly（mw remove-silence --edges），句中停顿是说话节奏，保留；头尾各留 300ms，不会剪进字幕",
       "人要求剪句间停顿时用 remove-silence：按音频静音找，不依赖字幕；可调 minPauseMs（默认 400）和 keepMs（默认 120，静音两端各保留）。明确要按字幕空隙剪时才先 align 再用 cut.removePauses（minGapMs: 150、keepMs: 40）",
       "删句（cut.removeCaptions）之前先跑 align：它会把字幕开始时间挪到真正开口的地方，否则下一句的第一个字可能被剪掉一半",
       "剪错了用 uncut 恢复那一刀（片段 ID 是剪辑点后面那段），字幕会从历史里找回；不要整体 undo，会把后面的修改一起撤掉",
@@ -797,7 +875,7 @@ export function guideInfo() {
       "图片和画中画可以加循环动画 animLoop（v6）：只有 breathe（呼吸），durationMs 是周期，默认 2400、intensity 2（±6%，±3% 看不出来）；一条视频里别多处同时呼吸",
       "关键帧（keyframe.set，atMs 相对元素开始）：元素有关键帧后 transform 不再起作用，以关键帧为准；推近 1.5–2.5 秒、幅度 10–20%（4 秒以上显得拖）",
       "卡片：先看 templates 的 useFor / sizes / example 选模板；卡片必须写 size（v7）：small 金句 / 数字 / 人名 / 提示，half 要点 / 截图 / 长金句（主画面自动上移），full 只给整段原文（盖住标题条）；有卡时字幕自动隐藏；按内容需要才用，30 秒左右的短视频默认不加（没有值得停下来看的数字、清单、金句时建议人不加），加的话 30 秒 0–2 张、60 秒不超过 4 张；字数守住 schema 的上限",
-      "主轨倍速默认用账号设置（mw layout 的 speed，用户习惯 1.1 倍整体加速）：每个主轨片段 item.update speed；人另有要求时听人的",
+      "主轨倍速默认用账号设置（mw layout 的 speed，用户习惯 1.1 倍整体加速）：import 自动放上主轨时已经用了；自己加的主轨片段要 item.update speed；人另有要求时听人的",
       "人物位置一律用 frame（按账号版式把人脸摆到参考线上），不要自己估 transform；clamped 为 true 时告诉人脸会偏大或偏一点；看效果用 preview --guides",
       "「第 N 个观点」按章节定位：开场之后的第 N 章（没分章先 chapters.set），卡片锚在亮出观点的那句字幕上，内容只从这一章的字幕里提炼",
       "片尾：人说接上默认片尾时用 outro（不给 file 用默认片尾，默认叠化 300ms，fadeMs: 0 硬切）；没设置默认片尾会报 NOT_FOUND，请人用 mw outro-default <视频文件> 设置",

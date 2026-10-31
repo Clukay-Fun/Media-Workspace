@@ -220,12 +220,12 @@ export function createMcpServer(): McpServer {
     "remove-silence",
     {
       description:
-        "从主轨视频素材的音频中找静音并剪掉停顿，不依赖字幕或识音模型。minPauseMs 是最短静音时长，keepMs 是静音段两端各保留的时长；" +
-        "edgesOnly 只剪开头和结尾的空白、句中停顿保留（人没说要剪停顿时用这个）",
+        "从主轨视频素材的音频中找静音并剪掉停顿，不依赖字幕或识音模型。minPauseMs 是最短静音时长，keepMs 是静音段两端各保留的时长（默认 120，edgesOnly 时 300）；" +
+        "edgesOnly 只剪开头和结尾的空白、句中停顿保留（人没说要剪停顿时用这个），不会剪进字幕",
       inputSchema: {
         project,
         minPauseMs: z.number().int().positive().default(400),
-        keepMs: z.number().int().nonnegative().default(120),
+        keepMs: z.number().int().nonnegative().optional(),
         edgesOnly: z.boolean().default(false),
         baseRevision: base.optional(),
         actor,
@@ -282,18 +282,26 @@ export function createMcpServer(): McpServer {
     "import",
     {
       description:
-        "导入素材文件（视频、音频、图片）：probe、必要时转标准化文件和预览代理，然后提交 asset.add",
+        "导入素材文件（视频、音频、图片）：probe、必要时转标准化文件和预览代理，然后提交 asset.add；" +
+        "主轨空着时视频整段放上主轨（倍速按账号设置，返回 mainClip），main=false 只导入",
       inputSchema: {
         project,
         file: z.string().min(1).describe("素材的绝对路径"),
         id: z.string().optional(),
+        main: z.boolean().optional(),
         baseRevision: base.optional(),
         actor,
       },
     },
-    ({ project: p, file, id, baseRevision, actor: a }) =>
+    ({ project: p, file, id, main, baseRevision, actor: a }) =>
       call(async () => {
-        const r = await importAsset(dirOf(p), file, { id, baseRevision, source: "mcp", actor: a });
+        const r = await importAsset(dirOf(p), file, {
+          id,
+          main,
+          baseRevision,
+          source: "mcp",
+          actor: a,
+        });
         const content: Content[] = [{ type: "text", text: JSON.stringify(r, null, 2) }];
         // 烧录字幕检查图直接给 AI 看
         if (r.subtitleCheck) {

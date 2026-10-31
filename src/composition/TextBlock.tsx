@@ -12,7 +12,7 @@ import {
   unitStarts,
 } from "../core/animate";
 import { cssFontStack } from "../core/fonts";
-import type { TextStyle } from "../core/text-style";
+import { charsPerLine, type TextStyle } from "../core/text-style";
 
 // 文本样式引擎的渲染部分（PLAN 5.4）：字幕、标题、卡片文字都用它。
 // 排版在一开始就按全文确定，逐字出现时只改透明度和变换，文字不会跳动（和剪映一致）。
@@ -309,6 +309,7 @@ export const TextBlock: React.FC<TextBlockProps> = ({
                 : span(c, `${i}-${j}`, u.start, u.end, true, true),
           }));
         }),
+        charsPerLine(style),
       )}
     </div>
   );
@@ -361,7 +362,30 @@ function wordStarts(atoms: Atom[]): boolean[] {
   });
 }
 
-function keepTogether(atoms: Atom[]): React.ReactNode[] {
+// 一行放不下、句中有顿号逗号这类标点、在标点后面折开两边都放得下时，就在标点后面折（不按词边界均分，
+// 「出发日期、集合地点 / 随身物品」比「出发日期、集合 / 地点、随身物品」好读）。有手动换行时不动
+const MID = /^[，、；：！？,;:!?]$/u;
+
+function preferBreak(atoms: Atom[], perLine: number): Atom[] {
+  const len = (xs: Atom[]) => xs.reduce((n, a) => n + [...a.text].length, 0);
+  const total = len(atoms);
+  if (total <= perLine || atoms.some((a) => a.br)) return atoms;
+  let best = -1;
+  let gap = Number.POSITIVE_INFINITY;
+  for (let i = 1; i < atoms.length; i++) {
+    if (!MID.test(atoms[i - 1]?.text ?? "")) continue;
+    const left = len(atoms.slice(0, i));
+    if (left > perLine || total - left > perLine) continue;
+    if (Math.abs(total - 2 * left) < gap) {
+      gap = Math.abs(total - 2 * left);
+      best = i;
+    }
+  }
+  return best < 0 ? atoms : atoms.map((a, i) => (i === best ? { ...a, br: true } : a));
+}
+
+function keepTogether(raw: Atom[], perLine: number): React.ReactNode[] {
+  const atoms = preferBreak(raw, perLine);
   const starts = wordStarts(atoms);
   const groups: Atom[][] = [];
   atoms.forEach((a, i) => {

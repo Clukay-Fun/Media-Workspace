@@ -31,6 +31,11 @@ export const Layout = z.strictObject({
   titleStyle: Id.nullable().default(null),
   /** 字幕用的样式，null = 用默认 */
   captionStyle: Id.nullable().default(null),
+  /**
+   * 一条字幕最多几个字（mw transcribe 断句用）。比一行放得下的多时，这条字幕折成两行显示（按词换行）；
+   * null = 按字幕样式一行放得下的字数，每条只占一行
+   */
+  captionMaxChars: z.number().int().min(4).max(40).nullable().default(null),
   /** 主轨口播的倍速（用户习惯整体加速、不剪句中停顿），1 = 原速 */
   speed: z.number().min(0.5).max(2).default(1),
   savedAt: z.string().default(""),

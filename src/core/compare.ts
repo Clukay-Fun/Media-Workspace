@@ -221,3 +221,82 @@ export function compareCaptionWrap(
     projectBreaks.every((point, index) => point === referenceBreaks[index]);
   return { sameText, sameWrap, projectBreaks, referenceBreaks };
 }
+
+/** 识别出的字幕区域里的文字（参考成片的断句和工程不同时，不按工程的字去挑行，直接看字幕那一带写了什么） */
+export function captionBandLines(
+  lines: CaptionOCRLine[],
+  expectedY: number,
+  band = 0.07,
+): string[] {
+  return lines
+    .filter((line) => Math.abs(line.y + line.h / 2 - expectedY) <= band && line.text.trim())
+    .toSorted((a, b) => (Math.abs(a.y - b.y) > 0.015 ? a.y - b.y : a.x - b.x))
+    .map((line) => line.text.trim());
+}
+
+/** 音频响度包络：每 windowMs 一个值，取对数后减均值除以标准差，方便做相关 */
+export function loudnessEnvelope(
+  samples: Float32Array,
+  sampleRate: number,
+  windowMs = 10,
+): Float64Array {
+  const size = Math.max(1, Math.round((sampleRate * windowMs) / 1000));
+  const n = Math.floor(samples.length / size);
+  const env = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    let sum = 0;
+    for (let j = i * size; j < (i + 1) * size; j++) sum += (samples[j] ?? 0) ** 2;
+    env[i] = Math.log(Math.sqrt(sum / size) + 1e-4);
+  }
+  let mean = 0;
+  for (const v of env) mean += v;
+  mean /= n || 1;
+  let sd = 0;
+  for (const v of env) sd += (v - mean) ** 2;
+  sd = Math.sqrt(sd / (n || 1)) || 1;
+  for (let i = 0; i < n; i++) env[i] = ((env[i] ?? 0) - mean) / sd;
+  return env;
+}
+
+export type TimingFit = {
+  /** 成片第 0 毫秒对应原片的哪一毫秒 */
+  sourceStartMs: number;
+  /** 成片 1 毫秒走过原片几毫秒（倍速） */
+  speed: number;
+  /** 包络相关系数，0.5 以上比较可信 */
+  score: number;
+};
+
+/**
+ * 估计成片是从原片哪里开始、用了几倍速（假设中间没有剪）：原片时间 = sourceStartMs + speed × 成片时间。
+ * 两边的响度包络做相关，倍速在 speeds 里搜，起点在 0 到 maxStartMs 里搜；只用成片的前 usedMs（避开片尾）
+ */
+export function fitTiming(
+  source: Float64Array,
+  edited: Float64Array,
+  o: { windowMs?: number; speeds?: number[]; maxStartMs?: number; usedMs?: number } = {},
+): TimingFit | null {
+  const w = o.windowMs ?? 10;
+  const speeds =
+    o.speeds ?? Array.from({ length: 71 }, (_, i) => Math.round((0.8 + i * 0.01) * 100) / 100);
+  const maxStart = Math.floor((o.maxStartMs ?? 10_000) / w);
+  const used = Math.min(edited.length, Math.floor((o.usedMs ?? Number.POSITIVE_INFINITY) / w));
+  if (used < 50) return null;
+  let best: TimingFit | null = null;
+  for (const speed of speeds) {
+    for (let a = 0; a <= maxStart; a++) {
+      let sum = 0;
+      let count = 0;
+      for (let i = 0; i < used; i += 2) {
+        const v = source[a + Math.round(i * speed)];
+        if (v === undefined) break;
+        sum += v * (edited[i] ?? 0);
+        count++;
+      }
+      if (count < used / 4) continue;
+      const score = sum / count;
+      if (!best || score > best.score) best = { sourceStartMs: a * w, speed, score };
+    }
+  }
+  return best && { ...best, score: Math.round(best.score * 1000) / 1000 };
+}

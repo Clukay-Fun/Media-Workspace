@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  captionBandLines,
   compareCaptionWrap,
   compareCutPoints,
   faceCenterDelta,
+  fitTiming,
   matchCaptionLines,
   transformFaceBoxToCanvas,
 } from "./compare";
@@ -89,5 +91,35 @@ describe("compare helpers", () => {
         "房产取得时间、身份情况",
       ),
     ).toEqual([]);
+  });
+});
+
+describe("音频对齐估起点和倍速", () => {
+  it("成片 = 原片从 1.2 秒开始、1.1 倍速：估出来一致", () => {
+    // 原片响度包络：随机的说话 / 停顿块
+    let seed = 7;
+    const rand = () => {
+      seed = (seed * 16807) % 2147483647;
+      return seed / 2147483647;
+    };
+    const source = new Float64Array(3000);
+    for (let i = 0; i < source.length; i += 20) {
+      const v = rand() > 0.4 ? 1 : -1;
+      for (let j = i; j < i + 20; j++) source[j] = v + (rand() - 0.5) * 0.2;
+    }
+    const edited = new Float64Array(2000);
+    for (let i = 0; i < edited.length; i++) edited[i] = source[120 + Math.round(i * 1.1)] ?? 0;
+    const fit = fitTiming(source, edited, { maxStartMs: 3000 });
+    expect(fit).toMatchObject({ sourceStartMs: 1200, speed: 1.1 });
+    expect(fit?.score).toBeGreaterThan(0.9);
+  });
+
+  it("参考成片断句不同时，按字幕位置取那一带的文字", () => {
+    const rows = [
+      { text: "标题", x: 0.3, y: 0.05, w: 0.4, h: 0.04 },
+      { text: "第二行", x: 0.35, y: 0.62, w: 0.3, h: 0.03 },
+      { text: "第一行字", x: 0.3, y: 0.58, w: 0.4, h: 0.03 },
+    ];
+    expect(captionBandLines(rows, 0.6)).toEqual(["第一行字", "第二行"]);
   });
 });

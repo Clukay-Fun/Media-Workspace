@@ -68,6 +68,7 @@ export function emptyProject(): Project {
 export async function initProject(
   dir: string,
   project: Project = emptyProject(),
+  who: { source?: Source; actor?: string } = {},
 ): Promise<Project> {
   const f = projectFiles(dir);
   if (await exists(f.project)) {
@@ -82,8 +83,8 @@ export async function initProject(
   await atomicWrite(f.project, json(project));
   await appendLog(dir, {
     at: new Date().toISOString(),
-    source: "cli",
-    actor: "user",
+    source: who.source ?? "cli",
+    actor: who.actor ?? "user",
     revision: project.revision,
     baseRevision: project.revision,
     kind: "init",

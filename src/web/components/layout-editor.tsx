@@ -90,6 +90,7 @@ export function LayoutPanel() {
     face: null,
     titleStyle: null,
     captionStyle: null,
+    captionMaxChars: null,
     speed: 1,
     savedAt: "",
   };
@@ -195,6 +196,35 @@ export function LayoutPanel() {
                 }}
               />
               ×
+            </span>
+          </div>
+          <strong>字幕字数</strong>
+          <p className="layout-hint">
+            AI 识音出字幕时一条最多几个字，比一行长时折成两行；空着 = 按字幕样式每条一行
+          </p>
+          <div className="layout-row">
+            <span className="layout-axis">每条</span>
+            <span className="pct-input">
+              <input
+                key={base.captionMaxChars ?? "auto"}
+                aria-label="一条字幕最多几个字"
+                type="number"
+                min={4}
+                max={40}
+                step={1}
+                placeholder="自动"
+                defaultValue={base.captionMaxChars ?? ""}
+                onBlur={(e) => {
+                  const raw = e.currentTarget.value.trim();
+                  const v = raw === "" ? null : Math.round(Number(raw));
+                  if (v !== null && !(v >= 4 && v <= 40)) return;
+                  if (v !== base.captionMaxChars) void saveLayout({ ...base, captionMaxChars: v });
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                }}
+              />
+              字
             </span>
           </div>
           <strong>人脸位置</strong>

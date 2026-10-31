@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { remapCharTimes } from "./align";
 import { layoutMainTrack } from "./compile";
 import { MwError } from "./errors";
 import {
@@ -112,6 +113,15 @@ export const Op = z.discriminatedUnion("op", [
   z.strictObject({ op: z.literal("caption.update"), id: Id, set: Patch }),
   z.strictObject({ op: z.literal("caption.remove"), ids: z.array(Id).min(1) }),
   z.strictObject({ op: z.literal("caption.merge"), ids: z.array(Id).min(2) }),
+  /**
+   * 按给定的几行重排相邻的几句字幕（一步改断行）：lines 连起来和原来的字一样（标点、空格可以不同），
+   * 逐字时间跟着字走，每行从它第一个字开始念的时候出现
+   */
+  z.strictObject({
+    op: z.literal("caption.reflow"),
+    ids: z.array(Id).min(1),
+    lines: z.array(z.string().min(1)).min(1),
+  }),
   z.strictObject({
     op: z.literal("caption.split"),
     id: Id,
@@ -448,15 +458,22 @@ function run(ctx: Ctx, op: Op): void {
       const { track, item } = ctx.find(op.id);
       ctx.unlocked(track);
       if ("id" in op.set) throw new MwError("INVALID_OP", "不能修改 id");
-      // 改了字幕文字、字数变了，原来的逐字时间对不上了，去掉（之后可以重新 mw align）
+      // 改了字幕文字：没改的字保留原来的时间，新加、换掉的字插值
       const text = op.set.text;
       if (
         typeof text === "string" &&
         !("charStartMs" in op.set) &&
         Array.isArray(item.charStartMs) &&
-        item.charStartMs.length !== [...text].length
+        text !== item.text
       ) {
-        delete item.charStartMs;
+        const cap = item as unknown as Caption;
+        item.charStartMs = remapCharTimes(
+          cap.text,
+          cap.charStartMs ?? [],
+          text,
+          cap.startMs,
+          cap.endMs,
+        );
       }
       // null 表示去掉这个字段（条目上没有可以为 null 的字段）：HTTP 提交时 undefined 会被 JSON 丢掉，
       // 只能用 null 表达「去掉转场、去掉变换」
@@ -547,6 +564,8 @@ function run(ctx: Ctx, op: Op): void {
       return mergeCaptions(ctx, op.ids);
     case "caption.split":
       return splitCaption(ctx, op.id, op.at, op.atMs);
+    case "caption.reflow":
+      return reflowCaptions(ctx, op.ids, op.lines);
 
     case "cut.removeCaptions": {
       const caps = op.ids.map((id) => captionOf(ctx, id));
@@ -803,7 +822,10 @@ function splitCaption(ctx: Ctx, id: string, at: number, atMs?: number): void {
     Math.round(cap.startMs + ((cap.endMs - cap.startMs) * at) / chars.length);
   if (splitMs <= cap.startMs || splitMs >= cap.endMs)
     throw new MwError("TIME_RANGE", "断开的时间点必须在这句字幕的时间范围内");
-  const a = chars.slice(0, at).join("");
+  // 断开后前半句末尾的标点（顿号、逗号）不显示，和 transcribe 出的字幕一致
+  let end = at;
+  while (end > 1 && LINE_END_PUNCT.test(chars[end - 1] ?? "")) end--;
+  const a = chars.slice(0, end).join("");
   const b = chars.slice(at).join("");
   const newId = ctx.newId("s");
   const index = track.items.findIndex((c) => c.id === id);
@@ -815,7 +837,7 @@ function splitCaption(ctx: Ctx, id: string, at: number, atMs?: number): void {
       endMs: splitMs,
       text: a,
       highlights: cap.highlights.filter((h) => a.includes(h.text)),
-      ...(cap.charStartMs ? { charStartMs: cap.charStartMs.slice(0, at) } : {}),
+      ...(cap.charStartMs ? { charStartMs: cap.charStartMs.slice(0, end) } : {}),
     },
     {
       ...cap,
@@ -828,4 +850,64 @@ function splitCaption(ctx: Ctx, id: string, at: number, atMs?: number): void {
   );
   ctx.changed.add(id);
   ctx.changed.add(newId);
+}
+
+const LINE_END_PUNCT = /^[，。！？；：、,.!?;:…—\s]$/u;
+const unpunct = (s: string) => [...s].filter((c) => !/^[\p{P}\p{S}\p{Z}\s]$/u.test(c)).join("");
+
+function reflowCaptions(ctx: Ctx, ids: string[], lines: string[]): void {
+  const caps = ids.map((id) => captionOf(ctx, id));
+  const first = caps[0];
+  if (!first) return;
+  const { track } = first;
+  ctx.unlocked(track);
+  if (caps.some((c) => c.track !== track || c.cap.asset !== first.cap.asset))
+    throw new MwError("INVALID_OP", "只能重排同一条轨道、同一个素材上的字幕");
+  const sorted = caps.map((c) => c.cap).toSorted((a, b) => a.startMs - b.startMs);
+  const pos = sorted.map((c) => track.items.findIndex((x) => x.id === c.id));
+  if (pos.some((p, i) => i > 0 && p !== (pos[i - 1] as number) + 1))
+    throw new MwError("INVALID_OP", "只能重排相邻的几句字幕，中间不能隔着别的字幕");
+  const oldText = sorted.map((c) => c.text).join("");
+  const newText = lines.join("");
+  if (unpunct(oldText) !== unpunct(newText))
+    throw new MwError(
+      "INVALID_OP",
+      `重排后的字要和原来一样（标点可以不同）：原来「${oldText}」，现在「${newText}」；改字用 caption.update`,
+    );
+  // 原来的逐字时间；没有的句子按字数均分
+  const oldTimes = sorted.flatMap((c) => {
+    const n = [...c.text].length;
+    return (
+      c.charStartMs ??
+      [...c.text].map((_, i) => Math.round(c.startMs + ((c.endMs - c.startMs) * i) / n))
+    );
+  });
+  const head = sorted[0] as Caption;
+  const tail = sorted.at(-1) as Caption;
+  const times = remapCharTimes(oldText, oldTimes, newText, head.startMs, tail.endMs);
+  const keepTimes = sorted.every((c) => c.charStartMs);
+  const highlights = sorted.flatMap((c) => c.highlights.map(({ nth: _n, ...h }) => h));
+  let offset = 0;
+  const out: Caption[] = lines.map((line, i) => {
+    const n = [...line].length;
+    const startMs = i === 0 ? head.startMs : (times[offset] as number);
+    const charStartMs = times.slice(offset, offset + n);
+    offset += n;
+    return {
+      ...head,
+      id: sorted[i]?.id ?? ctx.newId("s"),
+      startMs,
+      endMs: tail.endMs,
+      text: line,
+      highlights: highlights.filter((h) => line.includes(h.text)),
+      ...(keepTimes ? { charStartMs } : {}),
+    };
+  });
+  for (let i = 0; i < out.length - 1; i++)
+    (out[i] as Caption).endMs = (out[i + 1] as Caption).startMs;
+  if (!keepTimes) for (const c of out) delete c.charStartMs;
+  if (out.some((c) => c.endMs <= c.startMs))
+    throw new MwError("TIME_RANGE", "有一行没有时间可分（两行的第一个字同时开始），换个断法");
+  track.items.splice(pos[0] as number, sorted.length, ...out);
+  for (const c of out) ctx.changed.add(c.id);
 }

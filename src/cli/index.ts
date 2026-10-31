@@ -120,8 +120,9 @@ const cli = cac("mw");
 cli
   .command("init <name>", "新建工程（名字或路径）")
   .option("--no-styles", "不复制内置样式")
+  .option("--actor <name>", "操作者", { default: "user" })
   .action(
-    act(async (name: string, o: { styles: boolean }) => {
+    act(async (name: string, o: { styles: boolean; actor: string }) => {
       const dir = resolveProjectDir(name);
       const p = emptyProject();
       if (o.styles) p.styles = { ...BUILTIN_STYLES };
@@ -130,29 +131,34 @@ cli
         const cap = p.tracks.find((t) => t.kind === "caption");
         if (cap && cap.kind === "caption") cap.style = "caption-word-yellow";
       }
-      await initProject(dir, p);
+      await initProject(dir, p, { source: "cli", actor: String(o.actor) });
       out({ ok: true, project: dir, revision: 0 });
     }),
   );
 
 cli
-  .command("import <proj> <file>", "导入素材：probe、必要时转标准化文件，然后提交 asset.add")
+  .command(
+    "import <proj> <file>",
+    "导入素材：probe、必要时转标准化文件，然后提交 asset.add；主轨空着时视频整段放上主轨",
+  )
   .option("--id <id>", "素材 ID（不写时自动生成）")
   .option("--base <rev>", "基于哪个 revision 提交（不写时取当前版本）")
   .option("--actor <name>", "操作者", { default: "user" })
   .option("--no-proxy", "不生成预览代理")
+  .option("--no-main", "主轨空着时也不放上主轨（默认整段放上主轨，倍速按账号设置）")
   .action(
     act(
       async (
         proj: string,
         file: string,
-        o: { id?: string; base?: number; actor: string; proxy: boolean },
+        o: { id?: string; base?: number; actor: string; proxy: boolean; main: boolean },
       ) => {
         out(
           await importAsset(resolveProjectDir(proj), file, {
             id: o.id === undefined ? undefined : String(o.id),
             baseRevision: o.base === undefined ? undefined : Number(o.base),
             proxy: o.proxy,
+            main: o.main,
             source: "cli",
             actor: o.actor,
             onLog: log,
@@ -239,7 +245,7 @@ cli.command("lint <proj>", "质检：字太小、出安全区、字幕放不下�
 cli
   .command("remove-silence <proj>", "从主轨视频素材的音频中找静音并剪掉停顿，不依赖字幕")
   .option("--min-pause <ms>", "作为停顿的最短静音时长", { default: 400 })
-  .option("--keep <ms>", "每段静音两端各保留的时长", { default: 120 })
+  .option("--keep <ms>", "每段静音两端各保留的时长（默认 120；--edges 时 300，且不剪进字幕）")
   .option("--edges", "只剪开头和结尾的空白，句中停顿保留")
   .option("--base <rev>", "基于哪个 revision（默认当前）")
   .option("--actor <name>", "操作者", { default: "user" })
@@ -247,12 +253,12 @@ cli
     act(
       async (
         proj: string,
-        o: { minPause: number; keep: number; edges?: boolean; base?: number; actor: string },
+        o: { minPause: number; keep?: number; edges?: boolean; base?: number; actor: string },
       ) =>
         out(
           await removeSilenceProject(resolveProjectDir(proj), {
             minPauseMs: Number(o.minPause),
-            keepMs: Number(o.keep),
+            keepMs: o.keep === undefined ? undefined : Number(o.keep),
             edgesOnly: Boolean(o.edges),
             baseRevision: o.base === undefined ? undefined : Number(o.base),
             source: "cli",
@@ -535,20 +541,27 @@ cli
   .command("outro <proj> [file]", "接上片尾：不给文件时用默认片尾（mw outro-default）")
   .option("--fade <ms>", "叠化时长，0 = 硬切；不写时用默认片尾的设置（300ms）")
   .option("--remove", "去掉片尾")
+  .option("--actor <name>", "操作者", { default: "user" })
   .action(
-    act(async (proj: string, file: string | undefined, o: { fade?: number; remove?: boolean }) => {
-      const dir = resolveProjectDir(proj);
-      const who = { source: "cli" as const, actor: "user" };
-      if (o.remove) return out(await removeOutro(dir, who));
-      out(
-        await attachOutro(dir, {
-          ...who,
-          ...(file === undefined ? {} : { file }),
-          ...(o.fade === undefined ? {} : { fadeMs: Number(o.fade) }),
-          onLog: log,
-        }),
-      );
-    }),
+    act(
+      async (
+        proj: string,
+        file: string | undefined,
+        o: { fade?: number; remove?: boolean; actor: string },
+      ) => {
+        const dir = resolveProjectDir(proj);
+        const who = { source: "cli" as const, actor: String(o.actor) };
+        if (o.remove) return out(await removeOutro(dir, who));
+        out(
+          await attachOutro(dir, {
+            ...who,
+            ...(file === undefined ? {} : { file }),
+            ...(o.fade === undefined ? {} : { fadeMs: Number(o.fade) }),
+            onLog: log,
+          }),
+        );
+      },
+    ),
   );
 
 cli
@@ -832,7 +845,9 @@ try {
         : [a],
   );
   cli.parse(argv, { run: false });
-  if (!cli.matchedCommand) {
+  if (cli.options.help || cli.options.version) {
+    // --help / --version 已经由 cac 输出，不再当成未知命令
+  } else if (!cli.matchedCommand) {
     if (process.argv.length <= 2) cli.outputHelp();
     else throw new UsageError(`不认识的命令：${process.argv[2]}，用 mw --help 查看`);
   } else {

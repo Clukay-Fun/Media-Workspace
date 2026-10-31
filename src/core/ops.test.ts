@@ -281,7 +281,7 @@ describe("字幕编辑", () => {
     ]);
   });
 
-  it("逐字时间：拆分时跟着字走、默认在后半句第一个字处断开；合并时拼接；改字数时去掉", () => {
+  it("逐字时间：拆分时跟着字走、默认在后半句第一个字处断开；合并时拼接；改字数时重新分配", () => {
     const p = project();
     const cap = p.tracks[1]?.items as { charStartMs?: number[] }[];
     (cap[0] as { charStartMs?: number[] }).charStartMs = [1000, 1200, 1500, 1700];
@@ -299,11 +299,67 @@ describe("字幕编辑", () => {
     expect(noTiming.tracks[1]?.items[1]).not.toHaveProperty("charStartMs");
     const sameLen = applyOps(p, [{ op: "caption.update", id: "s1", set: { text: "第一句子" } }]);
     expect(sameLen.project.tracks[1]?.items[0]).toHaveProperty("charStartMs");
-    const longer = applyOps(p, [{ op: "caption.update", id: "s1", set: { text: "第一句话呀" } }]);
-    expect(longer.project.tracks[1]?.items[0]).not.toHaveProperty("charStartMs");
+    const longer = applyOps(p, [{ op: "caption.update", id: "s1", set: { text: "第一话呀" } }]);
+    // 没改的字保留时间，删掉的「句」丢掉，新加的「呀」排在后面
+    const times = (longer.project.tracks[1]?.items[0] as { charStartMs: number[] }).charStartMs;
+    expect(times.slice(0, 3)).toEqual([1000, 1200, 1700]);
+    expect(times[3]).toBeGreaterThan(1700);
     expect(() =>
       applyOps(p, [{ op: "caption.update", id: "s2", set: { charStartMs: [1, 2] } }]),
     ).toThrow(MwError);
+  });
+
+  it("caption.split 断开后前半句末尾的顿号不显示", () => {
+    const p = project();
+    (p.tracks[1]?.items[0] as { text: string }).text = "第一、句话";
+    const r = applyOps(p, [{ op: "caption.split", id: "s1", at: 3 }]);
+    expect(r.project.tracks[1]?.items.slice(0, 2)).toEqual([
+      expect.objectContaining({ text: "第一" }),
+      expect.objectContaining({ text: "句话" }),
+    ]);
+  });
+
+  it("caption.reflow 一步按给定的几行重排相邻字幕，逐字时间跟着字走", () => {
+    const p = project();
+    const cap = p.tracks[1]?.items as { charStartMs?: number[] }[];
+    (cap[0] as { charStartMs?: number[] }).charStartMs = [1000, 1200, 1500, 1700];
+    (cap[1] as { charStartMs?: number[] }).charStartMs = [2100, 2400, 2700];
+    const r = applyOps(p, [
+      { op: "caption.reflow", ids: ["s1", "s2"], lines: ["第一句", "话、第二句"] },
+    ]);
+    expect(r.project.tracks[1]?.items.slice(0, 3)).toEqual([
+      expect.objectContaining({
+        id: "s1",
+        startMs: 1000,
+        endMs: 1700,
+        text: "第一句",
+        charStartMs: [1000, 1200, 1500],
+      }),
+      expect.objectContaining({
+        id: "s2",
+        startMs: 1700,
+        endMs: 3000,
+        text: "话、第二句",
+        charStartMs: [1700, 1700, 2100, 2400, 2700],
+      }),
+      expect.objectContaining({ id: "s3" }),
+    ]);
+    // 三行：多出来的一句用新 id
+    const three = applyOps(p, [
+      { op: "caption.reflow", ids: ["s1", "s2"], lines: ["第一", "句话", "第二句"] },
+    ]).project.tracks[1]?.items;
+    expect(three?.map((c) => (c as { text: string }).text)).toEqual([
+      "第一",
+      "句话",
+      "第二句",
+      "第三句",
+    ]);
+    expect(() =>
+      applyOps(p, [{ op: "caption.reflow", ids: ["s1", "s2"], lines: ["第一句话第三句"] }]),
+    ).toThrow(MwError);
+    expect(() =>
+      applyOps(p, [{ op: "caption.reflow", ids: ["s1", "s3"], lines: ["第一句话第三句"] }]),
+    ).toThrow(/相邻/);
   });
 
   it("caption.split 按字数比例分时间，高亮跟着文字走", () => {

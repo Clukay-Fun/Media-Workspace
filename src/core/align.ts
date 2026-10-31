@@ -27,6 +27,46 @@ export function alignChars(
 }
 
 /**
+ * 字幕改了字以后重新分配逐字时间：把原来的字和时间当成「识音结果」，和新文字对齐。
+ * 没改的字保留原来的时间，新加的字在前后之间插值，删掉的字丢掉
+ */
+export function remapCharTimes(
+  oldText: string,
+  oldTimes: number[],
+  newText: string,
+  startMs: number,
+  endMs: number,
+): number[] {
+  // 和识音对齐不同，这里只认一模一样的字（最长公共子序列），换掉的字当作新字插值
+  const was = [...oldText].flatMap((c, i) =>
+    SILENT.test(c) ? [] : [{ c: norm(c), ms: oldTimes[i] ?? startMs }],
+  );
+  const chars = [...newText];
+  const voiced = chars.flatMap((c, i) => (SILENT.test(c) ? [] : [i]));
+  const want = voiced.map((i) => norm(chars[i] ?? ""));
+  const n = want.length;
+  const m = was.length;
+  const lcs: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  const at = (i: number, j: number) => lcs[i]?.[j] ?? 0;
+  for (let i = n - 1; i >= 0; i--)
+    for (let j = m - 1; j >= 0; j--)
+      (lcs[i] as number[])[j] =
+        want[i] === was[j]?.c ? at(i + 1, j + 1) + 1 : Math.max(at(i + 1, j), at(i, j + 1));
+  const known: (number | null)[] = new Array(n).fill(null);
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    if (want[i] === was[j]?.c) {
+      known[i] = was[j]?.ms ?? null;
+      i++;
+      j++;
+    } else if (at(i + 1, j) >= at(i, j + 1)) i++;
+    else j++;
+  }
+  return finish(chars, voiced, known, startMs, endMs);
+}
+
+/**
  * 这句话第一个字实际开始念的时间（没对上时为 null）。不限制在字幕范围里：
  * 字幕的开始时间常常比真正开口晚一点，删前一句时会把这句的第一个字剪掉一半（0013 验收发现）
  */

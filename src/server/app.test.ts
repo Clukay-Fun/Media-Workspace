@@ -291,7 +291,15 @@ describe("推送", () => {
       await new Promise<void>((ok) => {
         finish = ok;
       });
-      return { ok: true, revision: 0, file: "/out.mp4", frames: 20, seconds: 1, warnings: [] };
+      return {
+        ok: true,
+        revision: 0,
+        file: "/out.mp4",
+        frames: 20,
+        durationMs: 667,
+        renderSeconds: 1,
+        warnings: [],
+      };
     });
     const r = await (await req("/api/export", { body: {} })).json();
     expect(r.jobId).toMatch(/^export-/);
