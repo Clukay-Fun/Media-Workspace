@@ -21,7 +21,6 @@ const KIND: Record<HitBox["kind"], string> = {
   image: "图片",
   video: "画面",
 };
-const EMBED = new URLSearchParams(location.search).has("embed");
 
 type Drag = {
   mode: "move" | "resize";
@@ -164,10 +163,15 @@ export function Stage() {
         12,
         Math.min(bounds.width - popupWidth - 12, e.clientX - bounds.left - popupWidth / 2),
       );
-      const popupHeight = 28;
+      // 输入框放在被点元素的上方，上面放不下就放下方，不盖住要批注的东西
+      const popupHeight = 36;
+      const layer = e.currentTarget.getBoundingClientRect();
+      const boxTop = layer.top - bounds.top + hit.box.y0 * scale;
+      const boxBottom = layer.top - bounds.top + hit.box.y1 * scale;
+      const above = boxTop - popupHeight - 8;
       const top = Math.max(
         12,
-        Math.min(bounds.height - popupHeight - 12, e.clientY - bounds.top - popupHeight - 16),
+        Math.min(bounds.height - popupHeight - 12, above >= 12 ? above : boxBottom + 8),
       );
       const point = { x: Math.round(p.x), y: Math.round(p.y) };
       st.select(hit.id);
@@ -330,13 +334,7 @@ export function Stage() {
   });
 
   return (
-    <main className="stage panel">
-      <div className="stage-header">
-        <h1 className="stage-name" title={name} hidden={EMBED}>
-          {name || "载入中…"}
-        </h1>
-        <PreviewSettings />
-      </div>
+    <main className="stage panel" aria-label={name || "预览"}>
       <div className="stage-area" ref={area}>
         {inputProps && scale > 0 ? (
           <div className="canvas" style={{ width: W * scale, height: H * scale }}>
@@ -595,6 +593,7 @@ function PlayerFooter({
         </button>
       </div>
       <div className="player-status">
+        <PreviewSettings />
         <span
           className="player-resolution mono"
           aria-label={`播放速度 1 倍，画布 ${width}×${height}`}
@@ -610,8 +609,24 @@ function PreviewSettings() {
   const safeArea = useStore((s) => s.safeArea);
   const referenceGuides = useStore((s) => s.referenceGuides);
   const { toggleSafeArea, toggleReferenceGuide } = useStore.getState();
+  const box = useRef<HTMLDetailsElement>(null);
+  // 点菜单外面或按 Esc 收起（details 本身不会自己关）
+  useEffect(() => {
+    const close = (e: Event) => {
+      const el = box.current;
+      if (!el?.open) return;
+      if (e instanceof KeyboardEvent ? e.key === "Escape" : !el.contains(e.target as Node))
+        el.open = false;
+    };
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", close);
+    return () => {
+      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("keydown", close);
+    };
+  }, []);
   return (
-    <details className="preview-settings">
+    <details className="preview-settings" ref={box}>
       <summary className="icon-btn preview-settings-trigger" aria-label="预览设置" title="预览设置">
         <Icon name="menu" />
       </summary>

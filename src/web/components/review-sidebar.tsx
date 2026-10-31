@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { HistoryEntry } from "../../core/api";
 import type { Comment } from "../../core/review";
 import { aiChanges } from "../lib/changes";
+import { findItem } from "../lib/project";
 import { frameOfMs, itemFrames, timecode } from "../lib/timeline";
 import { type SideTab, useStore } from "../store";
 import { CommentCard } from "./comment-card";
@@ -16,7 +17,8 @@ import { ProjectOverview } from "./inspector/project";
 export function ReviewSidebar() {
   const tab = useStore((s) => s.sideTab);
   const open = useStore((s) => s.sideOpen);
-  const issues = useStore((s) => s.lint?.issues.length ?? 0);
+  // 和顶栏一样只数警告，提示（level: hint）不算
+  const issues = useStore((s) => s.lint?.issues.filter((i) => i.level !== "hint").length ?? 0);
   const comments = useStore(
     (s) => s.review?.comments.filter((c) => c.status === "open").length ?? 0,
   );
@@ -238,7 +240,39 @@ const OP_LABEL: Record<string, string> = {
   "cut.restore": "恢复剪辑点",
   "style.add": "加样式",
   "style.update": "改样式",
+  "style.remove": "删样式",
+  "theme.update": "改主题",
+  "cover.update": "改封面",
+  "outro.remove": "去掉片尾",
+  "chapters.set": "分章节",
+  "asset.relink": "重新关联素材",
+  "asset.cache": "更新素材缓存",
+  "asset.remove": "删素材",
+  "track.move": "调轨道顺序",
+  "track.remove": "删轨道",
+  "keyframe.remove": "删关键帧",
+  "caption.reflow": "重排字幕",
+  "cut.removeSilence": "剪静音",
 };
+
+/** 改动里的 ID 换成看得懂的名字：字幕取前几个字，片段取素材文件名，标题 / 卡片取文字 */
+function itemName(id: string): string {
+  const project = useStore.getState().project;
+  if (!project) return id;
+  if (project.assets[id]) return project.assets[id].path.split("/").pop() ?? id;
+  const ref = findItem(project, id);
+  if (!ref) return id;
+  const short = (t: string) => ([...t].length > 8 ? `${[...t].slice(0, 8).join("")}…` : t);
+  const it = ref.item as Record<string, unknown>;
+  if (typeof it.text === "string") return short(it.text);
+  if (typeof it.asset === "string")
+    return short(project.assets[it.asset]?.path.split("/").pop() ?? it.asset);
+  const props = it.props as Record<string, unknown> | undefined;
+  const lines = props?.lines ?? props?.text ?? props?.title;
+  if (Array.isArray(lines)) return short(lines.join(" "));
+  if (typeof lines === "string") return short(lines);
+  return id;
+}
 
 function ChangeCard({ entry: e, pending }: { entry: HistoryEntry; pending: boolean }) {
   const ops = [...new Set(e.ops.map((o) => OP_LABEL[o] ?? o))].join("、");
@@ -256,8 +290,14 @@ function ChangeCard({ entry: e, pending }: { entry: HistoryEntry; pending: boole
       {e.changed.length > 0 && (
         <div className="tags">
           {e.changed.slice(0, 12).map((id) => (
-            <button type="button" key={id} className="tag link-tag" onClick={() => jumpTo(id)}>
-              {id}
+            <button
+              type="button"
+              key={id}
+              className="tag link-tag"
+              title={id}
+              onClick={() => jumpTo(id)}
+            >
+              {itemName(id)}
             </button>
           ))}
           {e.changed.length > 12 && <span className="tag dim">+{e.changed.length - 12}</span>}

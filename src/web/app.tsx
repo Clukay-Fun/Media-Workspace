@@ -1,5 +1,5 @@
 import type React from "react";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { LeftPanel } from "./components/left-panel";
 import { ReviewSidebar } from "./components/review-sidebar";
 import { Splitter } from "./components/splitter";
@@ -21,6 +21,8 @@ export function App() {
   const left = useRef(0);
   const side = useRef(0);
   const origin = useRef(layout);
+  const autoH = useAutoTimelineHeight(app);
+  const timelineH = layout.timelineH ?? autoH;
 
   const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
   // 中间至少留 420，竖屏画面才不会太小
@@ -37,7 +39,7 @@ export function App() {
   };
   const dragTimeline = (dy: number) => {
     const h = app.current?.clientHeight ?? window.innerHeight;
-    setLayout({ timelineH: clamp(origin.current.timelineH - dy, 140, h - 320) });
+    setLayout({ timelineH: clamp((origin.current.timelineH ?? autoH) - dy, 140, h - 320) });
   };
 
   return (
@@ -49,7 +51,7 @@ export function App() {
           {
             ...(layout.leftW ? { "--left-w": `${layout.leftW}px` } : {}),
             ...(layout.sideW ? { "--side-w": `${layout.sideW}px` } : {}),
-            "--tl-h": `${layout.timelineH}px`,
+            "--tl-h": `${timelineH}px`,
           } as React.CSSProperties
         }
       >
@@ -87,6 +89,30 @@ export function App() {
       </div>
     </div>
   );
+}
+
+/**
+ * 时间线刚好放下所有轨道的高度（工具栏 + 标尺 + 各轨道），不超过窗口高度的 45%。
+ * 轨道增减、窗口变化时重新量
+ */
+function useAutoTimelineHeight(app: React.RefObject<HTMLDivElement | null>): number {
+  const [h, setH] = useState(220);
+  const tracks = useStore((s) => s.project?.tracks.length ?? 0);
+  useLayoutEffect(() => {
+    const measure = () => {
+      const root = app.current?.querySelector<HTMLElement>(".timeline");
+      const grid = root?.querySelector<HTMLElement>(".tl-grid");
+      if (!root || !grid) return;
+      const top = root.getBoundingClientRect().top;
+      const need = Math.ceil(grid.getBoundingClientRect().bottom - top + root.scrollTop + 14);
+      const max = Math.floor((app.current?.clientHeight ?? window.innerHeight) * 0.45);
+      setH(Math.max(140, Math.min(max, need)));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [app, tracks]);
+  return h;
 }
 
 /** 快捷键：空格播放，←/→ 逐帧（⇧ 一秒），⌘Z / ⇧⌘Z，⌘B 分割，C 开启批注，Esc 取消。打字时不响应 */

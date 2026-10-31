@@ -608,7 +608,14 @@ function RowView({
                 videoSrc={b.mediaKind === "video" && b.asset ? videoSrcs[b.asset] : undefined}
                 thumbnailHeight={row.kind === "main" ? 36 : 26}
                 onSelect={() => {
-                  if (b.kind !== "outro") select(b.id);
+                  if (b.kind === "outro") return;
+                  select(b.id);
+                  // 播放头不在这一段里时跳过去，预览上能看到选中的是什么；字幕跳到快念完的地方，字都出来了
+                  const now = useStore.getState().frame;
+                  if (now < b.from || now >= b.to)
+                    seek(
+                      b.kind === "caption" ? b.from + Math.floor((b.to - b.from) * 0.8) : b.from,
+                    );
                 }}
                 track={track}
               />
