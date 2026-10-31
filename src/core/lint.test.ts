@@ -215,6 +215,18 @@ describe("质检：账号版式", () => {
     expect(off[0]?.message).toContain("脸小了 29%");
   });
 
+  it("主轨倍速和账号设置不一致时提示", () => {
+    const p = make([]);
+    const r = lintProject(p, {
+      styles,
+      layout: { face: null, captionStyle: null, titleStyle: null, speed: 1.1 },
+    });
+    expect(r.find((i) => i.code === "SPEED_NOT_LAYOUT")).toMatchObject({ id: "c1", level: "hint" });
+    expect(
+      codes(p, { layout: { face: null, captionStyle: null, titleStyle: null, speed: 1 } }),
+    ).toEqual([]);
+  });
+
   it("有账号版式时安全区降为提示；字幕样式和版式不一致时提示", () => {
     const p = make([cap("s1", 0, "一句", "low")]);
     const plain = lintProject(p, { styles });

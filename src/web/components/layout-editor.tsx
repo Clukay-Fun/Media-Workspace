@@ -90,6 +90,7 @@ export function LayoutPanel() {
     face: null,
     titleStyle: null,
     captionStyle: null,
+    speed: 1,
     savedAt: "",
   };
   const add = (axis: "h" | "v") => {
@@ -170,6 +171,31 @@ export function LayoutPanel() {
             <button type="button" onClick={() => add("v")}>
               加竖线
             </button>
+          </div>
+          <strong>口播倍速</strong>
+          <p className="layout-hint">AI 出片时主轨默认用这个倍速（整体加速，不剪句中停顿）</p>
+          <div className="layout-row">
+            <span className="layout-axis">倍速</span>
+            <span className="pct-input">
+              <input
+                key={base.speed}
+                aria-label="口播倍速"
+                type="number"
+                min={0.5}
+                max={2}
+                step={0.05}
+                defaultValue={base.speed}
+                onBlur={(e) => {
+                  const v = Number(e.currentTarget.value);
+                  if (Number.isFinite(v) && v >= 0.5 && v <= 2 && v !== base.speed)
+                    void saveLayout({ ...base, speed: v });
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                }}
+              />
+              ×
+            </span>
           </div>
           <strong>人脸位置</strong>
           <p className="layout-hint">mw frame 按它摆人物：人脸框（不含头发）的中心、上沿、下沿</p>

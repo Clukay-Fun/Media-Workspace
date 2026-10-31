@@ -27,6 +27,7 @@
      之后删句才不会把下一句的第一个字剪掉。改了字幕文字要重新 `align`。按成片时间打的 SRT 对不上原片，改用 `transcribe`。
 3. **粗剪**：
    - 口误、重复的句子：`cut.removeCaptions`（画面和字幕一起剪掉）；
+   - 倍速：主轨片段默认用账号设置的倍速（`layout` 的 `speed`），每段 `item.update { speed }`；人另有要求时听人的。
    - 开头结尾的空白：`remove-silence` 加 `edgesOnly`（CLI `mw remove-silence <工程> --edges`），句中停顿保留。
      **人没说要剪停顿时只做这一步**：句中停顿是说话的节奏，用户自己剪的片子都留着（整体加速，不剪停顿）；
    - 人要求剪句间停顿时：`remove-silence`（按音频静音找，不依赖字幕；`minPauseMs` 默认 400、`keepMs` 默认 120，可以调）。

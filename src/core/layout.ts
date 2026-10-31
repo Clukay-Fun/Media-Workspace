@@ -4,6 +4,7 @@ import { Id } from "./schema";
 // 账号版式（阶段 F，docs/decisions/0025）：~/MediaWorkspace/library/layout.json，所有工程共用。
 // 位置一律是占画面宽 / 高的比例（0–1），横屏竖屏、1080 / 720 都能用同一份。
 // 标题条、字幕的位置由样式决定，这里只记用哪个样式，不另存一份坐标。
+// 也记账号级的剪辑习惯（主轨倍速），AI 出片时默认照用。
 
 const Frac = z.number().min(0).max(1);
 
@@ -30,6 +31,8 @@ export const Layout = z.strictObject({
   titleStyle: Id.nullable().default(null),
   /** 字幕用的样式，null = 用默认 */
   captionStyle: Id.nullable().default(null),
+  /** 主轨口播的倍速（用户习惯整体加速、不剪句中停顿），1 = 原速 */
+  speed: z.number().min(0.5).max(2).default(1),
   savedAt: z.string().default(""),
 });
 export type Layout = z.infer<typeof Layout>;

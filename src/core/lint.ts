@@ -30,7 +30,8 @@ export type LintIssue = {
     | "FACE_COVERED"
     | "TOO_MANY_CARDS"
     | "FACE_OFF_LAYOUT"
-    | "STYLE_NOT_LAYOUT";
+    | "STYLE_NOT_LAYOUT"
+    | "SPEED_NOT_LAYOUT";
   /** hint = 只是提示（有账号版式时，通用安全区以版式为准）；不写 = 警告 */
   level?: "hint";
   /** 有问题的条目 */
@@ -63,7 +64,7 @@ export type LintOptions = {
   /** 1080 宽画面上的最小字号，其他宽度按比例 */
   minFontSize?: number;
   /** 账号版式（docs/decisions/0027）：有的话检查人物位置和样式是否和版式一致，通用安全区降为提示 */
-  layout?: Pick<Layout, "face" | "captionStyle" | "titleStyle"> | null;
+  layout?: (Pick<Layout, "face" | "captionStyle" | "titleStyle"> & { speed?: number }) | null;
 };
 
 /** 人脸偏离版式多少算偏（占画面比例）：约 27px 横向、48px 纵向；人脸大小差 10% 以上 */
@@ -454,6 +455,21 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
         id: clip.id,
         atMs: ms(v.from),
         message: `人物位置和账号版式不一致（${off.join("、")}），用 mw frame 按版式重新摆`,
+      });
+    }
+  }
+  if (layout?.speed !== undefined) {
+    const want = layout.speed;
+    const clip = layoutMainTrack(project)
+      .map((s) => s.clip)
+      .find((c) => c.type === "clip" && Math.abs(c.speed - want) > 0.001);
+    if (clip && clip.type === "clip") {
+      add({
+        code: "SPEED_NOT_LAYOUT",
+        id: clip.id,
+        atMs: 0,
+        message: `主轨片段的倍速是 ${clip.speed}，账号设置是 ${want}（人没特别要求时用账号设置）`,
+        level: "hint",
       });
     }
   }

@@ -797,6 +797,7 @@ export function guideInfo() {
       "图片和画中画可以加循环动画 animLoop（v6）：只有 breathe（呼吸），durationMs 是周期，默认 2400、intensity 2（±6%，±3% 看不出来）；一条视频里别多处同时呼吸",
       "关键帧（keyframe.set，atMs 相对元素开始）：元素有关键帧后 transform 不再起作用，以关键帧为准；推近 1.5–2.5 秒、幅度 10–20%（4 秒以上显得拖）",
       "卡片：先看 templates 的 useFor / sizes / example 选模板；卡片必须写 size（v7）：small 金句 / 数字 / 人名 / 提示，half 要点 / 截图 / 长金句（主画面自动上移），full 只给整段原文（盖住标题条）；有卡时字幕自动隐藏；按内容需要才用，30 秒左右的短视频默认不加（没有值得停下来看的数字、清单、金句时建议人不加），加的话 30 秒 0–2 张、60 秒不超过 4 张；字数守住 schema 的上限",
+      "主轨倍速默认用账号设置（mw layout 的 speed，用户习惯 1.1 倍整体加速）：每个主轨片段 item.update speed；人另有要求时听人的",
       "人物位置一律用 frame（按账号版式把人脸摆到参考线上），不要自己估 transform；clamped 为 true 时告诉人脸会偏大或偏一点；看效果用 preview --guides",
       "「第 N 个观点」按章节定位：开场之后的第 N 章（没分章先 chapters.set），卡片锚在亮出观点的那句字幕上，内容只从这一章的字幕里提炼",
       "片尾：人说接上默认片尾时用 outro（不给 file 用默认片尾，默认叠化 300ms，fadeMs: 0 硬切）；没设置默认片尾会报 NOT_FOUND，请人用 mw outro-default <视频文件> 设置",
