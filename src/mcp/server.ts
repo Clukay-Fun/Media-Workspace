@@ -3,7 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { MwError } from "../core/errors";
-import { Layout } from "../core/layout";
+import { Layout, LayoutFace } from "../core/layout";
 import {
   alignProject,
   attachOutro,
@@ -11,6 +11,7 @@ import {
   coverProject,
   exportProject,
   facesProject,
+  frameProject,
   guideInfo,
   importAsset,
   inspectProject,
@@ -298,6 +299,32 @@ export function createMcpServer(): McpServer {
         file: layoutFile(),
         layout: layout ? await setLayout(layout) : await getLayout(),
       })),
+  );
+
+  server.registerTool(
+    "frame",
+    {
+      description:
+        "按账号版式摆人物：按人脸检测算主轨片段的缩放和位置，让人脸框落在版式的 face 上（同一素材的片段用同一套取景，有关键帧的不动）。" +
+        "人物位置一律用它，不要手调 transform；clamped 为 true 表示为了不露黑边脸会偏大或偏一点",
+      inputSchema: {
+        project,
+        face: LayoutFace.optional().describe("这次用的人脸位置，不给时用账号版式的 face"),
+        baseRevision: base.optional(),
+        actor,
+        dryRun: z.boolean().default(false),
+      },
+    },
+    ({ project: p, face, baseRevision, actor: a, dryRun }) =>
+      call(() =>
+        frameProject(dirOf(p), {
+          ...(face ? { face } : {}),
+          baseRevision,
+          dryRun,
+          source: "mcp",
+          actor: a,
+        }),
+      ),
   );
 
   server.registerTool(

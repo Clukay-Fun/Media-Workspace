@@ -50,6 +50,7 @@ describe("MCP", () => {
         "cover",
         "export",
         "faces",
+        "frame",
         "guide",
         "history",
         "import",

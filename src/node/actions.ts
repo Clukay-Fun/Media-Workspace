@@ -6,6 +6,8 @@ import { z } from "zod";
 import { compile, type ResolvedTimeline } from "../core/compile";
 import { coverView } from "../core/cover";
 import { MwError } from "../core/errors";
+import { type FramePlan, planFrame, typicalFace } from "../core/frame";
+import { guidesInPx, type LayoutFace } from "../core/layout";
 import { lintProject } from "../core/lint";
 import { Op } from "../core/ops";
 import { BUILTIN_STYLES } from "../core/presets";
@@ -19,7 +21,7 @@ import { PROJECT_FORMAT_VERSION } from "../core/version";
 import { overlayAssets, overlayBounds, TEMPLATE_NAMES, TEMPLATES } from "../templates";
 import { alignCaptions, transcribeFile } from "./asr";
 import { detectFaces, readFaces } from "./faces";
-import { getDefaultOutro } from "./library";
+import { getDefaultOutro, getLayout } from "./library";
 import { importMedia } from "./media";
 import { projectFiles } from "./paths";
 import { exportVideo, renderStills } from "./render";
@@ -194,6 +196,91 @@ export async function facesProject(dir: string, o: Actor & { onLog?: (s: string)
     ...templateOpts,
   });
   return { ...r, detected: ops.map((x) => (x as { id: string }).id), skipped };
+}
+
+/**
+ * 按账号版式摆人物（阶段 F，docs/decisions/0025）：按人脸检测结果算主轨片段的缩放和位置，让人脸框落在版式的 face 上。
+ * 同一个素材的片段用同一套取景（剪辑点前后人物不跳），有关键帧的片段不动（列在 skipped 里）。
+ * 还没有人脸数据时先做检测。
+ */
+export async function frameProject(
+  dir: string,
+  o: Actor & {
+    face?: LayoutFace;
+    baseRevision?: number;
+    dryRun?: boolean;
+    onLog?: (s: string) => void;
+  },
+) {
+  const target = o.face ?? (await getLayout())?.face ?? null;
+  if (!target) {
+    throw new MwError("NOT_FOUND", "账号版式里还没有人脸位置", {
+      hint: "用 mw layout --file <json> 设置 face（人脸框的中心 x、上沿 y、下沿 y，占画面比例）",
+    });
+  }
+  let p = await loadProject(dir);
+  if (o.baseRevision !== undefined && o.baseRevision !== p.revision) {
+    throw new MwError("CONFLICT", `工程已经是第 ${p.revision} 版，不是 ${o.baseRevision}`, {
+      hint: "重新 inspect 再来",
+    });
+  }
+  const clipsOf = () =>
+    ((p.tracks.find((t) => t.kind === "video" && t.main)?.items ?? []) as MainClip[]).filter(
+      (c) => c.type === "clip" && p.assets[c.asset]?.kind === "video",
+    );
+  if (clipsOf().some((c) => !p.assets[c.asset]?.cache?.faces)) {
+    await facesProject(dir, { source: o.source, actor: o.actor, onLog: o.onLog });
+    p = await loadProject(dir);
+  }
+  const byAsset = new Map<string, MainClip[]>();
+  for (const c of clipsOf()) byAsset.set(c.asset, [...(byAsset.get(c.asset) ?? []), c]);
+  const ops: Op[] = [];
+  const plans: (FramePlan & { asset: string; clips: string[] })[] = [];
+  const skipped: { id: string; reason: string }[] = [];
+  for (const [assetId, clips] of byAsset) {
+    const a = p.assets[assetId];
+    const faces = a?.cache?.faces ? await readFaces(join(dir, a.cache.faces)) : null;
+    const box = faces
+      ? typicalFace(
+          faces,
+          clips.map((c) => ({ fromMs: c.inMs, toMs: c.outMs })),
+        )
+      : null;
+    const sw = a?.probe?.width;
+    const sh = a?.probe?.height;
+    if (!box || !sw || !sh) {
+      for (const c of clips)
+        skipped.push({ id: c.id, reason: box ? "素材没有尺寸信息" : "没有检测到人脸" });
+      continue;
+    }
+    const plan = planFrame(box, { width: sw, height: sh }, p.canvas, target);
+    const moved: string[] = [];
+    for (const c of clips) {
+      if (c.keyframes.length > 0) {
+        skipped.push({ id: c.id, reason: "有关键帧，没动" });
+        continue;
+      }
+      ops.push({
+        op: "item.update",
+        id: c.id,
+        set: { transform: { ...c.transform, ...plan.transform } },
+      });
+      moved.push(c.id);
+    }
+    plans.push({ asset: assetId, clips: moved, ...plan });
+  }
+  if (ops.length === 0) {
+    return { ok: true as const, revision: p.revision, target, plans, skipped, changed: [] };
+  }
+  const r = await applyToProject(dir, {
+    ops,
+    baseRevision: p.revision,
+    source: o.source,
+    actor: o.actor,
+    dryRun: Boolean(o.dryRun),
+    ...templateOpts,
+  });
+  return { ...r, target, plans, skipped };
 }
 
 /**
@@ -463,9 +550,13 @@ export async function previewProject(dir: string, o: PreviewOptions) {
   const tmp = join(stills, `tmp-${process.pid}-${Date.now()}`);
   const pngs = await renderStills(dir, p, frames, tmp, o.onLog);
   const editor = await loadEditor(dir);
+  // 参考线：账号版式的（所有工程共用）加上这个工程自己的
+  const layout = o.guides ? await getLayout() : null;
   const overlays = overlayFilters(tl, {
     safeArea: o.safeArea ?? null,
-    guides: o.guides ? editor.guides.items : [],
+    guides: o.guides
+      ? [...(layout ? guidesInPx(layout, tl.width, tl.height) : []), ...editor.guides.items]
+      : [],
   });
   const outFile =
     o.out !== undefined
@@ -596,7 +687,8 @@ export function guideInfo() {
       "画中画：非主轨视频轨道（没有就 track.add 一条 kind: video）上放 FloatClip，transform 定中心点和缩放（素材按比例完整放进画布再缩放）；空镜、录屏写 gainDb: -60 静音；滑动入场不写方向时从最近的画面边缘滑进来",
       "图片和画中画可以加循环动画 animLoop（v6）：只有 breathe（呼吸），durationMs 是周期，默认 2400、intensity 2（±6%，±3% 看不出来）；一条视频里别多处同时呼吸",
       "关键帧（keyframe.set，atMs 相对元素开始）：元素有关键帧后 transform 不再起作用，以关键帧为准；推近 1.5–2.5 秒、幅度 10–20%（4 秒以上显得拖）",
-      "卡片：先看 templates 的 useFor / sizes / example 选模板；卡片必须写 size（v7）：small 金句 / 数字 / 人名 / 提示，half 要点 / 截图 / 长金句（主画面自动上移），full 只给整段原文（盖住标题条）；有卡时字幕自动隐藏；30 秒 0–2 张、60 秒不超过 4 张；字数守住 schema 的上限",
+      "卡片：先看 templates 的 useFor / sizes / example 选模板；卡片必须写 size（v7）：small 金句 / 数字 / 人名 / 提示，half 要点 / 截图 / 长金句（主画面自动上移），full 只给整段原文（盖住标题条）；有卡时字幕自动隐藏；按内容需要才用，30 秒左右的短视频默认不加（没有值得停下来看的数字、清单、金句时建议人不加），加的话 30 秒 0–2 张、60 秒不超过 4 张；字数守住 schema 的上限",
+      "人物位置一律用 frame（按账号版式把人脸摆到参考线上），不要自己估 transform；clamped 为 true 时告诉人脸会偏大或偏一点；看效果用 preview --guides",
       "「第 N 个观点」按章节定位：开场之后的第 N 章（没分章先 chapters.set），卡片锚在亮出观点的那句字幕上，内容只从这一章的字幕里提炼",
       "片尾：人说接上默认片尾时用 outro（不给 file 用默认片尾，默认叠化 300ms，fadeMs: 0 硬切）；没设置默认片尾会报 NOT_FOUND，请人用 mw outro-default <视频文件> 设置",
       "封面：cover.update 写 atMs（1 秒以后、表情好的一帧）和 title: { template, style, props }，再跑 cover；封面只有主画面和封面标题",

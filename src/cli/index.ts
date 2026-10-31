@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import cac from "cac";
 import { API_PORT } from "../core/api";
 import { MwError } from "../core/errors";
+import { LayoutFace } from "../core/layout";
 import { BUILTIN_STYLES } from "../core/presets";
 import { runMcpStdio } from "../mcp/server";
 import {
@@ -12,6 +13,7 @@ import {
   coverProject,
   exportProject,
   facesProject,
+  frameProject,
   guideInfo,
   importAsset,
   inspectProject,
@@ -342,6 +344,40 @@ cli
   );
 
 cli
+  .command("frame <proj>", "按账号版式摆人物：按人脸位置算主画面的缩放和位置，让脸落在参考线上")
+  .option("--face <cx,top,bottom>", "这次用的人脸位置（占画面比例），不写时用账号版式的 face")
+  .option("--base <rev>", "基于哪个 revision（默认当前）")
+  .option("--actor <name>", "操作者", { default: "user" })
+  .option("--dry-run", "只计算，不写入")
+  .action(
+    act(
+      async (
+        proj: string,
+        o: { face?: string; base?: number; actor: string; dryRun?: boolean },
+      ) => {
+        let face: { cx: number; top: number; bottom: number } | undefined;
+        if (o.face !== undefined) {
+          const [cx, top, bottom] = String(o.face).split(",").map(Number);
+          const r = LayoutFace.safeParse({ cx, top, bottom });
+          if (!r.success)
+            throw new MwError("USAGE", "--face 要写成 cx,top,bottom（0–1，上沿小于下沿）");
+          face = r.data;
+        }
+        out(
+          await frameProject(resolveProjectDir(proj), {
+            ...(face ? { face } : {}),
+            baseRevision: o.base === undefined ? undefined : Number(o.base),
+            dryRun: Boolean(o.dryRun),
+            source: "cli",
+            actor: o.actor,
+            onLog: log,
+          }),
+        );
+      },
+    ),
+  );
+
+cli
   .command("models", "查看或下载本地模型（识音）")
   .option("--fetch", "下载缺少的模型")
   .action(
@@ -360,7 +396,7 @@ cli
   .option("--frame <n>", "帧号")
   .option("--sheet [n]", "均匀截 n 帧拼成网格图（默认 12）")
   .option("--safe-area [preset]", "叠加安全区（all/douyin/channels/xiaohongshu）")
-  .option("--guides", "叠加 editor.json 里的参考线")
+  .option("--guides", "叠加参考线（账号版式的和这个工程 editor.json 里的）")
   .option("--out <file>", "输出 PNG")
   .action(
     act(
