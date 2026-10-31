@@ -5,7 +5,7 @@ import {
   Anchor,
   Asset,
   Canvas,
-  type Caption,
+  Caption,
   Chapter,
   Cover,
   Id,
@@ -101,6 +101,13 @@ export const Op = z.discriminatedUnion("op", [
     asset: Id.optional(),
     /** replace = 清空这条轨道原有的字幕 */
     mode: z.enum(["append", "replace"]).default("replace"),
+  }),
+  /** 直接加字幕（mw transcribe 用）：可以带逐字时间；replace = 清空这条轨道原有的字幕 */
+  z.strictObject({
+    op: z.literal("caption.add"),
+    track: Id,
+    items: z.array(Caption.omit({ id: true })).min(1),
+    mode: z.enum(["append", "replace"]).default("append"),
   }),
   z.strictObject({ op: z.literal("caption.update"), id: Id, set: Patch }),
   z.strictObject({ op: z.literal("caption.remove"), ids: z.array(Id).min(1) }),
@@ -499,6 +506,19 @@ function run(ctx: Ctx, op: Op): void {
 
     case "caption.import":
       return importCaptions(ctx, op);
+    case "caption.add": {
+      const { track } = ctx.track(op.track);
+      if (track.kind !== "caption") throw new MwError("INVALID_OP", `「${op.track}」不是字幕轨道`);
+      ctx.unlocked(track);
+      if (op.mode === "replace") track.items = [];
+      for (const c of op.items) {
+        const id = ctx.newId("s");
+        track.items.push({ ...c, id });
+        ctx.changed.add(id);
+      }
+      (track.items as Caption[]).sort((a, b) => a.startMs - b.startMs);
+      return;
+    }
     case "caption.remove":
       for (const id of op.ids) {
         const { track, index } = ctx.find(id);

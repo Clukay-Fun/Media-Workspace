@@ -318,6 +318,24 @@ describe("字幕编辑", () => {
     ]);
   });
 
+  it("caption.add 带逐字时间加字幕，按时间排好；replace 清空原有的", () => {
+    const item = { asset: "a1", startMs: 100, endMs: 600, text: "你好", charStartMs: [100, 300] };
+    const late = { ...item, startMs: 700, endMs: 900, text: "再见", charStartMs: [700, 800] };
+    const r = applyOps(project(), [
+      { op: "caption.add", track: "cap", items: [late, item], mode: "replace" },
+    ]);
+    const caps = r.project.tracks[1]?.items ?? [];
+    expect(caps).toEqual([
+      { ...item, id: expect.any(String), highlights: [] },
+      { ...late, id: expect.any(String), highlights: [] },
+    ]);
+    const more = applyOps(r.project, [{ op: "caption.add", track: "cap", items: [item] }]);
+    expect(more.project.tracks[1]?.items).toHaveLength(3);
+    expect(
+      fail(() => applyOps(project(), [{ op: "caption.add", track: "main", items: [item] }])).code,
+    ).toBe("INVALID_OP");
+  });
+
   it("SRT 格式错误报 SRT_PARSE", () => {
     const e = fail(() =>
       applyOps(project(), [

@@ -11,12 +11,13 @@ import { Op } from "../core/ops";
 import { BUILTIN_STYLES } from "../core/presets";
 import { SAFE_AREAS, type SafeAreaName, safeAreaFor } from "../core/safe-area";
 import type { Caption, MainClip } from "../core/schema";
-import { AnimPresetName, TextStyle } from "../core/text-style";
+import { AnimPresetName, charsPerLine, TextStyle } from "../core/text-style";
 import { msToFrame } from "../core/time";
+import { alignScript, type ScriptDiff, segmentLines } from "../core/transcribe";
 import { validate } from "../core/validate";
 import { PROJECT_FORMAT_VERSION } from "../core/version";
 import { overlayAssets, overlayBounds, TEMPLATE_NAMES, TEMPLATES } from "../templates";
-import { alignCaptions } from "./asr";
+import { alignCaptions, transcribeFile } from "./asr";
 import { detectFaces, readFaces } from "./faces";
 import { getDefaultOutro } from "./library";
 import { importMedia } from "./media";
@@ -305,6 +306,88 @@ export async function alignProject(
   };
 }
 
+/**
+ * 从原片识音出字幕（阶段 F，docs/decisions/0025）：识音 → 有文稿时按文稿校字 → 按标点、停顿、词边界断成一行一句，
+ * 带逐字时间写进字幕轨（默认清空原有字幕）。文稿存一份在工程目录的 script.txt，之后可以不再给。
+ * 对不上的地方（漏读、多读、改口）在 diffs 里列出来，给用户确认，不自己改。
+ */
+export async function transcribeProject(
+  dir: string,
+  o: Actor & {
+    asset?: string;
+    script?: string;
+    track?: string;
+    maxChars?: number;
+    mode?: "replace" | "append";
+    baseRevision?: number;
+    dryRun?: boolean;
+    onLog?: (s: string) => void;
+  },
+) {
+  const p = await loadProject(dir);
+  const main = p.tracks.find((t) => t.kind === "video" && t.main);
+  const firstClip = ((main?.items ?? []) as MainClip[]).find((c) => c.type === "clip");
+  const assetId = o.asset ?? (firstClip?.type === "clip" ? firstClip.asset : undefined);
+  if (!assetId) {
+    throw new MwError("NOT_FOUND", "主轨上没有视频", {
+      hint: "先导入原片放到主轨，或者用 --asset 指定素材",
+    });
+  }
+  const a = p.assets[assetId];
+  if (!a) throw new MwError("REF_MISSING", `素材「${assetId}」不存在`);
+  if (a.kind !== "video" && a.kind !== "audio")
+    throw new MwError("USAGE", `素材「${assetId}」不是音视频`);
+  const capTrack = p.tracks.find((t) => t.kind === "caption" && (!o.track || t.id === o.track));
+  if (!capTrack || capTrack.kind !== "caption")
+    throw new MwError("NOT_FOUND", o.track ? `没有字幕轨道「${o.track}」` : "工程里没有字幕轨道");
+  const track = capTrack.id;
+  // 一行最多几个字：默认按这条轨道的字幕样式一行放得下的字数，保证每句只占一行
+  const styleId = capTrack.style ?? "caption-word-yellow";
+  const capStyle = p.styles[styleId] ?? (BUILTIN_STYLES as Record<string, TextStyle>)[styleId];
+  const maxChars = o.maxChars ?? (capStyle ? charsPerLine(capStyle) : 14);
+
+  const scriptFile = join(dir, "script.txt");
+  const script = o.script ?? (await readFile(scriptFile, "utf8").catch(() => undefined));
+  const file = a.cache?.mez ? join(dir, a.cache.mez) : a.path;
+  const { heard, regions, text } = await transcribeFile(resolve(dir, file), { onLog: o.onLog });
+  let spoken = heard;
+  let diffs: ScriptDiff[] = [];
+  if (script?.trim()) {
+    ({ spoken, diffs } = alignScript(script, heard));
+  }
+  const lines = segmentLines(spoken, regions, { maxChars });
+  if (lines.length === 0) throw new MwError("MEDIA", "没有识别出说话的声音", { path: a.path });
+  const r = await applyToProject(dir, {
+    ops: [
+      {
+        op: "caption.add",
+        track,
+        mode: o.mode ?? "replace",
+        items: lines.map(({ split: _s, ...l }) => ({ asset: assetId, ...l, highlights: [] })),
+      },
+    ],
+    baseRevision: o.baseRevision ?? p.revision,
+    source: o.source,
+    actor: o.actor,
+    dryRun: Boolean(o.dryRun),
+    ...templateOpts,
+  });
+  if (o.script?.trim() && !o.dryRun) await writeFile(scriptFile, o.script);
+  return {
+    ...r,
+    asset: assetId,
+    captions: lines.length,
+    maxChars,
+    usedScript: Boolean(script?.trim()),
+    heard: text,
+    // fixed 是识音认错、已经按文稿改的字；missing / extra 要用户看一下（漏读、多读、改口）
+    diffs,
+    check: diffs.filter((d) => d.kind !== "fixed"),
+    // 一句话太长切成了几行：切点按词边界估的，读一遍，不顺就用 caption.split / caption.merge 调
+    splitLines: lines.filter((l) => l.split).map((l) => l.text),
+  };
+}
+
 export type InspectView = "all" | "tracks" | "captions" | "assets" | "styles" | "timeline";
 
 export async function inspectProject(dir: string, view: InspectView = "all"): Promise<unknown> {
@@ -498,6 +581,7 @@ export function guideInfo() {
       "字段名拼错会返回 UNKNOWN_FIELD，不会被悄悄忽略；item.update 的 set 里写 null 表示去掉这个字段（比如去掉转场 transitionIn: null）",
       "逐字节奏默认用剪映的前快后慢（stagger: { fraction: 0.75 } + inSlot），不看语音；要严格跟着念的速度出字时改用 spread 并跑 align，改了字幕文字后需要重新 align",
       "加标题、卡片之前先列方案（哪句话 → 加什么画面 → 用哪个模板 → 什么时间），给用户确认后再 apply",
+      "只有原片（或原片 + 文稿）时用 transcribe 出字幕（不需要 SRT、不用再 align）：人给了文稿就传 script，字以文稿为准；返回的 check（漏读 / 多读 / 改口）列给人确认，不要自己改；splitLines 读一遍，不顺用 caption.split / caption.merge 调",
       "剪句间停顿：先 align（字幕起止收到开口和念完，SRT 常把停顿算进上一句），再 cut.removePauses 用 minGapMs: 150、keepMs: 40；没 align 时默认值几乎剪不到",
       "删句（cut.removeCaptions）之前先跑 align：它会把字幕开始时间挪到真正开口的地方，否则下一句的第一个字可能被剪掉一半",
       "剪错了用 uncut 恢复那一刀（片段 ID 是剪辑点后面那段），字幕会从历史里找回；不要整体 undo，会把后面的修改一起撤掉",

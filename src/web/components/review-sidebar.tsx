@@ -224,6 +224,7 @@ const OP_LABEL: Record<string, string> = {
   "clip.trim": "裁剪",
   "keyframe.set": "改关键帧",
   "caption.import": "导入字幕",
+  "caption.add": "加字幕",
   "caption.update": "改字幕",
   "caption.remove": "删字幕",
   "caption.merge": "合并字幕",

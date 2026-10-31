@@ -8,6 +8,13 @@ import { type AsrToken, alignChars, speechEndMs, speechOnsetMs } from "../core/a
 import { MwError } from "../core/errors";
 import type { Op } from "../core/ops";
 import type { Caption, Project } from "../core/schema";
+import {
+  chunkRegions,
+  heardChars,
+  type Region,
+  type Spoken,
+  speechRegions,
+} from "../core/transcribe";
 import { mwHome } from "./paths";
 
 // 识音（docs/decisions/0005）：本地离线跑 SenseVoice（sherpa-onnx），只用来拿每个字的时间。
@@ -111,12 +118,13 @@ function createRecognizer(): Recognizer {
 }
 
 /** 截一段音频，转成 16k 单声道 float */
-function decodePcm(file: string, fromMs: number, toMs: number): Promise<Float32Array> {
+function decodePcm(file: string, fromMs: number, toMs?: number): Promise<Float32Array> {
   return new Promise((ok, bad) => {
     const child = spawn(
       ffmpegBin(),
       [
-        ...["-v", "error", "-ss", String(fromMs / 1000), "-to", String(toMs / 1000)],
+        ...["-v", "error", "-ss", String(fromMs / 1000)],
+        ...(toMs === undefined ? [] : ["-to", String(toMs / 1000)]),
         ...["-i", file, "-vn", "-ac", "1", "-ar", String(SAMPLE_RATE), "-f", "f32le", "-"],
       ],
       { stdio: ["ignore", "pipe", "pipe"] },
@@ -206,17 +214,7 @@ export async function alignCaptions(
     stream.acceptWaveform({ sampleRate: SAMPLE_RATE, samples });
     rec.decode(stream);
     const r = rec.getResult(stream);
-    // 去掉语种、情绪之类的标签和 SentencePiece 的词首标记
-    const tokens: AsrToken[] = r.tokens.flatMap((text, k) =>
-      /^<\|.*\|>$/.test(text)
-        ? []
-        : [
-            {
-              text: text.replace(/▁/g, ""),
-              startMs: from + Math.round((r.timestamps[k] ?? 0) * 1000),
-            },
-          ],
-    );
+    const tokens = toTokens(r, from);
     // 字幕的开始时间常常比真正开口晚，删掉上一句时会把这句的第一个字剪掉一半（0013 验收发现）：
     // 开口更早时把开始时间挪到开口前，上一句的结束时间同步收回
     let startMs = cap.startMs;
@@ -267,6 +265,50 @@ export async function alignCaptions(
   }
   const ops: Op[] = [...sets].map(([id, v]) => ({ op: "caption.update", id, set: v }));
   return { ops, report };
+}
+
+/** 识别结果去掉语种、情绪之类的标签和 SentencePiece 的词首标记，换成源时间 */
+function toTokens(r: SherpaResult, fromMs: number): AsrToken[] {
+  return r.tokens.flatMap((text, k) =>
+    /^<\|.*\|>$/.test(text)
+      ? []
+      : [
+          {
+            text: text.replace(/▁/g, ""),
+            startMs: fromMs + Math.round((r.timestamps[k] ?? 0) * 1000),
+          },
+        ],
+  );
+}
+
+/**
+ * 识一整段原片（阶段 F，docs/decisions/0025）：按响度找出说话段落，拼成不超过 20 秒的小段逐段识别
+ * （SenseVoice 一次识太长会漏字），返回每个字的源时间和说话段落（断句、算停顿用）
+ */
+export async function transcribeFile(
+  file: string,
+  o: { onLog?: (s: string) => void } = {},
+): Promise<{ heard: Spoken[]; regions: Region[]; text: string }> {
+  const rec = createRecognizer();
+  const samples = await decodePcm(file, 0);
+  const regions = speechRegions(samples, SAMPLE_RATE);
+  const chunks = chunkRegions(regions);
+  const heard: Spoken[] = [];
+  const texts: string[] = [];
+  for (const [i, c] of chunks.entries()) {
+    const from = Math.max(0, c.startMs - PAD_MS);
+    const to = c.endMs + PAD_MS;
+    const a = Math.round((from / 1000) * SAMPLE_RATE);
+    const b = Math.min(samples.length, Math.round((to / 1000) * SAMPLE_RATE));
+    const stream = rec.createStream();
+    stream.acceptWaveform({ sampleRate: SAMPLE_RATE, samples: samples.subarray(a, b) });
+    rec.decode(stream);
+    const r = rec.getResult(stream);
+    heard.push(...heardChars(toTokens(r, from), c.endMs));
+    texts.push(r.text);
+    o.onLog?.(`识音 ${i + 1}/${chunks.length}：${r.text}`);
+  }
+  return { heard, regions, text: texts.join("") };
 }
 
 /** 字幕和识别结果的公共字比例（忽略标点），只用来提示哪些句子可能没对准 */

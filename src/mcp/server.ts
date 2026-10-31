@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { MwError } from "../core/errors";
+import { Layout } from "../core/layout";
 import {
   alignProject,
   attachOutro,
@@ -19,9 +20,18 @@ import {
   restoreCut,
   templateOpts,
   templatesInfo,
+  transcribeProject,
   validateDir,
 } from "../node/actions";
-import { listStyles, removeStyle, saveStyle, useStyle } from "../node/library";
+import {
+  getLayout,
+  layoutFile,
+  listStyles,
+  removeStyle,
+  saveStyle,
+  setLayout,
+  useStyle,
+} from "../node/library";
 import { resolveProjectDir } from "../node/paths";
 import {
   applyToProject,
@@ -266,6 +276,58 @@ export function createMcpServer(): McpServer {
           ids: captions,
           baseRevision,
           dryRun,
+          source: "mcp",
+          actor: a,
+        }),
+      ),
+  );
+
+  server.registerTool(
+    "layout",
+    {
+      description:
+        "账号版式（所有工程共用）：参考线、人脸框该落在哪、标题和字幕用哪个样式。不给 layout 时读；给了整份替换。" +
+        "位置都是占画面宽 / 高的比例（0–1）",
+      inputSchema: {
+        layout: Layout.optional().describe("新的整份版式；不给时只读"),
+      },
+    },
+    ({ layout }) =>
+      call(async () => ({
+        ok: true,
+        file: layoutFile(),
+        layout: layout ? await setLayout(layout) : await getLayout(),
+      })),
+  );
+
+  server.registerTool(
+    "transcribe",
+    {
+      description:
+        "从原片识音出字幕（不需要 SRT）：按停顿、标点、词边界断成一行一句，带逐字时间，默认清空原有字幕。" +
+        "给文稿（纯文本）时字以文稿为准、时间用识音的；返回的 check 是漏读 / 多读 / 改口，要给用户确认；" +
+        "splitLines 是太长被切开的行，读一遍不顺就用 caption.split / caption.merge 调",
+      inputSchema: {
+        project,
+        script: z.string().optional().describe("文稿纯文本；不给时用工程里存过的 script.txt"),
+        asset: z.string().optional().describe("识哪个素材，默认主轨第一段视频"),
+        maxChars: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("一行最多几个字，默认按字幕样式算"),
+        mode: z.enum(["replace", "append"]).default("replace"),
+        baseRevision: base.optional(),
+        actor,
+        dryRun: z.boolean().default(false),
+      },
+    },
+    ({ project: p, baseRevision, actor: a, ...o }) =>
+      call(() =>
+        transcribeProject(dirOf(p), {
+          ...o,
+          baseRevision,
           source: "mcp",
           actor: a,
         }),

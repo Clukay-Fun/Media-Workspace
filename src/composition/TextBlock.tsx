@@ -136,7 +136,7 @@ export const TextBlock: React.FC<TextBlockProps> = ({
     lineHeight: font.lineHeight,
     letterSpacing: font.letterSpacing,
     whiteSpace: "pre-wrap",
-    // 多行时各行长短接近，避免最后一行只剩一两个字
+    // 多行时各行长短接近，避免最后一行只剩一两个字；断点只在词之间（keepTogether）
     textWrap: "balance",
     opacity: whole.opacity,
   };
@@ -336,21 +336,41 @@ export const TextBlock: React.FC<TextBlockProps> = ({
   );
 };
 
-// 避头尾：收尾标点（右引号、逗号句号等）不放在行首，开头标点（左引号等）不放在行尾。
-// 每个字是单独的 inline-block，任意两个字之间都能断行，所以把它们和相邻的字包进一个不换行的 span
+// 换行只在词和词之间（阶段 F，0025）：每个字是单独的 inline-block，任意两个字之间都能断行，
+// 所以把同一个词的字包进一个不换行的 span，不会再把一个词拆在两行。
+// 再加避头尾：收尾标点（右引号、逗号句号等）不放在行首，开头标点（左引号等）不放在行尾。
 const CLOSE = /^[，。、；：！？”’）》」』〉】…—,.;:!?)\]%]$/u;
 const OPEN = /^[“‘（《「『〈【(\[]$/u;
+const segmenter = new Intl.Segmenter("zh", { granularity: "word" });
 
 type Atom = { key: string; text: string; br: boolean; node: React.ReactNode };
 
+/** 每个 atom 前面是不是词边界（第一个 atom 算是） */
+function wordStarts(atoms: Atom[]): boolean[] {
+  const bounds = new Set<number>([0]);
+  let k = 0;
+  for (const w of segmenter.segment(atoms.map((a) => a.text).join(""))) {
+    k += w.segment.length;
+    bounds.add(k);
+  }
+  let at = 0;
+  return atoms.map((a) => {
+    const start = bounds.has(at);
+    at += a.text.length;
+    return start;
+  });
+}
+
 function keepTogether(atoms: Atom[]): React.ReactNode[] {
+  const starts = wordStarts(atoms);
   const groups: Atom[][] = [];
-  for (const a of atoms) {
+  atoms.forEach((a, i) => {
     const last = groups.at(-1);
     const prev = last?.at(-1);
-    if (last && prev && !a.br && (CLOSE.test(a.text) || OPEN.test(prev.text))) last.push(a);
+    const glued = !starts[i] || CLOSE.test(a.text) || (prev !== undefined && OPEN.test(prev.text));
+    if (last && prev && !a.br && glued) last.push(a);
     else groups.push([a]);
-  }
+  });
   return groups.map((g) => {
     const first = g[0] as Atom;
     return (

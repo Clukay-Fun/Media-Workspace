@@ -21,6 +21,7 @@ import {
   restoreCut,
   templateOpts,
   templatesInfo,
+  transcribeProject,
   validateDir,
 } from "../node/actions";
 import { ASR_MODEL, asrModelDir, fetchAsrModel, hasAsrModel } from "../node/asr";
@@ -280,6 +281,55 @@ cli
         out(
           await alignProject(resolveProjectDir(proj), {
             ids: o.captions ? String(o.captions).split(",").filter(Boolean) : undefined,
+            baseRevision: o.base === undefined ? undefined : Number(o.base),
+            dryRun: Boolean(o.dryRun),
+            source: "cli",
+            actor: o.actor,
+            onLog: log,
+          }),
+        );
+      },
+    ),
+  );
+
+cli
+  .command(
+    "transcribe <proj>",
+    "从原片识音出字幕：按停顿、标点、词边界断成一行一句；给文稿时按文稿校字，对不上的地方列出来",
+  )
+  .option("--script <file>", "文稿（纯文本，- = 从标准输入读）；不给时用工程里存过的 script.txt")
+  .option("--asset <id>", "识哪个素材，默认主轨第一段视频")
+  .option("--max-chars <n>", "一行最多几个字（默认按字幕样式一行放得下的字数）")
+  .option("--append", "加在原有字幕后面（默认清空原有字幕）")
+  .option("--base <rev>", "基于哪个 revision（默认当前）")
+  .option("--actor <name>", "操作者", { default: "user" })
+  .option("--dry-run", "只识音和断句，不写入")
+  .action(
+    act(
+      async (
+        proj: string,
+        o: {
+          script?: string;
+          asset?: string;
+          maxChars?: number;
+          append?: boolean;
+          base?: number;
+          actor: string;
+          dryRun?: boolean;
+        },
+      ) => {
+        const script =
+          o.script === undefined
+            ? undefined
+            : o.script === "-"
+              ? await readStdin()
+              : await readFile(o.script, "utf8");
+        out(
+          await transcribeProject(resolveProjectDir(proj), {
+            ...(script === undefined ? {} : { script }),
+            ...(o.asset === undefined ? {} : { asset: String(o.asset) }),
+            ...(o.maxChars === undefined ? {} : { maxChars: Number(o.maxChars) }),
+            mode: o.append ? "append" : "replace",
             baseRevision: o.base === undefined ? undefined : Number(o.base),
             dryRun: Boolean(o.dryRun),
             source: "cli",

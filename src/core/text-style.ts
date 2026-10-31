@@ -189,3 +189,10 @@ export type TextStyle = z.infer<typeof TextStyle>;
 export type Anim = z.infer<typeof Anim>;
 export type Easing = z.infer<typeof Easing>;
 export type Direction = z.infer<typeof Direction>;
+
+/** 一行大约放得下几个汉字：汉字基本是等宽的方块，按字号、字距和最大宽度（减去底板左右留白）估算 */
+export function charsPerLine(style: TextStyle): number {
+  const pad = style.box ? style.box.padding[1] * 2 : 0;
+  const w = style.layout.maxWidth - pad;
+  return Math.max(1, Math.floor(w / (style.font.size + style.font.letterSpacing)));
+}
