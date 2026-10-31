@@ -12,7 +12,8 @@ import { lintProject } from "../core/lint";
 import { Op } from "../core/ops";
 import { BUILTIN_STYLES } from "../core/presets";
 import { SAFE_AREAS, type SafeAreaName, safeAreaFor } from "../core/safe-area";
-import type { Caption, MainClip } from "../core/schema";
+import { type Caption, isMainClip, type MainClip } from "../core/schema";
+import { detectSilence, silenceCutRanges } from "../core/silence";
 import { AnimPresetName, charsPerLine, TextStyle } from "../core/text-style";
 import { msToFrame } from "../core/time";
 import { alignScript, type ScriptDiff, segmentLines } from "../core/transcribe";
@@ -22,7 +23,7 @@ import { overlayAssets, overlayBounds, TEMPLATE_NAMES, TEMPLATES } from "../temp
 import { alignCaptions, transcribeFile } from "./asr";
 import { detectFaces, readFaces } from "./faces";
 import { getDefaultOutro, getLayout } from "./library";
-import { importMedia } from "./media";
+import { decodeAudioSamples, importMedia, probeMedia } from "./media";
 import { projectFiles } from "./paths";
 import { exportVideo, renderStills } from "./render";
 import {
@@ -34,6 +35,9 @@ import {
   readHistory,
   type Source,
 } from "./store";
+
+export type { CompareProjectOptions } from "./compare";
+export { compareProject } from "./compare";
 
 // CLI、MCP、本地服务共用的操作（AGENTS.md 第 2 节：三个外壳只做参数解析和输出格式）。
 
@@ -76,6 +80,103 @@ export async function importAsset(
           checkHint: "看一眼 subtitleCheck 图片：原片如果已经烧录了字幕，新字幕会和它重影",
         }
       : {}),
+  };
+}
+
+/** 按主轨视频素材的音频静音段剪停顿，不需要字幕轨或识音模型。 */
+export async function removeSilenceProject(
+  dir: string,
+  o: Actor & {
+    minPauseMs?: number;
+    keepMs?: number;
+    baseRevision?: number;
+    onLog?: (s: string) => void;
+  },
+) {
+  const minPauseMs = o.minPauseMs ?? 400;
+  const keepMs = o.keepMs ?? 120;
+  if (!Number.isInteger(minPauseMs) || minPauseMs <= 0)
+    throw new MwError("USAGE", "minPauseMs 必须是正整数");
+  if (!Number.isInteger(keepMs) || keepMs < 0) throw new MwError("USAGE", "keepMs 必须是非负整数");
+
+  const project = await loadProject(dir);
+  const main = project.tracks.find((track) => track.kind === "video" && track.main);
+  if (!main || main.kind !== "video") throw new MwError("NOT_FOUND", "工程里没有主轨");
+  if (main.locked) {
+    throw new MwError("TRACK_LOCKED", `轨道「${main.name ?? main.id}」已锁定`, {
+      hint: "先解锁主轨，再剪停顿",
+    });
+  }
+
+  const assetIds = [...new Set(main.items.filter(isMainClip).map((clip) => clip.asset))];
+  const reports: {
+    asset: string;
+    path: string;
+    status: "analyzed" | "no-audio";
+    silences: number;
+    ranges: { startMs: number; endMs: number }[];
+  }[] = [];
+  const ops: Extract<Op, { op: "cut.removeSilence" }>[] = [];
+  for (const assetId of assetIds) {
+    const asset = project.assets[assetId];
+    if (!asset) continue;
+    const file = resolve(dir, asset.path);
+    const probe = asset.probe?.hasAudio === undefined ? await probeMedia(file) : null;
+    const hasAudio = asset.probe?.hasAudio ?? probe?.hasAudio ?? false;
+    if (!hasAudio) {
+      reports.push({ asset: assetId, path: file, status: "no-audio", silences: 0, ranges: [] });
+      continue;
+    }
+    o.onLog?.(`分析静音：${file}`);
+    const sampleRate = 8000;
+    const samples = await decodeAudioSamples(file, sampleRate);
+    const silences = detectSilence(samples, sampleRate, { minPauseMs });
+    const ranges = silenceCutRanges(silences, keepMs)
+      .map((range) => ({
+        startMs: Math.max(0, Math.ceil(range.startMs)),
+        endMs: Math.floor(range.endMs),
+      }))
+      .filter((range) => range.endMs > range.startMs);
+    reports.push({
+      asset: assetId,
+      path: file,
+      status: "analyzed",
+      silences: silences.length,
+      ranges,
+    });
+    if (ranges.length > 0)
+      ops.push({ op: "cut.removeSilence", asset: assetId, ranges, minPauseMs, keepMs });
+  }
+
+  if (ops.length === 0) {
+    return {
+      ok: true as const,
+      revision: project.revision,
+      changed: [] as string[],
+      minPauseMs,
+      keepMs,
+      assets: reports,
+      removedPauseCount: 0,
+      removedMs: 0,
+    };
+  }
+  const result = await applyToProject(dir, {
+    ops,
+    baseRevision: o.baseRevision ?? project.revision,
+    source: o.source,
+    actor: o.actor,
+    ...templateOpts,
+  });
+  return {
+    ...result,
+    minPauseMs,
+    keepMs,
+    assets: reports,
+    removedPauseCount: ops.reduce((sum, op) => sum + op.ranges.length, 0),
+    removedMs: ops.reduce(
+      (sum, op) => sum + op.ranges.reduce((total, range) => total + range.endMs - range.startMs, 0),
+      0,
+    ),
   };
 }
 
@@ -673,7 +774,7 @@ export function guideInfo() {
       "逐字节奏默认用剪映的前快后慢（stagger: { fraction: 0.75 } + inSlot），不看语音；要严格跟着念的速度出字时改用 spread 并跑 align，改了字幕文字后需要重新 align",
       "加标题、卡片之前先列方案（哪句话 → 加什么画面 → 用哪个模板 → 什么时间），给用户确认后再 apply",
       "只有原片（或原片 + 文稿）时用 transcribe 出字幕（不需要 SRT、不用再 align）：人给了文稿就传 script，字以文稿为准；返回的 check（漏读 / 多读 / 改口）列给人确认，不要自己改；splitLines 读一遍，不顺用 caption.split / caption.merge 调",
-      "剪句间停顿：先 align（字幕起止收到开口和念完，SRT 常把停顿算进上一句），再 cut.removePauses 用 minGapMs: 150、keepMs: 40；没 align 时默认值几乎剪不到",
+      "剪停顿优先用 remove-silence / mw remove-silence：从主轨视频素材音频的 RMS 静音段剪，不依赖字幕；AI 可调 minPauseMs（默认 400）和 keepMs（默认 120，静音两端各保留）。若明确按字幕空隙剪，再先 align 后使用旧 cut.removePauses",
       "删句（cut.removeCaptions）之前先跑 align：它会把字幕开始时间挪到真正开口的地方，否则下一句的第一个字可能被剪掉一半",
       "剪错了用 uncut 恢复那一刀（片段 ID 是剪辑点后面那段），字幕会从历史里找回；不要整体 undo，会把后面的修改一起撤掉",
       "粗剪时在主轨片段的 cutBefore 写上前面剪掉的是什么（口误、重复、停顿，16 字以内），审片台会标在时间线上",

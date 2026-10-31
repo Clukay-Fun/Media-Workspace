@@ -8,6 +8,7 @@ import {
   alignProject,
   attachOutro,
   commentsInfo,
+  compareProject,
   coverProject,
   exportProject,
   facesProject,
@@ -18,6 +19,7 @@ import {
   lintDir,
   previewProject,
   removeOutro,
+  removeSilenceProject,
   restoreCut,
   templateOpts,
   templatesInfo,
@@ -212,6 +214,65 @@ export function createMcpServer(): McpServer {
       inputSchema: { project, actor },
     },
     ({ project: p, actor: a }) => call(() => facesProject(dirOf(p), { source: "mcp", actor: a })),
+  );
+
+  server.registerTool(
+    "remove-silence",
+    {
+      description:
+        "从主轨视频素材的音频中找静音并剪掉停顿，不依赖字幕或识音模型。minPauseMs 是最短静音时长，keepMs 是静音段两端各保留的时长",
+      inputSchema: {
+        project,
+        minPauseMs: z.number().int().positive().default(400),
+        keepMs: z.number().int().nonnegative().default(120),
+        baseRevision: base.optional(),
+        actor,
+      },
+    },
+    ({ project: p, minPauseMs, keepMs, baseRevision, actor: a }) =>
+      call(() =>
+        removeSilenceProject(dirOf(p), {
+          minPauseMs,
+          keepMs,
+          baseRevision,
+          source: "mcp",
+          actor: a,
+        }),
+      ),
+  );
+
+  server.registerTool(
+    "compare",
+    {
+      description:
+        "比较工程和参考成片，生成同一时间点并排 PNG，并返回时长、剪切点、人脸位置和字幕换行差异 JSON",
+      inputSchema: {
+        project,
+        reference: z.string().min(1).describe("参考成片的绝对路径"),
+        atMs: z.number().int().nonnegative().optional(),
+        out: z.string().optional(),
+        sceneThreshold: z.number().positive().max(1).default(0.3),
+        cutToleranceMs: z.number().int().nonnegative().default(500),
+        faceIntervalMs: z.number().int().min(250).default(1000),
+      },
+    },
+    ({ project: p, reference, atMs, out, sceneThreshold, cutToleranceMs, faceIntervalMs }) =>
+      call(async () => {
+        const result = await compareProject(dirOf(p), reference, {
+          atMs,
+          out,
+          sceneThreshold,
+          cutToleranceMs,
+          faceIntervalMs,
+        });
+        const data = (await readFile(result.comparisonImage)).toString("base64");
+        return {
+          content: [
+            { type: "text", text: JSON.stringify(result, null, 2) },
+            { type: "image", data, mimeType: "image/png" },
+          ],
+        } satisfies Result;
+      }),
   );
 
   server.registerTool(
