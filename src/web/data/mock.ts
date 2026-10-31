@@ -6,6 +6,7 @@ import {
 } from "../../core/api";
 import { compile } from "../../core/compile";
 import { MwError } from "../../core/errors";
+import { Layout } from "../../core/layout";
 import { lintProject } from "../../core/lint";
 import { applyOps } from "../../core/ops";
 import { BUILTIN_STYLES } from "../../core/presets";
@@ -148,6 +149,15 @@ export function createMockApi(): Api {
   ];
   let review = Review.parse({});
   let editor = EditorState.parse({});
+  // 示例账号版式：人物中线、头顶、下巴三条参考线
+  let layout: Layout | null = Layout.parse({
+    guides: [
+      { id: "center", axis: "v", pos: 0.5, label: "人物中线" },
+      { id: "head", axis: "h", pos: 0.25, label: "头顶" },
+      { id: "chin", axis: "h", pos: 0.51, label: "下巴" },
+    ],
+    face: { cx: 0.5, top: 0.36, bottom: 0.5 },
+  });
   // 模板库：内置样式 + 一个「之前存过的」样式，演示跨工程套用
   const library: LibraryStyle[] = [
     ...Object.entries(BUILTIN_STYLES).map(([name, style]) => ({
@@ -246,6 +256,11 @@ export function createMockApi(): Api {
     editor: async () => ({ ok: true, editor }),
     saveEditor: async (next) => {
       editor = EditorState.parse(next);
+    },
+    layout: async () => ({ ok: true, layout }),
+    saveLayout: async (next) => {
+      layout = Layout.parse({ ...next, savedAt: new Date().toISOString() });
+      return { ok: true, layout };
     },
     libraryStyles: async () => ({ ok: true, styles: [...library], skipped: [] }),
     saveLibraryStyle: async (req) => {

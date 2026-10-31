@@ -13,6 +13,7 @@ import { findItem } from "../lib/project";
 import { frameOfMs, msOfFrame, timecode } from "../lib/timeline";
 import { useStore } from "../store";
 import { Icon } from "./icons";
+import { AccountGuides, LayoutPanel } from "./layout-editor";
 
 const KIND: Record<HitBox["kind"], string> = {
   caption: "字幕",
@@ -369,6 +370,7 @@ export function Stage() {
             >
               {referenceGuides.horizontal && <div className="center-guide horizontal" />}
               {referenceGuides.vertical && <div className="center-guide vertical" />}
+              <AccountGuides width={W} height={H} />
               {safeArea && safe && (
                 <div
                   className="safe-area"
@@ -642,6 +644,7 @@ function PreviewSettings() {
           />
           <span>垂直参考线</span>
         </label>
+        <LayoutPanel />
       </div>
     </details>
   );
