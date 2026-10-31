@@ -2511,6 +2511,15 @@ textarea:focus-visible {
   color: var(--warn);
 }
 
+/* 提示：有账号版式时的通用安全区等，只作参考 */
+.card.issue.hint {
+  border-left-color: var(--line-strong);
+}
+
+.card.issue.hint .card-meta {
+  color: var(--text-3);
+}
+
 .card-meta .when {
   margin-left: auto;
 }

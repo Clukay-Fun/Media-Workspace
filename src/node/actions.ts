@@ -262,6 +262,7 @@ export async function lintDir(dir: string) {
   const issues = lintProject(p, {
     styles: { ...BUILTIN_STYLES, ...p.styles },
     faces,
+    layout: await getLayout().catch(() => null),
     overlayBounds: (o, style) => overlayBounds(o, style, p.canvas.width, p.canvas.height),
     overlayStyle: (t) => TEMPLATES[t]?.meta.defaultStyle,
   });
@@ -800,7 +801,7 @@ export function guideInfo() {
       "「第 N 个观点」按章节定位：开场之后的第 N 章（没分章先 chapters.set），卡片锚在亮出观点的那句字幕上，内容只从这一章的字幕里提炼",
       "片尾：人说接上默认片尾时用 outro（不给 file 用默认片尾，默认叠化 300ms，fadeMs: 0 硬切）；没设置默认片尾会报 NOT_FOUND，请人用 mw outro-default <视频文件> 设置",
       "封面：cover.update 写 atMs（1 秒以后、表情好的一帧）和 title: { template, style, props }，再跑 cover；封面只有主画面和封面标题",
-      "提交后跑 lint：字太小、出安全区、字幕放不下、互相遮挡、挡脸；导入新视频时看一眼 subtitleCheck，原片已有字幕会重影",
+      "提交后跑 lint：字太小、出安全区、字幕放不下、互相遮挡、挡脸、人物偏离账号版式（FACE_OFF_LAYOUT → 跑 frame）；level 为 hint 的只是提示，有账号版式时以版式为准；导入新视频时看一眼 subtitleCheck，原片已有字幕会重影",
     ],
     ops: z.toJSONSchema(Op, { io: "input" }),
     textStyle: z.toJSONSchema(TextStyle, { io: "input" }),

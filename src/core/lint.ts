@@ -8,6 +8,8 @@ import {
   mapTimelineMs,
   type ResolvedOverlay,
 } from "./compile";
+import { typicalFace } from "./frame";
+import type { Layout } from "./layout";
 import { safeAreaFor } from "./safe-area";
 import type { Project } from "./schema";
 import type { TextStyle } from "./text-style";
@@ -26,7 +28,11 @@ export type LintIssue = {
     | "CAPTION_OVERFLOW"
     | "OVERLAP"
     | "FACE_COVERED"
-    | "TOO_MANY_CARDS";
+    | "TOO_MANY_CARDS"
+    | "FACE_OFF_LAYOUT"
+    | "STYLE_NOT_LAYOUT";
+  /** hint = 只是提示（有账号版式时，通用安全区以版式为准）；不写 = 警告 */
+  level?: "hint";
   /** 有问题的条目 */
   id: string;
   /** 遮挡时，另一方的条目 ID */
@@ -56,7 +62,13 @@ export type LintOptions = {
   faces?: Record<string, FaceTrack>;
   /** 1080 宽画面上的最小字号，其他宽度按比例 */
   minFontSize?: number;
+  /** 账号版式（docs/decisions/0027）：有的话检查人物位置和样式是否和版式一致，通用安全区降为提示 */
+  layout?: Pick<Layout, "face" | "captionStyle" | "titleStyle"> | null;
 };
+
+/** 人脸偏离版式多少算偏（占画面比例）：约 27px 横向、48px 纵向；人脸大小差 10% 以上 */
+const FACE_POS_TOLERANCE = 0.025;
+const FACE_SIZE_TOLERANCE = 0.1;
 
 const CJK = /[⺀-鿿가-힯豈-﫿＀-￯　-〿]/;
 
@@ -259,6 +271,8 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
         id: p.id,
         atMs: ms(p.from),
         message: `文字超出了「${project.canvas.safeArea.preset}」安全区（${out.join("、")}），可能被平台的按钮或标题挡住`,
+        // 有账号版式时位置以版式为准，通用安全区只作参考（0025）
+        ...(opts.layout ? { level: "hint" as const } : {}),
       });
     }
   }
@@ -402,6 +416,79 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
       }
     }
   }
+  // 5. 账号版式：人物位置、标题和字幕样式
+  const layout = opts.layout;
+  if (layout?.face && opts.faces) {
+    const target = layout.face;
+    const mains = tl.videos.filter((v) => v.main);
+    for (const seg of layoutMainTrack(project)) {
+      const clip = seg.clip;
+      if (clip.type !== "clip") continue;
+      const track = opts.faces[clip.asset];
+      const v = mains.find((x) => x.id === clip.id);
+      const a = project.assets[clip.asset];
+      if (!track || !v || !a?.probe?.width || !a.probe.height) continue;
+      const face = typicalFace(track, [{ fromMs: clip.inMs, toMs: clip.outMs }]);
+      if (!face) continue;
+      const sw = a.probe.width;
+      const sh = a.probe.height;
+      const t = transformAt(v.transform, v.keyframes, Math.round(v.durationInFrames / 2));
+      const k = Math.min(width / sw, height / sh);
+      const ox = (width - sw * k) / 2;
+      const oy = (height - sh * k) / 2;
+      const cx = (t.x + t.scale * (ox + (face.x + face.w / 2) * sw * k - width / 2)) / width;
+      const top = (t.y + t.scale * (oy + face.y * sh * k - height / 2)) / height;
+      const h = (t.scale * face.h * sh * k) / height;
+      const want = target.bottom - target.top;
+      const off = [
+        Math.abs(cx - target.cx) > FACE_POS_TOLERANCE &&
+          `${cx < target.cx ? "偏左" : "偏右"} ${Math.round(Math.abs(cx - target.cx) * width)}px`,
+        Math.abs(top - target.top) > FACE_POS_TOLERANCE &&
+          `${top < target.top ? "偏上" : "偏下"} ${Math.round(Math.abs(top - target.top) * height)}px`,
+        Math.abs(h / want - 1) > FACE_SIZE_TOLERANCE &&
+          `脸${h > want ? "大" : "小"}了 ${Math.round(Math.abs(h / want - 1) * 100)}%`,
+      ].filter(Boolean);
+      if (off.length === 0) continue;
+      add({
+        code: "FACE_OFF_LAYOUT",
+        id: clip.id,
+        atMs: ms(v.from),
+        message: `人物位置和账号版式不一致（${off.join("、")}），用 mw frame 按版式重新摆`,
+      });
+    }
+  }
+  if (layout?.captionStyle) {
+    const c = tl.captions.find(
+      (x) => !x.hidden && (x.style ?? "caption-word-yellow") !== layout.captionStyle,
+    );
+    if (c) {
+      add({
+        code: "STYLE_NOT_LAYOUT",
+        id: c.id,
+        atMs: ms(c.from),
+        message: `字幕用的样式「${c.style ?? "caption-word-yellow"}」不是账号版式规定的「${layout.captionStyle}」`,
+        level: "hint",
+      });
+    }
+  }
+  if (layout?.titleStyle) {
+    const o = tl.overlays.find(
+      (x) =>
+        !x.hidden &&
+        x.template === "title-bar" &&
+        (x.style ?? "title-bar-yellow") !== layout.titleStyle,
+    );
+    if (o) {
+      add({
+        code: "STYLE_NOT_LAYOUT",
+        id: o.id,
+        atMs: ms(o.from),
+        message: `标题条用的样式「${o.style ?? "title-bar-yellow"}」不是账号版式规定的「${layout.titleStyle}」`,
+        level: "hint",
+      });
+    }
+  }
+
   return issues.toSorted((a, b) => a.atMs - b.atMs);
 }
 

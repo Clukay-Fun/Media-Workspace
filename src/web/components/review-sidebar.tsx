@@ -140,10 +140,14 @@ function IssueList({ only }: { only?: string }) {
   return (
     <div className="card-list">
       {issues.map((i, n) => (
-        <article key={`${i.id}-${n}`} className="card issue">
+        <article
+          key={`${i.id}-${n}`}
+          className={i.level === "hint" ? "card issue hint" : "card issue"}
+        >
           <button type="button" className="card-main" onClick={() => jumpTo(i.id, i.atMs)}>
             <div className="card-meta">
               <Icon name="warn" size={12} />
+              {i.level === "hint" && <span>提示</span>}
               <span className="mono">{timecode(frameOfMs(i.atMs, fps), fps)}</span>
               {i.id && <span className="target">{i.id}</span>}
             </div>

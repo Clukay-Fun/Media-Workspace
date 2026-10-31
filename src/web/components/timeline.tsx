@@ -280,13 +280,15 @@ export function Timeline() {
         title: c.text,
         target: c.target,
       })),
-    ...(lint?.issues ?? []).map((i, n) => ({
-      key: `lint-${n}`,
-      kind: "lint" as const,
-      frame: frameOfMs(i.atMs, fps),
-      title: i.message,
-      target: i.id,
-    })),
+    ...(lint?.issues ?? [])
+      .filter((i) => i.level !== "hint")
+      .map((i, n) => ({
+        key: `lint-${n}`,
+        kind: "lint" as const,
+        frame: frameOfMs(i.atMs, fps),
+        title: i.message,
+        target: i.id,
+      })),
   ];
 
   /** 拖块：位移换算成毫秒交给 core 的 planDrag（吸附、主轨磁吸都在那里），松开时提交一次 */

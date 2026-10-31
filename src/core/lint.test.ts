@@ -187,3 +187,46 @@ describe("质检", () => {
     expect(codes(p, { faces: { a1: face(0.2) } })).toEqual([]);
   });
 });
+
+describe("质检：账号版式", () => {
+  const face: FaceTrack = {
+    intervalMs: 500,
+    frames: [250, 750, 1250].map((ms) => ({ ms, boxes: [{ x: 0.4, y: 0.4, w: 0.2, h: 0.1 }] })),
+  };
+  const layout = (f: { cx: number; top: number; bottom: number }) => ({
+    face: f,
+    captionStyle: null,
+    titleStyle: null,
+  });
+
+  it("人物位置偏离版式时报 FACE_OFF_LAYOUT，按版式摆好就不报", () => {
+    const p = make([]);
+    // 没缩放时脸在 x 中心 0.5、上沿 0.4、高 0.1
+    expect(
+      codes(p, { faces: { a1: face }, layout: layout({ cx: 0.5, top: 0.4, bottom: 0.5 }) }),
+    ).toEqual([]);
+    const off = lintProject(p, {
+      styles,
+      faces: { a1: face },
+      layout: layout({ cx: 0.5, top: 0.36, bottom: 0.5 }),
+    });
+    expect(off.map((i) => i.code)).toEqual(["FACE_OFF_LAYOUT"]);
+    expect(off[0]?.message).toContain("偏下");
+    expect(off[0]?.message).toContain("脸小了 29%");
+  });
+
+  it("有账号版式时安全区降为提示；字幕样式和版式不一致时提示", () => {
+    const p = make([cap("s1", 0, "一句", "low")]);
+    const plain = lintProject(p, { styles });
+    expect(plain.find((i) => i.code === "TEXT_OUTSIDE_SAFE_AREA")?.level).toBeUndefined();
+    const withLayout = lintProject(p, {
+      styles,
+      layout: { face: null, captionStyle: "caption-word-yellow", titleStyle: null },
+    });
+    expect(withLayout.find((i) => i.code === "TEXT_OUTSIDE_SAFE_AREA")?.level).toBe("hint");
+    expect(withLayout.find((i) => i.code === "STYLE_NOT_LAYOUT")).toMatchObject({
+      id: "s1",
+      level: "hint",
+    });
+  });
+});
