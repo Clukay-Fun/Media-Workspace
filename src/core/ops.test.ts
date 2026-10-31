@@ -250,6 +250,26 @@ describe("字幕快剪", () => {
       ["c1-1", 3900, 10_000],
     ]);
   });
+
+  it("cut.removeSilence 按 PCM 分析后给出的源区间剪主轨，不依赖字幕轨", () => {
+    const p = project();
+    p.tracks = p.tracks.filter((track) => track.kind !== "caption");
+    const r = applyOps(p, [
+      {
+        op: "cut.removeSilence",
+        asset: "a1",
+        ranges: [{ startMs: 3000, endMs: 4000 }],
+        minPauseMs: 600,
+        keepMs: 100,
+      },
+    ]);
+    expect(mainClips(r.project)).toEqual([
+      ["c1", 0, 3000],
+      ["c1-1", 4000, 10_000],
+    ]);
+    expect(r.project.tracks[0]?.items[1]).toMatchObject({ cutBefore: "停顿" });
+    expect(r.project.tracks.some((track) => track.kind === "caption")).toBe(false);
+  });
 });
 
 describe("字幕编辑", () => {

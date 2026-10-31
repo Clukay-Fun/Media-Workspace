@@ -135,6 +135,23 @@ export const Op = z.discriminatedUnion("op", [
     /** 每个停顿两边各保留的余量 */
     keepMs: z.number().int().nonnegative().default(120),
   }),
+  z.strictObject({
+    op: z.literal("cut.removeSilence"),
+    /** 静音检测结果对应的源素材 ID；范围由 node 层从 PCM 音频计算。 */
+    asset: Id,
+    /** 已扣除两端保留量的源时间区间，按从前到后排序。 */
+    ranges: z
+      .array(
+        z.strictObject({
+          startMs: z.number().int().nonnegative(),
+          endMs: z.number().int().nonnegative(),
+        }),
+      )
+      .min(1),
+    /** 记录检测参数，便于 AI 调整并审计这次剪辑。 */
+    minPauseMs: z.number().int().positive().default(400),
+    keepMs: z.number().int().nonnegative().default(120),
+  }),
   /**
    * 恢复一个剪辑点：主轨片段 clip 前面剪掉的那段源时间接回来（前一个片段延长到 clip 的入点）。
    * 只恢复画面和声音；随删句一起删掉的字幕由 node 层从历史里找回，再用 item.add 加回去（docs/decisions/0016）
@@ -591,6 +608,24 @@ function run(ctx: Ctx, op: Op): void {
           if (b.startMs - a.endMs >= op.minGapMs && to > from) gaps.push([from, to]);
         }
         for (const [from, to] of gaps.reverse()) ctx.cutSource(asset, from, to);
+      }
+      return;
+    }
+
+    case "cut.removeSilence": {
+      const main = ctx.mainTrack();
+      ctx.unlocked(main);
+      if (op.ranges.some((range) => range.endMs <= range.startMs)) {
+        throw new MwError("INVALID_OP", "静音剪切区间的 endMs 必须大于 startMs");
+      }
+      const previousIds = new Set(main.items.map((item) => item.id));
+      for (const range of op.ranges.toReversed()) {
+        ctx.cutSource(op.asset, range.startMs, range.endMs);
+      }
+      for (const item of main.items) {
+        if (!previousIds.has(item.id) && item.type === "clip" && item.asset === op.asset) {
+          item.cutBefore = "停顿";
+        }
       }
       return;
     }

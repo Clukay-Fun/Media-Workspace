@@ -10,6 +10,7 @@ import {
   alignProject,
   attachOutro,
   commentsInfo,
+  compareProject,
   coverProject,
   exportProject,
   facesProject,
@@ -20,6 +21,7 @@ import {
   lintDir,
   previewProject,
   removeOutro,
+  removeSilenceProject,
   restoreCut,
   templateOpts,
   templatesInfo,
@@ -233,6 +235,60 @@ cli.command("lint <proj>", "质检：字太小、出安全区、字幕放不下�
     out(await lintDir(resolveProjectDir(proj)));
   }),
 );
+
+cli
+  .command("remove-silence <proj>", "从主轨视频素材的音频中找静音并剪掉停顿，不依赖字幕")
+  .option("--min-pause <ms>", "作为停顿的最短静音时长", { default: 400 })
+  .option("--keep <ms>", "每段静音两端各保留的时长", { default: 120 })
+  .option("--base <rev>", "基于哪个 revision（默认当前）")
+  .option("--actor <name>", "操作者", { default: "user" })
+  .action(
+    act(async (proj: string, o: { minPause: number; keep: number; base?: number; actor: string }) =>
+      out(
+        await removeSilenceProject(resolveProjectDir(proj), {
+          minPauseMs: Number(o.minPause),
+          keepMs: Number(o.keep),
+          baseRevision: o.base === undefined ? undefined : Number(o.base),
+          source: "cli",
+          actor: o.actor,
+          onLog: log,
+        }),
+      ),
+    ),
+  );
+
+cli
+  .command("compare <proj> <reference>", "对比工程与参考成片：输出并排帧和差异 JSON")
+  .option("--at <ms>", "并排截图的时间点；默认取较短视频的中点")
+  .option("--out <file>", "对比 PNG 输出路径")
+  .option("--scene-threshold <value>", "参考成片场景切换检测阈值（0–1）", { default: 0.3 })
+  .option("--cut-tolerance <ms>", "剪切点匹配容差（毫秒）", { default: 500 })
+  .option("--face-interval <ms>", "人脸位置采样间隔（毫秒）", { default: 1000 })
+  .action(
+    act(
+      async (
+        proj: string,
+        reference: string,
+        o: {
+          at?: number;
+          out?: string;
+          sceneThreshold: number;
+          cutTolerance: number;
+          faceInterval: number;
+        },
+      ) =>
+        out(
+          await compareProject(resolveProjectDir(proj), reference, {
+            atMs: o.at === undefined ? undefined : Number(o.at),
+            out: o.out,
+            sceneThreshold: Number(o.sceneThreshold),
+            cutToleranceMs: Number(o.cutTolerance),
+            faceIntervalMs: Number(o.faceInterval),
+            onLog: log,
+          }),
+        ),
+    ),
+  );
 
 cli
   .command("faces <proj>", "给还没有人脸数据的视频素材补做人脸检测（macOS）")
