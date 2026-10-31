@@ -20,7 +20,7 @@
 
 1. **剪不到停顿**（Claude Code 发现）：这份 SRT 每句的结束时间就是下一句的开始，停顿都算在上一句里，
    `cut.removePauses` 找不到空隙。`align` 现在按响度找每句念完的时刻（`core/align` 的 `speechEndMs`），
-   念完到结束超过 200ms 就把结束时间收到念完后 150ms，返回 `trimmed`；落在念完之后静音里的字也收回来（Claude Code 发现 s8 的「产」标在静音里）。
+   念完到结束超过 200ms 就把结束时间收到念完后 150ms，返回 `trimmed`；落在念完之后静音里的字也收回来（Claude Code 发现 s8 的最后一个字标在静音里）。
    收回之后句间空隙是「念完到开口」的静音（两头已留余量），所以规则改为 align 之后用 `minGapMs: 150, keepMs: 40`。
    在样片上：align 收回 7 句的结束时间，按这个参数剪掉 5 处停顿，和 Claude Code 手工找出的一致。
 2. **半屏卡下面有黑边**（Claude Code、DeepSeek 的工程）：主画面没放大时上移 180px，底部露出黑边。

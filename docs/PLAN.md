@@ -206,21 +206,21 @@ AI 应用（Codex、Claude Code 等）通过 CLI 或本地 MCP 提交操作；
           "animIn": { "preset": "zoom-in", "durationMs": 300 } }
     ] },
     { "id": "cap", "kind": "caption", "style": "caption-center", "items": [
-        { "id": "s1", "asset": "a1", "startMs": 333, "endMs": 1366, "text": "拿到海外身份",
-          "highlights": [ { "text": "身份" } ],
+        { "id": "s1", "asset": "a1", "startMs": 333, "endMs": 1366, "text": "今天天气真好",
+          "highlights": [ { "text": "天气" } ],
           "charStartMs": [333, 333, 513, 693, 813, 993] }
     ] },
     { "id": "titles", "kind": "overlay", "items": [
         { "id": "o1", "template": "title-bar", "at": { "ms": 0 }, "durationMs": "toEnd",
-          "style": "title-bar-yellow", "props": { "lines": ["拿到海外身份", "卖房款怎么出去"] } },
+          "style": "title-bar-yellow", "props": { "lines": ["今天天气真好", "出门记得带伞"] } },
         { "id": "o2", "template": "info-card", "at": { "caption": "s7" }, "slot": "upper-third",
-          "props": { "title": "移民财产转移", "points": ["取得身份前的合法财产", "完税证明"] } }
+          "props": { "title": "出行准备", "points": ["提前查好路线", "备好雨具"] } }
     ] },
     { "id": "bgm", "kind": "audio", "items": [
         { "id": "m1", "type": "clip", "asset": "music1", "at": { "ms": 0 }, "gainDb": -18 } ] }
   ],
   "outro": { "asset": "outro1", "transitionIn": { "type": "fade", "durationMs": 300 } },  // 接在主轨最后，不受主轨编辑影响
-  "cover": { "atMs": 1200, "title": { "template": "title-bar", "props": { "lines": ["拿到海外身份", "卖房款怎么出去"] } } }  // v7：封面标题直接写在这里
+  "cover": { "atMs": 1200, "title": { "template": "title-bar", "props": { "lines": ["今天天气真好", "出门记得带伞"] } } }  // v7：封面标题直接写在这里
 }
 ```
 

@@ -53,14 +53,14 @@ describe("alignChars", () => {
 
 describe("speechOnsetMs", () => {
   it("第一个字实际开口的时间，可以早于字幕开始；前面多识别出的上一句的字不算", () => {
-    // 字幕从 1000 开始，「涉」在 880 就念了；「呢」是上一句的尾巴
-    const heard = tok("呢涉及取得", [700, 880, 1040, 1200, 1350]);
-    expect(speechOnsetMs("涉及取得", heard, 2000)).toBe(880);
-    expect(alignChars("涉及取得", heard, 1000, 2000)[0]).toBe(1000);
+    // 字幕从 1000 开始，「今」在 880 就念了；「吧」是上一句的尾巴
+    const heard = tok("吧今天出门", [700, 880, 1040, 1200, 1350]);
+    expect(speechOnsetMs("今天出门", heard, 2000)).toBe(880);
+    expect(alignChars("今天出门", heard, 1000, 2000)[0]).toBe(1000);
   });
 
   it("什么都没对上时为 null", () => {
-    expect(speechOnsetMs("涉及", [], 2000)).toBeNull();
+    expect(speechOnsetMs("今天", [], 2000)).toBeNull();
   });
 });
 

@@ -136,7 +136,7 @@ describe("断句：一行放不下", () => {
     expect(lines).toHaveLength(3);
     for (const l of lines) expect([...l.text].length).toBeLessThanOrEqual(10);
     expect(lines.every((l) => l.split)).toBe(true);
-    const short = segmentLines(say("需要分别把关", 0, { 5: "。" }), [{ startMs: 0, endMs: 1200 }]);
+    const short = segmentLines(say("我们出门走走", 0, { 5: "。" }), [{ startMs: 0, endMs: 1200 }]);
     expect(short.map((l) => l.split)).toEqual([false]);
   });
 });
