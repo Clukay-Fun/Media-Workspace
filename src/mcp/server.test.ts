@@ -55,6 +55,7 @@ describe("MCP", () => {
         "guide",
         "history",
         "import",
+        "init",
         "inspect",
         "layout",
         "lint",
@@ -71,6 +72,16 @@ describe("MCP", () => {
         "validate",
       ].sort(),
     );
+  });
+
+  it("init 新建工程，带内置样式，操作者记成调用的 AI", async () => {
+    const fresh = join(root, "fresh.mwproj");
+    const r = await call("init", { project: fresh, actor: "claude" });
+    expect(r).toMatchObject({ isError: false, data: { ok: true, project: fresh, revision: 0 } });
+    const p = await call("inspect", { project: fresh, view: "styles" });
+    expect(Object.keys(p.data)).toContain("caption-word-yellow");
+    const again = await call("init", { project: fresh });
+    expect(again.isError).toBe(true);
   });
 
   it("inspect → apply → history → undo", async () => {
