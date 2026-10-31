@@ -85,6 +85,33 @@ export function detectSilence(
   return spans.filter((span) => span.endMs - span.startMs >= minPauseMs);
 }
 
+/**
+ * 只留开头和结尾的静音（录制前后的空白）：句中停顿是说话节奏，用户自己剪的时候不删（阶段 F，0025 / Grok 测量）。
+ * totalMs 是这段音频的总时长；windowMs 内的误差算贴着头尾
+ */
+export function edgeSilences(spans: SilenceSpan[], totalMs: number, windowMs = 40): SilenceSpan[] {
+  const head = spans.find((s) => s.startMs <= windowMs);
+  const tail = spans.findLast((s) => s.endMs >= totalMs - windowMs);
+  return [head, tail === head ? undefined : tail].filter((s): s is SilenceSpan => s !== undefined);
+}
+
+/** 头尾空白的剪切区间：只在靠说话的一侧留 keepMs，贴着文件头尾的一侧剪到底 */
+export function edgeCutRanges(
+  spans: SilenceSpan[],
+  totalMs: number,
+  keepMs: number,
+): SilenceRange[] {
+  return spans
+    .map(({ startMs, endMs }) => {
+      const head = startMs <= 40;
+      return {
+        startMs: head ? 0 : Math.ceil(startMs + keepMs),
+        endMs: head ? Math.floor(endMs - keepMs) : Math.floor(totalMs),
+      };
+    })
+    .filter((r) => r.endMs > r.startMs);
+}
+
 /** 静音两端各保留 keepMs 后，得到实际从源素材剪掉的区间。 */
 export function silenceCutRanges(spans: SilenceSpan[], keepMs: number): SilenceRange[] {
   if (!Number.isFinite(keepMs) || keepMs < 0) return [];

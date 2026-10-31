@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectSilence, silenceCutRanges } from "./silence";
+import { detectSilence, edgeCutRanges, edgeSilences, silenceCutRanges } from "./silence";
 
 const tone = (seconds: number, rate = 8000) =>
   Float32Array.from(
@@ -43,6 +43,24 @@ describe("detectSilence", () => {
     const samples = join(tone(1), silent(0.35), tone(0.02), silent(0.35), tone(1));
     expect(detectSilence(samples, 8000, { minPauseMs: 500, mergeGapMs: 40 })).toEqual([
       { startMs: 1000, endMs: 1720 },
+    ]);
+  });
+});
+
+describe("头尾空白", () => {
+  it("只留贴着开头和结尾的静音，句中停顿不动", () => {
+    const spans = [
+      { startMs: 0, endMs: 2800 },
+      { startMs: 6200, endMs: 6700 },
+      { startMs: 32_100, endMs: 33_880 },
+    ];
+    expect(edgeSilences(spans, 33_880)).toEqual([spans[0], spans[2]]);
+    expect(edgeSilences([spans[1] as (typeof spans)[number]], 33_880)).toEqual([]);
+    expect(edgeSilences([{ startMs: 30_000, endMs: 33_870 }], 33_880)).toHaveLength(1);
+    // 只在靠说话的一侧留余量
+    expect(edgeCutRanges([spans[0], spans[2]] as typeof spans, 33_880, 120)).toEqual([
+      { startMs: 0, endMs: 2680 },
+      { startMs: 32_220, endMs: 33_880 },
     ]);
   });
 });

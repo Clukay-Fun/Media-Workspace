@@ -240,20 +240,26 @@ cli
   .command("remove-silence <proj>", "从主轨视频素材的音频中找静音并剪掉停顿，不依赖字幕")
   .option("--min-pause <ms>", "作为停顿的最短静音时长", { default: 400 })
   .option("--keep <ms>", "每段静音两端各保留的时长", { default: 120 })
+  .option("--edges", "只剪开头和结尾的空白，句中停顿保留")
   .option("--base <rev>", "基于哪个 revision（默认当前）")
   .option("--actor <name>", "操作者", { default: "user" })
   .action(
-    act(async (proj: string, o: { minPause: number; keep: number; base?: number; actor: string }) =>
-      out(
-        await removeSilenceProject(resolveProjectDir(proj), {
-          minPauseMs: Number(o.minPause),
-          keepMs: Number(o.keep),
-          baseRevision: o.base === undefined ? undefined : Number(o.base),
-          source: "cli",
-          actor: o.actor,
-          onLog: log,
-        }),
-      ),
+    act(
+      async (
+        proj: string,
+        o: { minPause: number; keep: number; edges?: boolean; base?: number; actor: string },
+      ) =>
+        out(
+          await removeSilenceProject(resolveProjectDir(proj), {
+            minPauseMs: Number(o.minPause),
+            keepMs: Number(o.keep),
+            edgesOnly: Boolean(o.edges),
+            baseRevision: o.base === undefined ? undefined : Number(o.base),
+            source: "cli",
+            actor: o.actor,
+            onLog: log,
+          }),
+        ),
     ),
   );
 

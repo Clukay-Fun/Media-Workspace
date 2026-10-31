@@ -13,7 +13,7 @@ import { Op } from "../core/ops";
 import { BUILTIN_STYLES } from "../core/presets";
 import { SAFE_AREAS, type SafeAreaName, safeAreaFor } from "../core/safe-area";
 import { type Caption, isMainClip, type MainClip } from "../core/schema";
-import { detectSilence, silenceCutRanges } from "../core/silence";
+import { detectSilence, edgeCutRanges, edgeSilences, silenceCutRanges } from "../core/silence";
 import { AnimPresetName, charsPerLine, TextStyle } from "../core/text-style";
 import { msToFrame } from "../core/time";
 import { alignScript, type ScriptDiff, segmentLines } from "../core/transcribe";
@@ -89,6 +89,8 @@ export async function removeSilenceProject(
   o: Actor & {
     minPauseMs?: number;
     keepMs?: number;
+    /** 只剪开头和结尾的空白，句中停顿保留 */
+    edgesOnly?: boolean;
     baseRevision?: number;
     onLog?: (s: string) => void;
   },
@@ -130,8 +132,12 @@ export async function removeSilenceProject(
     o.onLog?.(`分析静音：${file}`);
     const sampleRate = 8000;
     const samples = await decodeAudioSamples(file, sampleRate);
-    const silences = detectSilence(samples, sampleRate, { minPauseMs });
-    const ranges = silenceCutRanges(silences, keepMs)
+    const found = detectSilence(samples, sampleRate, { minPauseMs });
+    const totalMs = (samples.length / sampleRate) * 1000;
+    const silences = o.edgesOnly ? edgeSilences(found, totalMs) : found;
+    const ranges = (
+      o.edgesOnly ? edgeCutRanges(silences, totalMs, keepMs) : silenceCutRanges(silences, keepMs)
+    )
       .map((range) => ({
         startMs: Math.max(0, Math.ceil(range.startMs)),
         endMs: Math.floor(range.endMs),
@@ -774,7 +780,8 @@ export function guideInfo() {
       "逐字节奏默认用剪映的前快后慢（stagger: { fraction: 0.75 } + inSlot），不看语音；要严格跟着念的速度出字时改用 spread 并跑 align，改了字幕文字后需要重新 align",
       "加标题、卡片之前先列方案（哪句话 → 加什么画面 → 用哪个模板 → 什么时间），给用户确认后再 apply",
       "只有原片（或原片 + 文稿）时用 transcribe 出字幕（不需要 SRT、不用再 align）：人给了文稿就传 script，字以文稿为准；返回的 check（漏读 / 多读 / 改口）列给人确认，不要自己改；splitLines 读一遍，不顺用 caption.split / caption.merge 调",
-      "剪停顿优先用 remove-silence / mw remove-silence：从主轨视频素材音频的 RMS 静音段剪，不依赖字幕；AI 可调 minPauseMs（默认 400）和 keepMs（默认 120，静音两端各保留）。若明确按字幕空隙剪，再先 align 后使用旧 cut.removePauses",
+      "人没说要剪停顿时只剪开头结尾的空白：remove-silence 加 edgesOnly（mw remove-silence --edges），句中停顿是说话节奏，保留",
+      "人要求剪句间停顿时用 remove-silence：按音频静音找，不依赖字幕；可调 minPauseMs（默认 400）和 keepMs（默认 120，静音两端各保留）。明确要按字幕空隙剪时才先 align 再用 cut.removePauses（minGapMs: 150、keepMs: 40）",
       "删句（cut.removeCaptions）之前先跑 align：它会把字幕开始时间挪到真正开口的地方，否则下一句的第一个字可能被剪掉一半",
       "剪错了用 uncut 恢复那一刀（片段 ID 是剪辑点后面那段），字幕会从历史里找回；不要整体 undo，会把后面的修改一起撤掉",
       "粗剪时在主轨片段的 cutBefore 写上前面剪掉的是什么（口误、重复、停顿，16 字以内），审片台会标在时间线上",

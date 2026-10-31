@@ -220,20 +220,23 @@ export function createMcpServer(): McpServer {
     "remove-silence",
     {
       description:
-        "从主轨视频素材的音频中找静音并剪掉停顿，不依赖字幕或识音模型。minPauseMs 是最短静音时长，keepMs 是静音段两端各保留的时长",
+        "从主轨视频素材的音频中找静音并剪掉停顿，不依赖字幕或识音模型。minPauseMs 是最短静音时长，keepMs 是静音段两端各保留的时长；" +
+        "edgesOnly 只剪开头和结尾的空白、句中停顿保留（人没说要剪停顿时用这个）",
       inputSchema: {
         project,
         minPauseMs: z.number().int().positive().default(400),
         keepMs: z.number().int().nonnegative().default(120),
+        edgesOnly: z.boolean().default(false),
         baseRevision: base.optional(),
         actor,
       },
     },
-    ({ project: p, minPauseMs, keepMs, baseRevision, actor: a }) =>
+    ({ project: p, minPauseMs, keepMs, edgesOnly, baseRevision, actor: a }) =>
       call(() =>
         removeSilenceProject(dirOf(p), {
           minPauseMs,
           keepMs,
+          edgesOnly,
           baseRevision,
           source: "mcp",
           actor: a,
