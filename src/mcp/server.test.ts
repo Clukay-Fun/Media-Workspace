@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -10,10 +10,22 @@ import { createMcpServer } from "./server";
 let root: string;
 let dir: string;
 let client: Client;
+let asset: {
+  op: "asset.add";
+  id: string;
+  asset: { kind: "video"; path: string; probe: { durationMs: number } };
+};
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "mw-mcp-"));
   dir = join(root, "demo.mwproj");
+  const rawFile = join(root, "raw.mov");
+  await writeFile(rawFile, "fixture");
+  asset = {
+    op: "asset.add",
+    id: "a1",
+    asset: { kind: "video", path: rawFile, probe: { durationMs: 10_000 } },
+  };
   await initProject(dir);
   const [a, b] = InMemoryTransport.createLinkedPair();
   await createMcpServer().connect(a);
@@ -31,12 +43,6 @@ const call = async (name: string, args: Record<string, unknown> = {}) => {
     isError?: boolean;
   };
   return { isError: Boolean(r.isError), data: JSON.parse(r.content[0]?.text ?? "null") };
-};
-
-const asset = {
-  op: "asset.add",
-  id: "a1",
-  asset: { kind: "video", path: "/raw.mov", probe: { durationMs: 10_000 } },
 };
 
 describe("MCP", () => {
@@ -72,6 +78,52 @@ describe("MCP", () => {
         "validate",
       ].sort(),
     );
+  });
+
+  it("工具说明举例说明 cover.update、preview 和静音参数", async () => {
+    const { tools } = await client.listTools();
+    const listed = tools as unknown as {
+      name: string;
+      description?: string;
+      inputSchema: { properties?: Record<string, { description?: string }> };
+    }[];
+    const tool = (name: string) => listed.find((item) => item.name === name);
+    expect(tool("apply")?.description).toContain("cover.update");
+    expect(tool("apply")?.description).toContain("set");
+    expect(tool("preview")?.description).toContain('"1200"');
+    expect(tool("preview")?.description).toContain('"s3"');
+    expect(tool("preview")?.inputSchema.properties?.at?.description).toContain("毫秒");
+    expect(tool("remove-silence")?.description).toContain("发音区间");
+    expect(tool("remove-silence")?.inputSchema.properties?.keepMs?.description).toContain("毫秒");
+    const guide = await call("guide");
+    expect(guide.data.rules.some((rule: string) => rule.includes("错了一个字"))).toBe(true);
+  });
+
+  it("缺失素材文件通过 MCP 返回 NOT_FOUND，revision 不变", async () => {
+    const missing = await call("apply", {
+      project: dir,
+      ops: [
+        {
+          op: "asset.add",
+          id: "a1",
+          asset: { kind: "video", path: join(root, "missing.mov"), probe: { durationMs: 1000 } },
+        },
+      ],
+      baseRevision: 0,
+    });
+    expect(missing).toMatchObject({ isError: true, data: { code: "NOT_FOUND" } });
+    expect((await call("inspect", { project: dir })).data.revision).toBe(0);
+
+    await call("apply", { project: dir, ops: [asset], baseRevision: 0 });
+    const relink = await call("apply", {
+      project: dir,
+      ops: [{ op: "asset.relink", id: "a1", path: join(root, "missing.mov") }],
+      baseRevision: 1,
+    });
+    expect(relink).toMatchObject({ isError: true, data: { code: "NOT_FOUND" } });
+    const after = await call("inspect", { project: dir });
+    expect(after.data.revision).toBe(1);
+    expect(after.data.assets.a1.path).toBe(asset.asset.path);
   });
 
   it("init 新建工程，带内置样式，操作者记成调用的 AI", async () => {

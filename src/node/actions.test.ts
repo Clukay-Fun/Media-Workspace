@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type Caption, type MainClip, Project } from "../core/schema";
-import { restoreCut } from "./actions";
+import { facesProject, protectCaptionSpeechRanges, restoreCut } from "./actions";
 import { applyToProject, initProject, loadProject } from "./store";
 
 let root: string;
@@ -58,6 +58,28 @@ const cutS2 = (base: number) =>
     actor: "test",
   });
 
+describe("静音剪切与字幕发音范围", () => {
+  it("按逐字时间留出首字前和末字后的余量；没有逐字时间时保护整条字幕", () => {
+    expect(
+      protectCaptionSpeechRanges(
+        [
+          { startMs: 900, endMs: 1400 },
+          { startMs: 1500, endMs: 1900 },
+        ],
+        [
+          { startMs: 1000, endMs: 1200, charStartMs: [1050, 1100] },
+          { startMs: 1600, endMs: 1700 },
+        ],
+      ),
+    ).toEqual([
+      { startMs: 900, endMs: 1000 },
+      { startMs: 1350, endMs: 1400 },
+      { startMs: 1500, endMs: 1600 },
+      { startMs: 1700, endMs: 1900 },
+    ]);
+  });
+});
+
 describe("恢复剪辑点", () => {
   it("接回画面，并从历史里找回随删句删掉的字幕（逐字时间、高亮都在），一次提交", async () => {
     await cutS2(0);
@@ -96,9 +118,58 @@ describe("恢复剪辑点", () => {
     expect(r).toMatchObject({ captions: [], skipped: ["s2"] });
   });
 
+  it("字幕在剪切前已经合并时，uncut 不把合并掉的旧 ID 列为 skipped", async () => {
+    const split = await applyToProject(dir, {
+      ops: [{ op: "caption.split", id: "s3", at: 1 }],
+      baseRevision: 0,
+      source: "cli",
+      actor: "test",
+    });
+    const staleId = split.changed.find((id) => id !== "s3");
+    expect(staleId).toBeDefined();
+    await applyToProject(dir, {
+      ops: [{ op: "caption.merge", ids: ["s3", staleId] }],
+      baseRevision: 1,
+      source: "cli",
+      actor: "test",
+    });
+    await applyToProject(dir, {
+      ops: [
+        {
+          op: "cut.removeSilence",
+          asset: "a1",
+          ranges: [{ startMs: 4500, endMs: 4600 }],
+        },
+      ],
+      baseRevision: 2,
+      source: "cli",
+      actor: "test",
+    });
+
+    const r = await restoreCut(dir, "c1-1", { source: "ui", actor: "user" });
+    expect(r).toMatchObject({ captions: [], skipped: [] });
+  });
+
   it("dry-run 不写入", async () => {
     await cutS2(0);
     await restoreCut(dir, "c1-1", { source: "cli", actor: "test", dryRun: true });
     expect((await loadProject(dir)).revision).toBe(1);
+  });
+});
+
+describe("faces 检测回执", () => {
+  it("已有人脸缓存的素材带原因列在 skipped", async () => {
+    await applyToProject(dir, {
+      ops: [{ op: "asset.cache", id: "a1", set: { faces: "cache/media/a1.faces.json" } }],
+      baseRevision: 0,
+      source: "cli",
+      actor: "test",
+    });
+    const r = await facesProject(dir, { source: "cli", actor: "test" });
+    expect(r).toMatchObject({
+      revision: 1,
+      detected: [],
+      skipped: [{ asset: "a1", reason: "已有人脸数据" }],
+    });
   });
 });

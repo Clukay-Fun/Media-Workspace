@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { compile } from "./compile";
 import { MwError } from "./errors";
 import { applyOps } from "./ops";
+import { BUILTIN_STYLES } from "./presets";
 import { type MainClip, Project } from "./schema";
 
 const project = (locked = false) =>
@@ -66,6 +67,27 @@ describe("applyOps：原子性和锁定", () => {
     expect(e.code).toBe("NOT_FOUND");
     expect(e.message).toContain("第 2 个操作");
     expect(p).toEqual(before);
+  });
+
+  it("changed 包含删除的条目、字幕，以及被删除轨道里的条目", () => {
+    expect(applyOps(project(), [{ op: "item.remove", id: "c1" }]).changed).toEqual(["c1"]);
+    expect(applyOps(project(), [{ op: "caption.remove", ids: ["s2"] }]).changed).toEqual(["s2"]);
+    expect(applyOps(project(), [{ op: "track.remove", id: "cap" }]).changed).toEqual([
+      "cap",
+      "s1",
+      "s2",
+      "s3",
+    ]);
+  });
+
+  it("素材和样式删除也在 changed 中返回被删除的 ID", () => {
+    const withoutReferences = project();
+    for (const track of withoutReferences.tracks) track.items = [];
+    expect(applyOps(withoutReferences, [{ op: "asset.remove", id: "a1" }]).changed).toEqual(["a1"]);
+
+    const withStyle = project();
+    withStyle.styles.unused = BUILTIN_STYLES["caption-word-yellow"];
+    expect(applyOps(withStyle, [{ op: "style.remove", id: "unused" }]).changed).toEqual(["unused"]);
   });
 
   it("锁定的轨道上的修改被拒绝（TRACK_LOCKED）", () => {
@@ -208,6 +230,7 @@ describe("clip.split", () => {
 describe("字幕快剪", () => {
   it("cut.removeCaptions 剪掉这句对应的画面，并删除字幕", () => {
     const r = applyOps(project(), [{ op: "cut.removeCaptions", ids: ["s2"] }]);
+    expect(r.changed).toContain("s2");
     expect(mainClips(r.project)).toEqual([
       ["c1", 0, 2100],
       ["c1-1", 3000, 10_000],
@@ -275,6 +298,7 @@ describe("字幕快剪", () => {
 describe("字幕编辑", () => {
   it("caption.merge 合并相邻两句", () => {
     const r = applyOps(project(), [{ op: "caption.merge", ids: ["s2", "s1"] }]);
+    expect(r.changed).toEqual(["s1", "s2"]);
     expect(r.project.tracks[1]?.items).toEqual([
       expect.objectContaining({ id: "s1", startMs: 1000, endMs: 3000, text: "第一句话第二句" }),
       expect.objectContaining({ id: "s3" }),
@@ -357,6 +381,10 @@ describe("字幕编辑", () => {
     expect(() =>
       applyOps(p, [{ op: "caption.reflow", ids: ["s1", "s2"], lines: ["第一句话第三句"] }]),
     ).toThrow(MwError);
+    const collapsed = applyOps(project(), [
+      { op: "caption.reflow", ids: ["s1", "s2"], lines: ["第一句话第二句"] },
+    ]);
+    expect(collapsed.changed).toEqual(["s1", "s2"]);
     expect(() =>
       applyOps(p, [{ op: "caption.reflow", ids: ["s1", "s3"], lines: ["第一句话第三句"] }]),
     ).toThrow(/相邻/);
@@ -392,6 +420,7 @@ describe("字幕编辑", () => {
     expect(r.project.tracks[1]?.items).toEqual([
       { id: "s1", asset: "a1", startMs: 3100, endMs: 4200, text: "你好", highlights: [] },
     ]);
+    expect(r.changed).toEqual(["s1", "s2", "s3"]);
   });
 
   it("caption.add 带逐字时间加字幕，按时间排好；replace 清空原有的", () => {
@@ -400,6 +429,7 @@ describe("字幕编辑", () => {
     const r = applyOps(project(), [
       { op: "caption.add", track: "cap", items: [late, item], mode: "replace" },
     ]);
+    expect(r.changed).toEqual(["s1", "s2", "s3"]);
     const caps = r.project.tracks[1]?.items ?? [];
     expect(caps).toEqual([
       { ...item, id: expect.any(String), highlights: [] },

@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -10,21 +10,28 @@ import { createExportJobs } from "./export-jobs";
 
 let root: string;
 let dir: string;
+let asset: {
+  op: "asset.add";
+  id: string;
+  asset: { kind: "video"; path: string; probe: { durationMs: number } };
+};
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "mw-server-"));
   dir = join(root, "demo.mwproj");
+  const rawFile = join(root, "raw.mov");
+  await writeFile(rawFile, "fixture");
+  asset = {
+    op: "asset.add",
+    id: "a1",
+    asset: { kind: "video", path: rawFile, probe: { durationMs: 10_000 } },
+  };
   await initProject(dir);
 });
 afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-const asset = {
-  op: "asset.add",
-  id: "a1",
-  asset: { kind: "video", path: "/raw.mov", probe: { durationMs: 10_000 } },
-};
 const addClip = {
   op: "item.add",
   track: "main",
@@ -81,6 +88,25 @@ describe("本地服务接口", () => {
     const conflict = await req("/api/ops", { body: { ops: [asset], baseRevision: 0 } });
     expect(conflict.status).toBe(409);
     expect(await conflict.json()).toMatchObject({ ok: false, code: "CONFLICT" });
+  });
+
+  it("素材路径不存在时本地服务返回 NOT_FOUND，revision 不变", async () => {
+    const { req } = setup();
+    const response = await req("/api/ops", {
+      body: {
+        ops: [
+          {
+            op: "asset.add",
+            id: "a1",
+            asset: { kind: "video", path: join(root, "missing.mov"), probe: { durationMs: 1000 } },
+          },
+        ],
+        baseRevision: 0,
+      },
+    });
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ ok: false, code: "NOT_FOUND" });
+    expect((await (await req("/api/project")).json()).project.revision).toBe(0);
   });
 
   it("锁定轨道返回 423；参数拼错返回 UNKNOWN_FIELD；不是 JSON 返回 400", async () => {
