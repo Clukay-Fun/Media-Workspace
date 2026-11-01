@@ -18,21 +18,28 @@ import {
 
 let root: string;
 let dir: string;
+let asset: {
+  op: "asset.add";
+  id: string;
+  asset: { kind: "video"; path: string; probe: { durationMs: number } };
+};
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "mw-store-"));
   dir = join(root, "demo.mwproj");
+  const rawFile = join(root, "raw.mov");
+  await writeFile(rawFile, "fixture");
+  asset = {
+    op: "asset.add",
+    id: "a1",
+    asset: { kind: "video", path: rawFile, probe: { durationMs: 10_000 } },
+  };
   await initProject(dir);
 });
 afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-const asset = {
-  op: "asset.add",
-  id: "a1",
-  asset: { kind: "video", path: "/raw.mov", probe: { durationMs: 10_000 } },
-};
 const addClip = {
   op: "item.add",
   track: "main",
@@ -68,6 +75,32 @@ describe("store", () => {
     await applyToProject(dir, req([asset], 0));
     expect(await code(applyToProject(dir, req([addClip], 0)))).toBe("CONFLICT");
     expect((await loadProject(dir)).revision).toBe(1);
+  });
+
+  it("asset.add 和 asset.relink 的文件不存在时返回 NOT_FOUND 且不增加 revision", async () => {
+    const missingFile = join(root, "missing.mov");
+    await expect(
+      applyToProject(dir, req([{ ...asset, asset: { ...asset.asset, path: missingFile } }], 0)),
+    ).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      issues: [expect.objectContaining({ path: "ops[0].asset.path" })],
+    });
+    expect((await loadProject(dir)).revision).toBe(0);
+    expect(await listHistory(dir)).toEqual([]);
+    expect((await readLog(dir)).map((entry) => entry.revision)).toEqual([0]);
+
+    await applyToProject(dir, req([asset], 0));
+    const before = await loadProject(dir);
+    await expect(
+      applyToProject(dir, req([{ op: "asset.relink", id: "a1", path: missingFile }], 1)),
+    ).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      issues: [expect.objectContaining({ path: "ops[0].path" })],
+    });
+    expect((await loadProject(dir)).revision).toBe(before.revision);
+    expect((await loadProject(dir)).assets.a1?.path).toBe(before.assets.a1?.path);
+    expect(await listHistory(dir)).toEqual([0]);
+    expect((await readLog(dir)).map((entry) => entry.revision)).toEqual([0, 1]);
   });
 
   it("两个进程同时基于同一版提交：只有一个成功，另一个 CONFLICT", async () => {

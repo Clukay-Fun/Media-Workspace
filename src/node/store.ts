@@ -10,11 +10,11 @@ import {
   unlink,
   writeFile,
 } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { EditorState, type HistoryEntry } from "../core/api";
 import { MwError } from "../core/errors";
 import { migrate } from "../core/migrations";
-import { type ApplyOptions, applyOps } from "../core/ops";
+import { type ApplyOptions, applyOps, Ops } from "../core/ops";
 import {
   addComment,
   type NewComment,
@@ -141,6 +141,7 @@ export async function applyToProject(dir: string, req: ApplyRequest): Promise<Ap
       templateAssets: req.templateAssets,
       templateSizes: req.templateSizes,
     });
+    await checkAssetPaths(dir, req.ops);
     const next: Project = { ...r.project, revision: current.revision + 1 };
     if (req.dryRun) {
       return {
@@ -169,6 +170,30 @@ export async function applyToProject(dir: string, req: ApplyRequest): Promise<Ap
       dryRun: false,
     };
   });
+}
+
+/** 素材路径在 node 层校验：纯函数 applyOps 不访问文件系统，所有入口在提交前共用此检查。 */
+async function checkAssetPaths(dir: string, rawOps: unknown): Promise<void> {
+  const parsed = Ops.safeParse(rawOps);
+  if (!parsed.success) return; // applyOps 已经以结构化 INVALID_OP 拒绝
+  for (const [index, op] of parsed.data.entries()) {
+    const assetPath =
+      op.op === "asset.add" ? op.asset.path : op.op === "asset.relink" ? op.path : null;
+    if (assetPath === null) continue;
+    const file = resolve(dir, assetPath);
+    const info = await stat(file).catch((error: unknown) => {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT" || code === "ENOTDIR") return null;
+      throw error;
+    });
+    if (!info?.isFile()) {
+      const path = op.op === "asset.add" ? "asset.path" : "path";
+      throw new MwError("NOT_FOUND", `素材文件不存在：${assetPath}`, {
+        path: `ops[${index}].${path}`,
+        hint: "确认文件存在；相对路径按工程目录解析",
+      });
+    }
+  }
 }
 
 /**

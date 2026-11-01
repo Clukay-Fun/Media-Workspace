@@ -362,9 +362,12 @@ function run(ctx: Ctx, op: Op): void {
       p.cover = op.set;
       return;
     case "outro.set":
+      if (p.outro) ctx.changed.add(p.outro.asset);
       p.outro = op.outro;
+      ctx.changed.add(op.outro.asset);
       return;
     case "outro.remove":
+      if (p.outro) ctx.changed.add(p.outro.asset);
       p.outro = null;
       return;
     case "chapters.set":
@@ -406,6 +409,7 @@ function run(ctx: Ctx, op: Op): void {
       if (used)
         throw new MwError("IN_USE", `素材「${op.id}」还在使用中`, { hint: "先删除引用它的条目" });
       delete p.assets[op.id];
+      ctx.changed.add(op.id);
       return;
     }
 
@@ -440,6 +444,8 @@ function run(ctx: Ctx, op: Op): void {
       const { track, index } = ctx.track(op.id);
       ctx.unlocked(track);
       ctx.tracks.splice(index, 1);
+      ctx.changed.add(track.id);
+      for (const item of track.items) ctx.changed.add(item.id);
       return;
     }
 
@@ -500,6 +506,7 @@ function run(ctx: Ctx, op: Op): void {
       const { track, index } = ctx.find(op.id);
       ctx.unlocked(track);
       track.items.splice(index, 1);
+      ctx.changed.add(op.id);
       return;
     }
 
@@ -544,7 +551,10 @@ function run(ctx: Ctx, op: Op): void {
       const { track } = ctx.track(op.track);
       if (track.kind !== "caption") throw new MwError("INVALID_OP", `「${op.track}」不是字幕轨道`);
       ctx.unlocked(track);
-      if (op.mode === "replace") track.items = [];
+      if (op.mode === "replace") {
+        for (const item of track.items) ctx.changed.add(item.id);
+        track.items = [];
+      }
       for (const c of op.items) {
         const id = ctx.newId("s");
         track.items.push({ ...c, id });
@@ -558,6 +568,7 @@ function run(ctx: Ctx, op: Op): void {
         const { track, index } = ctx.find(id);
         ctx.unlocked(track);
         track.items.splice(index, 1);
+        ctx.changed.add(id);
       }
       return;
     case "caption.merge":
@@ -577,6 +588,7 @@ function run(ctx: Ctx, op: Op): void {
             track.items.findIndex((c) => c.id === cap.id),
             1,
           );
+          ctx.changed.add(cap.id);
         }
       }
       return;
@@ -669,6 +681,7 @@ function run(ctx: Ctx, op: Op): void {
       );
       if (used) throw new MwError("IN_USE", `样式「${op.id}」还在使用中`);
       delete p.styles[op.id];
+      ctx.changed.add(op.id);
       return;
     }
   }
@@ -775,7 +788,10 @@ function importCaptions(ctx: Ctx, op: Extract<Op, { op: "caption.import" }>): vo
     throw new MwError("TIME_RANGE", "所有字幕都落在主轨以外，没有导入任何字幕", {
       hint: "timeline 时间基准需要先把视频放到主轨上",
     });
-  if (op.mode === "replace") track.items = [];
+  if (op.mode === "replace") {
+    for (const item of track.items) ctx.changed.add(item.id);
+    track.items = [];
+  }
   for (const c of captions) {
     const id = ctx.newId("s");
     track.items.push({ ...c, id });
@@ -806,7 +822,7 @@ function mergeCaptions(ctx: Ctx, ids: string[]): void {
     merged.charStartMs = sorted.flatMap((c) => c.charStartMs ?? []);
   track.items = track.items.filter((c) => !ids.includes(c.id) || c.id === head.id);
   track.items[track.items.findIndex((c) => c.id === head.id)] = merged;
-  ctx.changed.add(head.id);
+  for (const caption of sorted) ctx.changed.add(caption.id);
 }
 
 function splitCaption(ctx: Ctx, id: string, at: number, atMs?: number): void {
@@ -909,5 +925,6 @@ function reflowCaptions(ctx: Ctx, ids: string[], lines: string[]): void {
   if (out.some((c) => c.endMs <= c.startMs))
     throw new MwError("TIME_RANGE", "有一行没有时间可分（两行的第一个字同时开始），换个断法");
   track.items.splice(pos[0] as number, sorted.length, ...out);
+  for (const caption of sorted) ctx.changed.add(caption.id);
   for (const c of out) ctx.changed.add(c.id);
 }

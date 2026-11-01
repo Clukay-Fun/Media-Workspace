@@ -52,6 +52,52 @@ export const templateOpts = {
 
 export type Actor = { source: Source; actor: string };
 
+type SourceRange = { startMs: number; endMs: number };
+
+/** 从静音候选里减去字幕对应的说话区间；逐字时间按末字起点额外保留 250ms。 */
+export function protectCaptionSpeechRanges(
+  ranges: readonly SourceRange[],
+  captions: readonly Pick<Caption, "startMs" | "endMs" | "charStartMs">[],
+): SourceRange[] {
+  const speech = captions
+    .map((caption) => {
+      const starts = caption.charStartMs?.filter(Number.isFinite) ?? [];
+      if (starts.length === 0) return { startMs: caption.startMs, endMs: caption.endMs };
+      return {
+        startMs: Math.max(0, Math.min(...starts) - 50),
+        endMs: Math.max(...starts) + 250,
+      };
+    })
+    .filter((range) => range.endMs > range.startMs)
+    .sort((a, b) => a.startMs - b.startMs);
+  const merged: SourceRange[] = [];
+  for (const range of speech) {
+    const previous = merged.at(-1);
+    if (previous && range.startMs <= previous.endMs) {
+      previous.endMs = Math.max(previous.endMs, range.endMs);
+    } else {
+      merged.push({ ...range });
+    }
+  }
+
+  return ranges.flatMap((range) => {
+    if (range.endMs <= range.startMs) return [];
+    let cursor = range.startMs;
+    const safe: SourceRange[] = [];
+    for (const spoken of merged) {
+      if (spoken.endMs <= cursor) continue;
+      if (spoken.startMs >= range.endMs) break;
+      if (spoken.startMs > cursor) {
+        safe.push({ startMs: cursor, endMs: Math.min(spoken.startMs, range.endMs) });
+      }
+      cursor = Math.max(cursor, spoken.endMs);
+      if (cursor >= range.endMs) break;
+    }
+    if (cursor < range.endMs) safe.push({ startMs: cursor, endMs: range.endMs });
+    return safe;
+  });
+}
+
 /** 导入素材：probe、必要时转标准化文件和代理，然后提交 asset.add */
 /** 新建工程：默认复制内置样式，字幕轨用内置字幕样式，开箱就是样片的效果 */
 export async function createProject(name: string, o: Actor & { styles?: boolean }) {
@@ -205,15 +251,14 @@ export async function removeSilenceProject(
       .filter((c) => c.asset === assetId);
     const firstCap = Math.min(...caps.map((c) => c.startMs));
     const lastCap = Math.max(...caps.map((c) => c.endMs));
-    const ranges = (
-      o.edgesOnly
-        ? edgeCutRanges(silences, totalMs, keepMs).map((r) =>
-            r.startMs === 0
-              ? { ...r, endMs: Math.min(r.endMs, firstCap) }
-              : { ...r, startMs: Math.max(r.startMs, lastCap) },
-          )
-        : silenceCutRanges(silences, keepMs)
-    )
+    const candidateRanges = o.edgesOnly
+      ? edgeCutRanges(silences, totalMs, keepMs).map((r) =>
+          r.startMs === 0
+            ? { ...r, endMs: Math.min(r.endMs, firstCap) }
+            : { ...r, startMs: Math.max(r.startMs, lastCap) },
+        )
+      : protectCaptionSpeechRanges(silenceCutRanges(silences, keepMs), caps);
+    const ranges = candidateRanges
       .map((range) => ({
         startMs: Math.max(0, Math.ceil(range.startMs)),
         endMs: Math.floor(range.endMs),
@@ -365,13 +410,17 @@ export async function facesProject(dir: string, o: Actor & { onLog?: (s: string)
   const p = await loadProject(dir);
   const media = projectFiles(dir).media;
   const ops: Op[] = [];
-  const skipped: string[] = [];
+  const skipped: { asset: string; reason: string }[] = [];
   for (const [id, a] of Object.entries(p.assets)) {
-    if (a.kind !== "video" || a.cache?.faces) continue;
+    if (a.kind !== "video") continue;
+    if (a.cache?.faces) {
+      skipped.push({ asset: id, reason: "已有人脸数据" });
+      continue;
+    }
     o.onLog?.(`检测人脸：${id}`);
     const track = await detectFaces(a.cache?.proxy ? join(dir, a.cache.proxy) : a.path, media);
     if (!track) {
-      skipped.push(id);
+      skipped.push({ asset: id, reason: "未检测到人脸" });
       continue;
     }
     const file = join(media, `${a.fingerprint ?? id}.faces.json`);
@@ -519,15 +568,22 @@ export async function restoreCut(
   for (const { track, caption } of [...found.values()].sort(
     (a, b) => a.caption.startMs - b.caption.startMs,
   )) {
-    const t = p.tracks.find((x) => x.id === track && x.kind === "caption");
-    const clash = t?.items.some(
+    const t = p.tracks.find((x) => x.id === track);
+    if (!t || t.kind !== "caption") continue;
+    // 字幕可能已经合并，旧 ID 已不存在但文字仍在现有字幕里；不重复恢复，也不列成 skipped。
+    const alreadyRepresented = t.items.some(
       (c) =>
-        "startMs" in c &&
         c.asset === asset &&
         c.startMs < caption.endMs &&
-        c.endMs > caption.startMs,
+        c.endMs > caption.startMs &&
+        caption.text.length > 0 &&
+        c.text.includes(caption.text),
     );
-    if (!t || clash) {
+    if (alreadyRepresented) continue;
+    const clash = t.items.some(
+      (c) => c.asset === asset && c.startMs < caption.endMs && c.endMs > caption.startMs,
+    );
+    if (clash) {
       skipped.push(caption.id);
       continue;
     }
@@ -875,13 +931,14 @@ export function guideInfo() {
       "只有原片（或原片 + 文稿）时用 transcribe 出字幕（不需要 SRT、不用再 align）：人给了文稿就传 script，字以文稿为准；返回的 check（漏读 / 多读 / 改口）列给人确认，不要自己改；一条最多几个字按账号设置（layout 的 captionMaxChars，比一行长的折成两行），没设置时每条一行",
       "transcribe 返回的 splitLines 是一句话太长被切开的地方，读一遍，断在词中间或不顺时用 caption.reflow 一步改：{ ids: [相邻几句的 ID], lines: [新的几行] }，字要和原来一样（标点可以不同），逐字时间跟着字走；行尾的顿号、逗号去掉",
       "人没说要剪停顿时只剪开头结尾的空白：remove-silence 加 edgesOnly（mw remove-silence --edges），句中停顿是说话节奏，保留；头尾各留 300ms，不会剪进字幕",
-      "人要求剪句间停顿时用 remove-silence：按音频静音找，不依赖字幕；可调 minPauseMs（默认 400）和 keepMs（默认 120，静音两端各保留）。明确要按字幕空隙剪时才先 align 再用 cut.removePauses（minGapMs: 150、keepMs: 40）",
+      "人要求剪句间停顿时用 remove-silence：按音频静音找，不依赖识音模型；有字幕时会避开发音范围。可调 minPauseMs（默认 400）和 keepMs（默认 120，静音两端各保留）。明确要按字幕空隙剪时才先 align 再用 cut.removePauses（minGapMs: 150、keepMs: 40）",
       "删句（cut.removeCaptions）之前先跑 align：它会把字幕开始时间挪到真正开口的地方，否则下一句的第一个字可能被剪掉一半",
       "剪错了用 uncut 恢复那一刀（片段 ID 是剪辑点后面那段），字幕会从历史里找回；不要整体 undo，会把后面的修改一起撤掉",
       "粗剪时在主轨片段的 cutBefore 写上前面剪掉的是什么（口误、重复、停顿，16 字以内），审片台会标在时间线上",
       "按内容分好章节（chapters.set，每章锚到开头那句字幕，标题 12 字以内），审片台的属性页显示章节目录",
       "需要在说到某个词时出现的元素，用 at: { caption: <字幕ID>, char: <第几个字> } 锚定，而不是估算毫秒",
       "开始工作前先看 comments：人在审片台上留的批注（带时间点和条目 ID），逐条处理后用 resolve 标记并写明改了什么；不打算改的也 resolve，在 note 里说明原因",
+      "批注没有说清目标结果时（例如只说‘错了一个字’或‘挪开’），先给出修改方案或询问用户；不要猜着替换文字，也不要把‘挪开’理解成删除",
       "用户说「等我批注」或手头没活时，在后台跑 mw comments <工程> --wait：审片台上一有新批注就返回，处理完再挂上继续等",
       "样式模板库：先用 styles（list）看有哪些现成样式，用 use 复制进工程再引用；用户说「存成模板」「以后都用这个」时用 save 存进库，写一句 description 说明适合什么内容",
       "文字装饰（格式 v5）：gradient 竖直渐变、glow 发光；highlight.underline 给关键词画下划线，highlight.activeBox 给正在念的字 / 词垫色块（跟着 animation.unit），highlight.gradient / glow 只作用于高亮的字。改完用 preview 截两三帧看效果",

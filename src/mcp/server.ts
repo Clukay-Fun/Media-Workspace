@@ -167,13 +167,16 @@ export function createMcpServer(): McpServer {
     "apply",
     {
       description:
-        "提交一批操作（全部成功或全部不生效）。必须带 baseRevision；返回 CONFLICT 时重新 inspect。操作格式见 guide",
+        '提交一批操作（全部成功或全部不生效）。必须带 baseRevision；返回 CONFLICT 时重新 inspect。操作格式见 guide。封面字段放在 set 里，例如 {op:"cover.update",set:{atMs:2000,title:{template:"title-bar",props:{lines:["示例标题"]}}}}',
       inputSchema: {
         project,
-        ops: z.array(z.record(z.string(), z.unknown())).min(1),
+        ops: z
+          .array(z.record(z.string(), z.unknown()))
+          .min(1)
+          .describe("操作列表；cover.update 的 atMs、title 等字段都放在 set 对象里"),
         baseRevision: base,
         actor,
-        dryRun: z.boolean().default(false),
+        dryRun: z.boolean().default(false).describe("只校验并返回结果，不写入工程"),
       },
     },
     ({ project: p, ops, baseRevision, actor: a, dryRun }) =>
@@ -237,14 +240,19 @@ export function createMcpServer(): McpServer {
     "remove-silence",
     {
       description:
-        "从主轨视频素材的音频中找静音并剪掉停顿，不依赖字幕或识音模型。minPauseMs 是最短静音时长，keepMs 是静音段两端各保留的时长（默认 120，edgesOnly 时 300）；" +
-        "edgesOnly 只剪开头和结尾的空白、句中停顿保留（人没说要剪停顿时用这个），不会剪进字幕",
+        "从主轨视频素材的音频中找静音并剪掉停顿，不依赖字幕或识音模型。全片剪时会避开字幕对应的发音区间：有逐字时间时按首字和末字留余量，没有时保护字幕起止时间。" +
+        "keepMs 是静音段两端各保留的时长（默认 120，edgesOnly 时 300）；edgesOnly 只剪开头和结尾的空白，句中停顿保留（人没说要剪停顿时用这个）",
       inputSchema: {
         project,
-        minPauseMs: z.number().int().positive().default(400),
-        keepMs: z.number().int().nonnegative().optional(),
-        edgesOnly: z.boolean().default(false),
-        baseRevision: base.optional(),
+        minPauseMs: z
+          .number()
+          .int()
+          .positive()
+          .default(400)
+          .describe("只检测不短于此时长的静音，毫秒"),
+        keepMs: z.number().int().nonnegative().optional().describe("静音段两端各保留的时长，毫秒"),
+        edgesOnly: z.boolean().default(false).describe("只剪开头和结尾，保留句中停顿"),
+        baseRevision: base.optional().describe("基于哪个 revision；先 inspect 获取"),
         actor,
       },
     },
@@ -454,14 +462,23 @@ export function createMcpServer(): McpServer {
     "preview",
     {
       description:
-        "截图自查：at（毫秒或条目 ID）、frame，或 sheet（均匀截 n 帧拼成网格图）。返回 PNG 图片和文件路径",
+        '截图自查：at 是字符串，可传毫秒（如 "1200"）或条目 ID（如 "s3"）；frame 是从 0 开始的帧号；sheet 是均匀抽帧数量（1–48）。三种定位方式选一种。返回 PNG 图片和文件路径',
       inputSchema: {
         project,
-        at: z.string().optional(),
-        frame: z.number().int().nonnegative().optional(),
-        sheet: z.number().int().positive().max(48).optional(),
-        safeArea: z.enum(["all", "douyin", "channels", "xiaohongshu"]).optional(),
-        guides: z.boolean().default(false),
+        at: z.string().optional().describe('时间毫秒的字符串或条目 ID，例如 "1200"、"s3"'),
+        frame: z.number().int().nonnegative().optional().describe("视频帧序号，从 0 开始"),
+        sheet: z
+          .number()
+          .int()
+          .positive()
+          .max(48)
+          .optional()
+          .describe("均匀抽取的帧数，拼成网格图"),
+        safeArea: z
+          .enum(["all", "douyin", "channels", "xiaohongshu"])
+          .optional()
+          .describe("叠加的安全区：全部、抖音、视频号或小红书"),
+        guides: z.boolean().default(false).describe("叠加账号版式参考线"),
       },
     },
     ({ project: p, at, frame, sheet, safeArea, guides }) =>
