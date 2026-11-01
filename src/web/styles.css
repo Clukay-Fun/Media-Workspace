@@ -2888,6 +2888,22 @@ textarea:focus-visible {
   color: var(--text-3);
 }
 
+.keyframe-details > summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-2);
+  user-select: none;
+  padding: 2px 0;
+}
+
+.keyframe-details > summary:hover {
+  color: var(--text);
+}
+
+.keyframe-details[open] > summary {
+  margin-bottom: 8px;
+}
+
 .keyframes-editor {
   display: grid;
   gap: 8px;
@@ -2900,6 +2916,7 @@ textarea:focus-visible {
   margin: 0;
   font-size: 11px;
   color: var(--text-2);
+  line-height: 1.45;
 }
 
 .keyframes-add {
