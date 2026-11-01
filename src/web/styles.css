@@ -2780,8 +2780,19 @@ textarea:focus-visible {
   }
 }
 
-/* 650–899：右栏也变成抽屉 */
+/* 650–899：右栏一直在，只是窄一点（用户要求属性栏常驻，不收成抽屉） */
 @container (max-width: 899px) {
+  .app {
+    grid-template-columns: minmax(0, 1fr) 0 260px;
+  }
+
+  .splitter.x {
+    display: none;
+  }
+}
+
+/* 小于 650（手机宽度）：放不下右栏，才改成抽屉，时间线矮一点 */
+@container (max-width: 649px) {
   .app {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
@@ -2789,10 +2800,7 @@ textarea:focus-visible {
       "main"
       "ysplit"
       "tl";
-  }
-
-  .splitter.x {
-    display: none;
+    grid-template-rows: var(--topbar-height) minmax(0, 1fr) 0 min(var(--tl-h, 260px), 200px);
   }
 
   .sidebar {
@@ -2820,17 +2828,6 @@ textarea:focus-visible {
   .drawer-close,
   .drawer-toggle {
     display: inline-grid;
-  }
-
-  .topbar {
-    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  }
-}
-
-/* 小于 650：抽屉占满，时间线矮一点 */
-@container (max-width: 649px) {
-  .app {
-    grid-template-rows: var(--topbar-height) minmax(0, 1fr) 0 min(var(--tl-h, 260px), 200px);
   }
 
   .sidebar,
