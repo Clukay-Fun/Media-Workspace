@@ -1,6 +1,5 @@
 import type React from "react";
 import { useState } from "react";
-import { planDrag } from "../../../core/edit";
 import type { Op } from "../../../core/ops";
 import type { Anchor, Caption, Project, Slot, Transform } from "../../../core/schema";
 import { type StyleScope, styleEditOps } from "../../../core/style-scope";
@@ -241,32 +240,6 @@ export function SlotPicker({ id, ref_ }: { id: string; ref_: ItemRef }) {
   );
 }
 
-/** 出现时间微调（有锚点的元素） */
-export function TimingNudge({ project, id }: { project: Project; id: string }) {
-  const nudge = (deltaMs: number) => {
-    const { submit, toast } = useStore.getState();
-    try {
-      const plan = planDrag(project, { id, mode: "move", deltaMs, snap: false });
-      void submit(
-        plan.ops,
-        deltaMs < 0 ? `提前了 ${-deltaMs / 1000} 秒` : `延后了 ${deltaMs / 1000} 秒`,
-      );
-    } catch (e) {
-      toast(e instanceof Error ? e.message : String(e), "error");
-    }
-  };
-  return (
-    <Field label="出现时间">
-      <div className="nudge" role="group" aria-label="调整出现时间">
-        <NudgeBtn icon="back" label="提前 0.5 秒" onClick={() => nudge(-500)} />
-        <NudgeBtn icon="prev" label="提前 0.1 秒" onClick={() => nudge(-100)} />
-        <NudgeBtn icon="next" label="延后 0.1 秒" onClick={() => nudge(100)} />
-        <NudgeBtn icon="forward" label="延后 0.5 秒" onClick={() => nudge(500)} />
-      </div>
-    </Field>
-  );
-}
-
 const SLOTS: Slot[] = ["top", "upper-third", "center", "lower-third", "caption"];
 const SLOT_LABEL: Record<Slot, string> = {
   top: "顶部",
@@ -283,22 +256,6 @@ const SLOT_Y: Record<Slot, number> = {
   "lower-third": 0.64,
   caption: 0.78,
 };
-
-function NudgeBtn({
-  icon,
-  label,
-  onClick,
-}: {
-  icon: "back" | "prev" | "next" | "forward";
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button type="button" aria-label={label} title={label} onClick={onClick}>
-      <Icon name={icon} size={14} />
-    </button>
-  );
-}
 
 function describeAnchor(project: Project, at: Anchor): string {
   if ("ms" in at) return `固定在时间线 ${(at.ms / 1000).toFixed(1)} 秒出现（不跟随片段或字幕）`;

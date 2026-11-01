@@ -4,7 +4,7 @@ import { transitionPairFor } from "../../lib/transitions";
 import { useStore } from "../../store";
 import { TransitionEditor } from "../transition-editor";
 import { VisualAnims } from "./anims";
-import { Field, InspectorActions, InspectorHead, type InspectorProps, TimingNudge } from "./common";
+import { Field, InspectorActions, InspectorHead, type InspectorProps } from "./common";
 import { KeyframesInspector } from "./keyframes";
 import { useNumberDraft } from "./number-draft";
 import { PipInspector } from "./pip";
@@ -13,7 +13,6 @@ import { PipInspector } from "./pip";
 export function ClipInspector(props: InspectorProps) {
   const { project, id, ref_ } = props;
   const { track, item } = ref_;
-  const anchored = "at" in item;
   const clip = "outMs" in item ? (item as MainClip | FloatClip) : null;
   const pip = clip && track.kind === "video" && "at" in clip ? clip : null;
   const transitionPair =
@@ -62,7 +61,6 @@ export function ClipInspector(props: InspectorProps) {
           keyframes={clip.keyframes}
         />
       )}
-      {anchored && !track.locked && <TimingNudge project={project} id={id} />}
       <InspectorActions ref_={ref_} />
     </div>
   );
