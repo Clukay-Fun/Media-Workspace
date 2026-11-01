@@ -62,41 +62,41 @@ describe("contain 后的内容框", () => {
 });
 
 describe("四角小窗位置", () => {
-  it("竖屏素材：1/3 画面宽，落在安全区里侧，四角不越界", () => {
-    expect(cornerPlacement("top-left", canvas)).toEqual({ scale: 0.333, x: 262, y: 522 });
-    expect(cornerPlacement("top-right", canvas)).toEqual({ scale: 0.333, x: 708, y: 522 });
-    expect(cornerPlacement("bottom-left", canvas)).toEqual({ scale: 0.333, x: 262, y: 1138 });
-    expect(cornerPlacement("bottom-right", canvas)).toEqual({ scale: 0.333, x: 708, y: 1138 });
+  it("竖屏素材：1/3 画面宽，按画布边缘留 3% 边距，四角不越界", () => {
+    expect(cornerPlacement("top-left", canvas)).toEqual({ scale: 0.333, x: 212, y: 352 });
+    expect(cornerPlacement("top-right", canvas)).toEqual({ scale: 0.333, x: 868, y: 352 });
+    expect(cornerPlacement("bottom-left", canvas)).toEqual({ scale: 0.333, x: 212, y: 1568 });
+    expect(cornerPlacement("bottom-right", canvas)).toEqual({ scale: 0.333, x: 868, y: 1568 });
   });
 
   it("横屏素材：按 contain 后的 360×202 内容框贴角", () => {
     expect(cornerPlacement("top-left", canvas, 1920, 1080)).toEqual({
       scale: 0.333,
-      x: 262,
-      y: 303,
+      x: 212,
+      y: 133,
     });
     expect(cornerPlacement("top-right", canvas, 1920, 1080)).toEqual({
       scale: 0.333,
-      x: 708,
-      y: 303,
+      x: 868,
+      y: 133,
     });
     expect(cornerPlacement("bottom-left", canvas, 1920, 1080)).toEqual({
       scale: 0.333,
-      x: 262,
-      y: 1357,
+      x: 212,
+      y: 1787,
     });
     expect(cornerPlacement("bottom-right", canvas, 1920, 1080)).toEqual({
       scale: 0.333,
-      x: 708,
-      y: 1357,
+      x: 868,
+      y: 1787,
     });
   });
 
   it("没有素材尺寸时和竖屏退回一致", () => {
     expect(cornerPlacement("top-left", canvas, undefined, undefined)).toEqual({
       scale: 0.333,
-      x: 262,
-      y: 522,
+      x: 212,
+      y: 352,
     });
   });
 });
@@ -160,7 +160,7 @@ describe("素材放到画面上", () => {
     expect(item).toMatchObject({
       asset: "v2",
       gainDb: -60,
-      transform: { scale: 0.333, x: 708, y: 303 },
+      transform: { scale: 0.333, x: 868, y: 133 },
     });
   });
 

@@ -1,11 +1,30 @@
+/**
+ * 描述: 全部字幕列表与高亮编辑面板
+ * 主要功能:
+ *   - 列表展示工程中的所有字幕，点击跳转（跳到 80% 处确保文字显示）
+ *   - 逐句展开高亮词标记编辑器
+ */
+
 import { useEffect, useRef, useState } from "react";
 import { highlightAt, highlightMask } from "../../../core/animate";
 import type { Caption, Highlight } from "../../../core/schema";
 import { findItem } from "../../lib/project";
+import { seekFrameOnSelect } from "../../lib/seek";
 import { timecode } from "../../lib/timeline";
 import { useStore } from "../../store";
 import { Icon } from "../icons";
 
+//#region 全部字幕列表与展开按钮
+
+/**
+ * 全部字幕开关按钮
+ *
+ * 用处，参数:
+ *   - 无
+ *
+ * 功能:
+ *   - 切换属性栏与全部字幕列表显示状态
+ */
 export function ListToggle() {
   const listing = useStore((s) => s.captionList);
   return (
@@ -22,8 +41,14 @@ export function ListToggle() {
 }
 
 /**
- * 全部字幕，点一句跳过去；当前选中的那句滚到可见。
- * 每句右边的笔展开这一句的高亮编辑（docs/decisions/0015），只改这一句，不跳转。
+ * 全部字幕列表组件：点一句跳过去；当前选中的那句自动滚到可见。
+ * 每句右边的笔展开这一句的高亮编辑，只改这一句，不跳转。
+ *
+ * 用处，参数:
+ *   - 无
+ *
+ * 功能:
+ *   - 遍历展示全部字幕，点击采用与时间线一致的 seekFrameOnSelect 规则定位
  */
 export function CaptionList() {
   const tl = useStore((s) => s.preview?.timeline);
@@ -66,9 +91,11 @@ export function CaptionList() {
                 type="button"
                 className="caption-row-main"
                 onClick={() => {
-                  const { select, seek } = useStore.getState();
+                  const { select, seek, frame: now } = useStore.getState();
                   select(c.id, { reveal: false });
-                  seek(c.from);
+                  const to = c.from + c.durationInFrames;
+                  const target = seekFrameOnSelect(now, c.from, to, "caption");
+                  if (target !== null) seek(target);
                 }}
               >
                 <span className="mono">{timecode(c.from, tl.fps)}</span>
@@ -95,7 +122,20 @@ export function CaptionList() {
   );
 }
 
-/** 已高亮的字标出来，和成片里的效果对应 */
+//#endregion
+
+//#region 高亮展示与编辑器
+
+/**
+ * 已高亮的字标出来，和成片里的效果对应
+ *
+ * 用处，参数:
+ *   - text: 文本内容
+ *   - highlights: 高亮配置列表
+ *
+ * 功能:
+ *   - 渲染带有高亮标记的字幕文本
+ */
 function MarkedText({ text, highlights }: { text: string; highlights: Highlight[] }) {
   if (highlights.length === 0) return <span className="caption-row-text">{text}</span>;
   const mask = highlightMask(text, highlights);
@@ -110,7 +150,16 @@ function MarkedText({ text, highlights }: { text: string; highlights: Highlight[
   );
 }
 
-/** 在这句里选中文字 → 标为高亮；已有的高亮点 × 去掉 */
+/**
+ * 在这句里选中文字 → 标为高亮；已有的高亮点 × 去掉
+ *
+ * 用处，参数:
+ *   - caption: 字幕对象
+ *   - locked: 轨道是否锁定
+ *
+ * 功能:
+ *   - 支持通过鼠标选取文字后添加高亮标记，或删除已有高亮
+ */
 function HighlightEditor({ caption, locked }: { caption: Caption; locked: boolean }) {
   const box = useRef<HTMLDivElement>(null);
   const [range, setRange] = useState<[number, number] | null>(null);
@@ -196,3 +245,5 @@ function HighlightEditor({ caption, locked }: { caption: Caption; locked: boolea
     </div>
   );
 }
+
+//#endregion

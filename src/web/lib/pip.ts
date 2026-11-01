@@ -1,7 +1,14 @@
+/**
+ * 描述: 画中画与素材放置、四角定位与缩放计算
+ * 主要功能:
+ *   - 画中画按画布边缘四角定位（边距约画幅宽度的 3%）
+ *   - 拖角等比缩放
+ *   - 素材放置 ops 生成
+ */
+
 import { MwError } from "../../core/errors";
 import { type Box, containBox } from "../../core/lint";
 import type { Op } from "../../core/ops";
-import { safeAreaFor } from "../../core/safe-area";
 import type { Project } from "../../core/schema";
 
 export { containBox };
@@ -19,18 +26,29 @@ export const CORNER_LABEL: Record<Corner, string> = {
   "bottom-right": "右下",
 };
 
-/** 小窗宽度占画幅的比例；离安全区边缘再留画幅宽度的 2% */
+/** 小窗宽度占画幅的比例；离画布边缘留画幅宽度的 3% */
 const SMALL_SCALE = 1 / 3;
-const MARGIN_RATIO = 0.02;
+const MARGIN_RATIO = 0.03;
 
 export type Placement = { scale: number; x: number; y: number };
 
 const roundScale = (v: number) => Math.round(v * 1000) / 1000;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
+//#region 四角小窗定位与等比缩放
+
 /**
- * 四个角的小窗位置：内容宽度占画幅的 1/3，内容框边缘离安全区再留画幅宽度的 2%。
- * 用 safeArea 而不是画布边缘，是为了避开平台按钮和标题。
+ * 四个角的小窗位置：内容宽度占画幅的 1/3，内容框边缘离画布边缘留画幅宽度的 3%。
+ * 统一按画布边缘定角，不再按平台安全区（避免上下留白偏大导致偏离四角）。
+ *
+ * 用处，参数:
+ *   - corner: 四角方位
+ *   - canvas: 画布尺寸信息
+ *   - sourceWidth: 素材源宽度
+ *   - sourceHeight: 素材源高度
+ *
+ * 功能:
+ *   - 计算四角预设下小窗中心坐标与缩放比例
  */
 export function cornerPlacement(
   corner: Corner,
@@ -38,17 +56,16 @@ export function cornerPlacement(
   sourceWidth?: number,
   sourceHeight?: number,
 ): Placement {
-  const area = safeAreaFor(canvas.safeArea.preset, canvas.width, canvas.height);
   const content = containBox(canvas.width, canvas.height, sourceWidth, sourceHeight);
   const scale = roundScale(SMALL_SCALE);
   // 内容框按 contain 居中，缩放时中心不动，所以 1/3 后的内容尺寸直接乘 scale
   const w = (content.x1 - content.x0) * scale;
   const h = (content.y1 - content.y0) * scale;
   const margin = Math.round(canvas.width * MARGIN_RATIO);
-  const left = area.left + w / 2 + margin;
-  const right = canvas.width - area.right - w / 2 - margin;
-  const top = area.top + h / 2 + margin;
-  const bottom = canvas.height - area.bottom - h / 2 - margin;
+  const left = margin + w / 2;
+  const right = canvas.width - margin - w / 2;
+  const top = margin + h / 2;
+  const bottom = canvas.height - margin - h / 2;
   return {
     scale,
     x: Math.round(corner === "top-left" || corner === "bottom-left" ? left : right),
@@ -59,6 +76,16 @@ export function cornerPlacement(
 /**
  * 拖角缩放：对角固定，按鼠标到对角的距离等比缩放，再反算新的中心点。
  * 距离用绝对值，所以拖过对角也不会翻转，只会缩到最小。
+ *
+ * 用处，参数:
+ *   - box: 边界框
+ *   - corner: 被拖拽的角
+ *   - pointer: 当前指针位置
+ *   - scale: 现有缩放
+ *   - minScale/maxScale: 缩放限值
+ *
+ * 功能:
+ *   - 计算等比缩放后的新尺寸和中心点
  */
 export function resizeFromCorner({
   box,
@@ -94,6 +121,10 @@ export function resizeFromCorner({
   };
 }
 
+//#endregion
+
+//#region 素材放置逻辑
+
 /** 图片默认 3 秒；视频没有实测时长时的兜底 */
 const IMAGE_DURATION_MS = 3000;
 const FALLBACK_VIDEO_MS = 5000;
@@ -102,6 +133,14 @@ const FALLBACK_VIDEO_MS = 5000;
  * 把素材放到画面：图片给 ImageItem，视频给整段 FloatClip（默认右上角小窗）。
  * 工程里没有可用的非主轨视频轨道时，同一批 ops 先加一条。
  * 返回 itemId 给界面，提交成功后可以自动选中它。
+ *
+ * 用处，参数:
+ *   - project: 当前工程对象
+ *   - assetId: 素材 ID
+ *   - atMs: 放置时刻（毫秒）
+ *
+ * 功能:
+ *   - 生成轨道与条目新增 ops，默认放置右上角
  */
 export function placeAsset(
   project: Project,
@@ -181,3 +220,5 @@ function nextItemId(project: Project, prefix: string): string {
   while (ids.has(`${prefix}${n}`)) n++;
   return `${prefix}${n}`;
 }
+
+//#endregion
