@@ -201,7 +201,7 @@ describe("planDrag", () => {
     expect(r.snappedTo).toBeNull();
   });
 
-  it("标题和卡片也不能盖住同一条轨道上的邻居", () => {
+  it("标题和卡片叠在一起时时长不变，不会被裁短", () => {
     const p = project();
     p.tracks.push({
       id: "titles",
@@ -227,20 +227,14 @@ describe("planDrag", () => {
         },
       ],
     });
+    // 标题可以盖住卡片：叠加层没有字幕那种「后一句出现前一句消失」
     const move = planDrag(p, { id: "t1", mode: "move", deltaMs: 1200, snap: false });
-    expect(move.preview).toEqual({ startMs: 500, endMs: 1500 });
-    expect(move.ops).toEqual([{ op: "item.update", id: "t1", set: { at: { ms: 500 } } }]);
-    const back = planDrag(p, { id: "k1", mode: "move", deltaMs: -800, snap: false });
-    expect(back.preview).toEqual({ startMs: 1000, endMs: 1800 });
-    const trim = planDrag(p, { id: "t1", mode: "trimEnd", deltaMs: 700, snap: false });
-    expect(trim.preview).toEqual({ startMs: 0, endMs: 1500 });
+    expect(move.preview).toEqual({ startMs: 1200, endMs: 2200 });
     const tl = compile(apply(p, move.ops));
     const title = tl.overlays.find((o) => o.id === "t1");
     const card = tl.overlays.find((o) => o.id === "k1");
     expect(title?.durationInFrames).toBe(30);
-    expect((title?.from ?? 0) + (title?.durationInFrames ?? 0)).toBeLessThanOrEqual(
-      card?.from ?? 0,
-    );
+    expect(card?.durationInFrames).toBe(24);
   });
 });
 

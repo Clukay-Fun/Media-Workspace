@@ -103,7 +103,7 @@ function trackSpans(tl: ResolvedTimeline, trackId: string): TrackSpan[] {
 }
 
 /**
- * 非主轨上，拖动不能盖住同一条轨道的相邻条目。
+ * 同一条字幕轨道上，拖动不能盖住相邻字幕。
  * 移动时时长不变，贴到邻居就停；左右都没有空隙时留在原地。
  * 裁剪时停在邻居边上，宽度可以变，直到碰到。
  */
@@ -167,8 +167,8 @@ export function planDrag(project: Project, req: DragRequest): DragPlan {
     end = Math.max(r.value, cur.startMs + MIN_MS);
     hit = r.target;
   }
-  // 主轨磁吸靠换顺序，不在这里挡。其余轨道（字幕、标题、卡片、画中画、音频）都不能盖住邻居
-  if (!isMainTrack(track)) {
+  // 只有字幕会被后一句裁成一帧（handoff = cut）。标题和卡片允许重叠，不在这里挡
+  if (track.kind === "caption") {
     const limited = limitToNeighbors(tl, track.id, req.id, cur, start, end, req.mode);
     start = limited.startMs;
     end = limited.endMs;
