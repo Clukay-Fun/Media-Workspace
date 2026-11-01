@@ -1,10 +1,3 @@
-/**
- * 描述: 画中画属性面板组件
- * 主要功能:
- *   - 画中画四角预设切换（贴画布四角）
- *   - 缩放、圆角、不透明度数值调节
- */
-
 import type React from "react";
 import { transformAt } from "../../../core/animate";
 import { planTransform } from "../../../core/edit";
@@ -15,20 +8,7 @@ import { useStore } from "../../store";
 import { Field } from "./common";
 import { useNumberDraft } from "./number-draft";
 
-//#region 画中画属性面板
-
-/**
- * 非主轨视频的画中画属性：四角小窗预设 + 缩放 / 圆角 / 透明度。
- *
- * 用处，参数:
- *   - project: 工程对象
- *   - id: 元素 ID
- *   - item: 浮动片段
- *   - locked: 轨道是否锁定
- *
- * 功能:
- *   - 渲染画中画四角预设与数值调整面板
- */
+/** 非主轨视频的画中画属性：四角小窗预设 + 缩放 / 圆角 / 透明度。 */
 export function PipInspector({
   project,
   id,
@@ -148,10 +128,6 @@ export function PipInspector({
   );
 }
 
-//#endregion
-
-//#region 辅助组件与数据
-
 /** 示意图里的小窗色块位置 */
 const DOT: Record<Corner, React.CSSProperties> = {
   "top-left": { left: 3, top: 3 },
@@ -162,17 +138,6 @@ const DOT: Record<Corner, React.CSSProperties> = {
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-/**
- * 画中画数值输入控件
- *
- * 用处，参数:
- *   - label: 标签文本
- *   - value: 当前数值
- *   - onCommit: 提交回调
- *
- * 功能:
- *   - 带有草稿防抖与 IME 保护的数值输入框
- */
 function PipNumber({
   label,
   value,
@@ -218,5 +183,3 @@ function PipNumber({
     </label>
   );
 }
-
-//#endregion

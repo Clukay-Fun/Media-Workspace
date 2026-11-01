@@ -54,6 +54,9 @@ export type Actor = { source: Source; actor: string };
 
 type SourceRange = { startMs: number; endMs: number };
 
+/** 比这短的静音切口不剪 */
+const MIN_CUT_MS = 80;
+
 /** 从静音候选里减去字幕对应的说话区间；逐字时间按末字起点额外保留 250ms。 */
 export function protectCaptionSpeechRanges(
   ranges: readonly SourceRange[],
@@ -263,7 +266,8 @@ export async function removeSilenceProject(
         startMs: Math.max(0, Math.ceil(range.startMs)),
         endMs: Math.floor(range.endMs),
       }))
-      .filter((range) => range.endMs > range.startMs);
+      // 避开发音后可能剩下几毫秒的碎片，剪了听不出区别，只会多出剪辑点
+      .filter((range) => range.endMs - range.startMs >= MIN_CUT_MS);
     reports.push({
       asset: assetId,
       path: file,

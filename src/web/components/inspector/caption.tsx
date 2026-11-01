@@ -1,11 +1,3 @@
-/**
- * 描述: 字幕属性面板组件
- * 主要功能:
- *   - 字幕文本修改（支持中文输入法防误提交/防失焦）
- *   - 字幕样式与逐字对齐标记展示
- *   - 全部字幕列表展开切换
- */
-
 import { useEffect, useState } from "react";
 import type { Caption } from "../../../core/schema";
 import { useStore } from "../../store";
@@ -19,17 +11,7 @@ import {
 } from "./common";
 import { TextStyleEditor } from "./text-style-editor";
 
-//#region 字幕属性面板
-
-/**
- * 选中一句字幕：文字、样式。
- *
- * 用处，参数:
- *   - props: 属性栏公共参数（工程、条目引用等）
- *
- * 功能:
- *   - 渲染字幕信息、文字编辑、样式选择及操作区
- */
+/** 选中一句字幕：文字、样式 */
 export function CaptionInspector(props: InspectorProps) {
   const { project, id, ref_ } = props;
   return (
@@ -52,21 +34,6 @@ export function CaptionInspector(props: InspectorProps) {
   );
 }
 
-//#endregion
-
-//#region 字幕文本编辑器
-
-/**
- * 字幕文字内容编辑框。
- *
- * 用处，参数:
- *   - caption: 字幕对象
- *   - locked: 所在轨道是否锁定
- *
- * 功能:
- *   - 输入法组字选词（isComposing / keyCode 229）按回车不提交不失焦
- *   - 回车失焦提交修改，Esc 放弃修改并还原
- */
 function CaptionEditor({ caption, locked }: { caption: Caption; locked: boolean }) {
   const [text, setText] = useState(caption.text);
   useEffect(() => setText(caption.text), [caption.text]);
@@ -119,5 +86,3 @@ function CaptionEditor({ caption, locked }: { caption: Caption; locked: boolean 
     </section>
   );
 }
-
-//#endregion

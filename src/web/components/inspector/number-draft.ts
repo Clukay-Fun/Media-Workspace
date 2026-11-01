@@ -1,26 +1,10 @@
-/**
- * 描述: 数值输入框草稿状态与键盘事件 Hook
- * 主要功能:
- *   - 管理数值输入框的临时草稿与解析
- *   - 拦截中文输入法组字回车（防误提交/失焦）
- *   - 处理 Enter 提交与 Escape 还原
- */
-
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { isImeComposing } from "./common";
-
-//#region 数值输入框草稿管理 Hook
 
 /**
  * 数值输入框的草稿状态：回车 / 失焦时由调用方决定提交什么。
  * Esc 和清空都不提交，直接恢复原值。
  * 为什么用 ref 记 Esc：blur 是同步触发的，setState 还没生效，onBlur 读到的仍是刚输入的值。
- *
- * 用处，参数:
- *   - value: 初始/受控数值
- *
- * 功能:
- *   - 返回草稿文本 draft、解析函数 parse 与键盘处理函数 keyDown
  */
 export function useNumberDraft(value: number) {
   const [draft, setDraft] = useState(String(value));
@@ -69,5 +53,3 @@ export function useNumberDraft(value: number) {
 
   return { draft, setDraft, change, parse, keyDown };
 }
-
-//#endregion
