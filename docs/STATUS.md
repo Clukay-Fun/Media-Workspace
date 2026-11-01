@@ -6,4 +6,4 @@
 | 事项 | 谁在做 | 目录 / 分支 | 状态 | 下一步 / 卡在哪 |
 |---|---|---|---|---|
 | 审查、合并各分支，跑全部测试 | Claude | `media-workspace` / dev | 持续 | 各分支做完后通知 |
-| 第三轮：裁切界面（预览里拖裁切框、选中框按裁切后的范围），之后画幅 9:16 / 16:9 | Claude | `media-workspace` / dev | 进行中 | 核心几何用 `core/crop.ts` 的 `cropLayout` |
+| 第三轮：画幅 9:16 / 16:9（裁切界面已完成，b8c599b） | Claude | `media-workspace` / dev | 进行中 | 裁切几何在 `core/crop.ts` |
