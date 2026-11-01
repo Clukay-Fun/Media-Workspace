@@ -6,7 +6,6 @@ import {
   type InspectorProps,
   SlotPicker,
   StylePicker,
-  TimingNudge,
 } from "./common";
 import { TextStyleEditor } from "./text-style-editor";
 
@@ -27,7 +26,6 @@ export function OverlayInspector(props: InspectorProps) {
         elementLabel="标题 / 卡片"
       />
       <SlotPicker id={id} ref_={ref_} />
-      {!ref_.track.locked && <TimingNudge project={project} id={id} />}
       <InspectorActions ref_={ref_} />
     </div>
   );

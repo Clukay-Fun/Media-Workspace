@@ -1,6 +1,5 @@
 import type React from "react";
 import { useState } from "react";
-import { planDrag } from "../../../core/edit";
 import type { Op } from "../../../core/ops";
 import type { Anchor, Caption, Project, Slot, Transform } from "../../../core/schema";
 import { type StyleScope, styleEditOps } from "../../../core/style-scope";
@@ -52,13 +51,14 @@ export function InspectorHead({ project, id, ref_, fps }: InspectorProps) {
         <h2>{id}</h2>
         {from !== null && to !== null && (
           <span className="selection-time mono">
-            {timecode(from, fps)} · {(msOfFrame(to - from, fps) / 1000).toFixed(1)}s
+            开始 {timecode(from, fps)} · 时长 {(msOfFrame(to - from, fps) / 1000).toFixed(1)}s
           </span>
         )}
         <button
           type="button"
           className="icon-btn ghost close"
-          aria-label="关闭"
+          aria-label="取消选中"
+          title="取消选中"
           onClick={() => useStore.getState().select(null)}
         >
           <Icon name="close" size={12} />
@@ -69,36 +69,10 @@ export function InspectorHead({ project, id, ref_, fps }: InspectorProps) {
   );
 }
 
-/** 底部操作：各类元素自己的按钮放在 children，最后是锁定 */
-export function InspectorActions({
-  ref_,
-  children,
-}: {
-  ref_: ItemRef;
-  children?: React.ReactNode;
-}) {
-  const { track } = ref_;
-  const lock = () =>
-    void useStore
-      .getState()
-      .submit(
-        [{ op: "track.update", id: track.id, set: { locked: !track.locked } }],
-        track.locked ? "已解锁轨道" : "已锁定轨道，AI 也不能改动它",
-      );
-  return (
-    <div className="selection-actions">
-      {children}
-      <button
-        type="button"
-        className={track.locked ? "mini-btn locked" : "mini-btn"}
-        title={track.locked ? "解锁这条轨道" : "锁定这条轨道，AI 也不能改"}
-        onClick={lock}
-      >
-        <Icon name={track.locked ? "lock" : "unlock"} size={12} />
-        {track.locked ? "已锁定" : "锁定"}
-      </button>
-    </div>
-  );
+/** 底部操作：各类元素自己的操作按钮 */
+export function InspectorActions({ children }: { ref_?: ItemRef; children?: React.ReactNode }) {
+  if (!children) return null;
+  return <div className="selection-actions">{children}</div>;
 }
 
 /**
@@ -241,32 +215,6 @@ export function SlotPicker({ id, ref_ }: { id: string; ref_: ItemRef }) {
   );
 }
 
-/** 出现时间微调（有锚点的元素） */
-export function TimingNudge({ project, id }: { project: Project; id: string }) {
-  const nudge = (deltaMs: number) => {
-    const { submit, toast } = useStore.getState();
-    try {
-      const plan = planDrag(project, { id, mode: "move", deltaMs, snap: false });
-      void submit(
-        plan.ops,
-        deltaMs < 0 ? `提前了 ${-deltaMs / 1000} 秒` : `延后了 ${deltaMs / 1000} 秒`,
-      );
-    } catch (e) {
-      toast(e instanceof Error ? e.message : String(e), "error");
-    }
-  };
-  return (
-    <Field label="出现时间">
-      <div className="nudge" role="group" aria-label="调整出现时间">
-        <NudgeBtn icon="back" label="提前 0.5 秒" onClick={() => nudge(-500)} />
-        <NudgeBtn icon="prev" label="提前 0.1 秒" onClick={() => nudge(-100)} />
-        <NudgeBtn icon="next" label="延后 0.1 秒" onClick={() => nudge(100)} />
-        <NudgeBtn icon="forward" label="延后 0.5 秒" onClick={() => nudge(500)} />
-      </div>
-    </Field>
-  );
-}
-
 const SLOTS: Slot[] = ["top", "upper-third", "center", "lower-third", "caption"];
 const SLOT_LABEL: Record<Slot, string> = {
   top: "顶部",
@@ -284,24 +232,8 @@ const SLOT_Y: Record<Slot, number> = {
   caption: 0.78,
 };
 
-function NudgeBtn({
-  icon,
-  label,
-  onClick,
-}: {
-  icon: "back" | "prev" | "next" | "forward";
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button type="button" aria-label={label} title={label} onClick={onClick}>
-      <Icon name={icon} size={14} />
-    </button>
-  );
-}
-
 function describeAnchor(project: Project, at: Anchor): string {
-  if ("ms" in at) return `固定在 ${(at.ms / 1000).toFixed(1)} 秒`;
+  if ("ms" in at) return `固定在时间线 ${(at.ms / 1000).toFixed(1)} 秒出现（不跟随片段或字幕）`;
   const off = at.offsetMs
     ? `，${at.offsetMs > 0 ? "延后" : "提前"} ${Math.abs(at.offsetMs / 1000)} 秒`
     : "";

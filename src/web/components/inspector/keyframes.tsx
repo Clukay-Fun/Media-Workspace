@@ -104,96 +104,102 @@ export function KeyframesInspector({
 
   return (
     <Field label="关键帧" note={keyframes.length > 0 ? keyframes.length + " 个" : undefined}>
-      <div className="keyframes-editor">
-        {keyframes.length > 0 && (
-          <p className="keyframes-hint">有关键帧时，拖动和改数值会写进播放头处的关键帧</p>
-        )}
-        <button
-          type="button"
-          className="mini-btn primary keyframes-add"
-          disabled={locked || !inRange}
-          title={!inRange ? "播放头需要位于元素显示范围内" : undefined}
-          onClick={addAtPlayhead}
-        >
-          {existing ? "更新播放头处关键帧" : "在播放头处加关键帧"}
-        </button>
-        {!inRange && (
-          <p className="keyframes-range-note">
-            {resolved ? "播放头不在元素显示范围内" : "预览尚未就绪"}
+      <details className="keyframe-details">
+        <summary className="keyframe-summary">
+          {sorted.length > 0 ? "查看与编辑关键帧 (" + sorted.length + ")" : "展开关键帧设置"}
+        </summary>
+        <div className="keyframes-editor">
+          <p className="keyframes-hint">
+            记录不同时刻的位置与大小并自动平滑过渡（例如第 0 秒在右上、第 2
+            秒在右下，中间自动位移）。入场/出场预设动画用于出现和消失，全程固定时无需关键帧。添加关键帧后，在播放头处拖动或改数值会更新该时刻的关键帧。
           </p>
-        )}
-        {sorted.length === 0 ? (
-          <p className="keyframes-empty">还没有关键帧</p>
-        ) : (
-          <div className="keyframes-list">
-            {sorted.map((keyframe, index) => {
-              const atFrame = (resolved?.from ?? 0) + frameOfMs(keyframe.atMs, fps);
-              const previousKeyframe = sorted[index - 1];
-              const effective: Transform = resolved
-                ? { ...resolved.transform, ...keyframe.transform }
-                : keyframe.transform;
-              const previous: Transform = resolved
-                ? index === 0
-                  ? resolved.transform
-                  : { ...resolved.transform, ...(previousKeyframe?.transform ?? {}) }
-                : (previousKeyframe?.transform ?? {});
-              const changed = changedTransformFields(effective, previous);
+          <button
+            type="button"
+            className="mini-btn primary keyframes-add"
+            disabled={locked || !inRange}
+            title={!inRange ? "播放头需要位于元素显示范围内" : undefined}
+            onClick={addAtPlayhead}
+          >
+            {existing ? "更新播放头处关键帧" : "在播放头处加关键帧"}
+          </button>
+          {!inRange && (
+            <p className="keyframes-range-note">
+              {resolved ? "播放头不在元素显示范围内" : "预览尚未就绪"}
+            </p>
+          )}
+          {sorted.length === 0 ? (
+            <p className="keyframes-empty">还没有关键帧</p>
+          ) : (
+            <div className="keyframes-list">
+              {sorted.map((keyframe, index) => {
+                const atFrame = (resolved?.from ?? 0) + frameOfMs(keyframe.atMs, fps);
+                const previousKeyframe = sorted[index - 1];
+                const effective: Transform = resolved
+                  ? { ...resolved.transform, ...keyframe.transform }
+                  : keyframe.transform;
+                const previous: Transform = resolved
+                  ? index === 0
+                    ? resolved.transform
+                    : { ...resolved.transform, ...(previousKeyframe?.transform ?? {}) }
+                  : (previousKeyframe?.transform ?? {});
+                const changed = changedTransformFields(effective, previous);
 
-              return (
-                <div className="keyframe-entry" key={keyframe.atMs}>
-                  <button
-                    type="button"
-                    className="keyframe-jump"
-                    disabled={!resolved}
-                    aria-label={"跳到关键帧 " + timecode(atFrame, fps)}
-                    onClick={() => seek(atFrame)}
-                  >
-                    <span className="keyframe-time mono">{timecode(atFrame, fps)}</span>
-                    {changed.length > 0 ? (
-                      <span className="keyframe-values">
-                        {changed.map((field) => (
-                          <span className="keyframe-value" key={field}>
-                            {FIELD_LABELS[field]} {formatValue(field, effective[field])}
-                          </span>
-                        ))}
-                      </span>
-                    ) : (
-                      <span className="keyframe-no-change">与上一关键帧相同</span>
-                    )}
-                  </button>
-                  <div className="keyframe-controls">
-                    <label className="keyframe-easing">
-                      <span>缓动</span>
-                      <select
-                        className="select"
-                        value={keyframe.easing}
-                        disabled={locked}
-                        aria-label={"关键帧 " + timecode(atFrame, fps) + " 的缓动"}
-                        onChange={(event) => setEasing(keyframe, event.target.value as Easing)}
-                      >
-                        {EASINGS.map((easing) => (
-                          <option value={easing.value} key={easing.value}>
-                            {easing.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                return (
+                  <div className="keyframe-entry" key={keyframe.atMs}>
                     <button
                       type="button"
-                      className="mini-btn keyframe-delete"
-                      disabled={locked}
-                      aria-label={"删除关键帧 " + timecode(atFrame, fps)}
-                      onClick={() => remove(keyframe)}
+                      className="keyframe-jump"
+                      disabled={!resolved}
+                      aria-label={"跳到关键帧 " + timecode(atFrame, fps)}
+                      onClick={() => seek(atFrame)}
                     >
-                      删除
+                      <span className="keyframe-time mono">{timecode(atFrame, fps)}</span>
+                      {changed.length > 0 ? (
+                        <span className="keyframe-values">
+                          {changed.map((field) => (
+                            <span className="keyframe-value" key={field}>
+                              {FIELD_LABELS[field]} {formatValue(field, effective[field])}
+                            </span>
+                          ))}
+                        </span>
+                      ) : (
+                        <span className="keyframe-no-change">与上一关键帧相同</span>
+                      )}
                     </button>
+                    <div className="keyframe-controls">
+                      <label className="keyframe-easing">
+                        <span>缓动</span>
+                        <select
+                          className="select"
+                          value={keyframe.easing}
+                          disabled={locked}
+                          aria-label={"关键帧 " + timecode(atFrame, fps) + " 的缓动"}
+                          onChange={(event) => setEasing(keyframe, event.target.value as Easing)}
+                        >
+                          {EASINGS.map((easing) => (
+                            <option value={easing.value} key={easing.value}>
+                              {easing.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <button
+                        type="button"
+                        className="mini-btn keyframe-delete"
+                        disabled={locked}
+                        aria-label={"删除关键帧 " + timecode(atFrame, fps)}
+                        onClick={() => remove(keyframe)}
+                      >
+                        删除
+                      </button>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </details>
     </Field>
   );
 }

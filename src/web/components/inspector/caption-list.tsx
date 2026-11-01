@@ -43,7 +43,6 @@ export function CaptionList() {
     <>
       <header className="selection-head">
         <span className="kind-badge">字幕 {captions.length} 句</span>
-        <ListToggle />
       </header>
       <div className="caption-list">
         {captions.map((c) => {
