@@ -111,7 +111,7 @@ export function createMcpServer(): McpServer {
       description:
         "切换画幅 9:16 ⇄ 16:9：画布、字幕和标题样式（字号按短边、位置按安全区换算）、标题 / 图片 / 画中画位置、关键帧、" +
         "主轨裁切一次提交，可以 undo。不要只用 canvas.update 改宽高，字幕会跑出画面。" +
-        "锁定轨道上的元素不动，列在 skipped 里；换完用 frame 重新摆人物、lint 检查",
+        "锁定轨道上的元素不动，列在 skipped 里；竖屏素材切横屏时 fitWarnings 会提示留黑和近景风险，换完用 frame 重新摆人物、lint 检查",
       inputSchema: {
         project,
         aspect: z.enum(ASPECTS),

@@ -268,7 +268,7 @@ export async function removeSilenceProject(
             ? { ...r, endMs: Math.min(r.endMs, firstCap) }
             : { ...r, startMs: Math.max(r.startMs, lastCap) },
         )
-      : protectCaptionSpeechRanges(silenceCutRanges(silences, keepMs), caps);
+      : protectCaptionSpeechRanges(silenceCutRanges(silences, keepMs, totalMs), caps);
     const ranges = candidateRanges
       .map((range) => ({
         startMs: Math.max(0, Math.ceil(range.startMs)),
@@ -297,6 +297,12 @@ export async function removeSilenceProject(
       assets: reports,
       removedPauseCount: 0,
       removedMs: 0,
+      remainingMainClips: main.items.filter(isMainClip).map((item) => ({
+        id: item.id,
+        asset: item.asset,
+        inMs: item.inMs,
+        outMs: item.outMs,
+      })),
     };
   }
   const result = await applyToProject(dir, {
@@ -306,6 +312,14 @@ export async function removeSilenceProject(
     actor: o.actor,
     ...templateOpts,
   });
+  const updated = await loadProject(dir);
+  const updatedMain = updated.tracks.find((track) => track.kind === "video" && track.main);
+  const remainingMainClips =
+    updatedMain?.kind === "video"
+      ? updatedMain.items
+          .filter(isMainClip)
+          .map((item) => ({ id: item.id, asset: item.asset, inMs: item.inMs, outMs: item.outMs }))
+      : [];
   return {
     ...result,
     minPauseMs,
@@ -316,6 +330,7 @@ export async function removeSilenceProject(
       (sum, op) => sum + op.ranges.reduce((total, range) => total + range.endMs - range.startMs, 0),
       0,
     ),
+    remainingMainClips,
   };
 }
 
@@ -561,8 +576,31 @@ export async function aspectProject(
 ) {
   const p = await loadProject(dir);
   const plan = planAspect(p, target);
+  const mainTrack = p.tracks.find((track) => track.kind === "video" && track.main);
+  const mainClips = mainTrack?.kind === "video" ? mainTrack.items.filter(isMainClip) : [];
+  const fitWarnings = [...new Set(mainClips.map((clip) => clip.asset))].flatMap((asset) => {
+    const probe = p.assets[asset]?.probe;
+    if (!probe?.width || !probe.height) return [];
+    const ratio = probe.width / probe.height;
+    const targetRatio = plan.size.width / plan.size.height;
+    return target === "16:9" && ratio < targetRatio * 0.7
+      ? [
+          {
+            asset,
+            message: "竖屏素材切到横屏会出现两侧留黑；重新取景可能裁切过近，请预览检查",
+          },
+        ]
+      : [];
+  });
   if (plan.ops.length === 0) {
-    return { ok: true as const, revision: p.revision, size: plan.size, skipped: [], changed: [] };
+    return {
+      ok: true as const,
+      revision: p.revision,
+      size: plan.size,
+      skipped: [],
+      changed: [],
+      fitWarnings,
+    };
   }
   const r = await applyToProject(dir, {
     ops: plan.ops,
@@ -578,7 +616,7 @@ export async function aspectProject(
     editor.guides.items = scaleGuides(editor.guides.items, from, plan.size);
     await saveEditor(dir, editor);
   }
-  return { ...r, size: plan.size, skipped: plan.skipped };
+  return { ...r, size: plan.size, skipped: plan.skipped, fitWarnings };
 }
 
 /**

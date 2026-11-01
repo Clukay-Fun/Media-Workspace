@@ -135,6 +135,31 @@ describe("质检", () => {
     expect(codes(p, { faces: { a1: faces }, overlayBounds })).not.toContain("FACE_COVERED:title");
   });
 
+  it("半屏卡盖住人物上半身时提示，即使没有直接压到人脸框", () => {
+    const p = make(
+      [],
+      [
+        {
+          id: "half-card",
+          template: "x",
+          size: "half",
+          at: { ms: 0 },
+          durationMs: 2000,
+          props: {},
+        },
+      ],
+    );
+    const faces: FaceTrack = {
+      intervalMs: 500,
+      frames: [{ ms: 1000, boxes: [{ x: 0.4, y: 0.25, w: 0.2, h: 0.2 }] }],
+    };
+    const overlayBounds: OverlayBounds = () => ({
+      text: [],
+      shapes: [{ x0: 108, y0: 902, x1: 972, y1: 1517 }],
+    });
+    expect(codes(p, { faces: { a1: faces }, overlayBounds })).toContain("PERSON_COVERED:half-card");
+  });
+
   it("画中画与文字的遮挡框按裁切后的可见区域计算", () => {
     const base = make(
       [],

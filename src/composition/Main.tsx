@@ -262,13 +262,20 @@ function transitionStyles(
   height: number,
 ): { enter: React.CSSProperties; exit: React.CSSProperties } {
   const e = ease("ease-in-out", Math.min(1, Math.max(0, p)));
-  if (t.type === "fade") return { enter: { opacity: e }, exit: {} };
+  if (t.type === "fade") return { enter: { opacity: e }, exit: { opacity: 1 - e } };
   const DIR = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] } as const;
   const [dx, dy] = DIR[t.direction];
   const shift = (k: number): React.CSSProperties => ({
     transform: `translate(${dx * k * width}px, ${dy * k * height}px)`,
   });
   return { enter: shift(e - 1), exit: t.type === "push" ? shift(e) : {} };
+}
+
+/** 人像片尾用过黑叠化，避免两个人脸在中间帧混成一张。 */
+function outroTransitionStyles(t: ResolvedTransition, p: number, width: number, height: number) {
+  if (t.type !== "fade") return transitionStyles(t, p, width, height);
+  const e = ease("ease-in-out", Math.min(1, Math.max(0, p)));
+  return { enter: { opacity: Math.max(0, 2 * e - 1) }, exit: { opacity: Math.max(0, 1 - 2 * e) } };
 }
 
 /**
@@ -294,7 +301,7 @@ const MainClipLayer: React.FC<{
   const left = v.durationInFrames - frame;
   const leave =
     exit && left <= exit.durationInFrames
-      ? transitionStyles(exit, 1 - left / exit.durationInFrames, width, height)
+      ? outroTransitionStyles(exit, 1 - left / exit.durationInFrames, width, height)
       : null;
   const src = srcs[v.asset];
   const prevSrc = prev ? srcs[prev.asset] : undefined;
@@ -347,6 +354,15 @@ const CardGate: React.FC<{ spans: FrameSpan[]; children: React.ReactNode }> = ({
   children,
 }) => (cardShownAt(spans, useCurrentFrame()) ? null : <AbsoluteFill>{children}</AbsoluteFill>);
 
+/** 片尾开始时，正文字幕和标题一起退出，避免叠在片尾头像和文字上。 */
+const BeforeOutro: React.FC<{ from: number | null; children: React.ReactNode }> = ({
+  from,
+  children,
+}) => {
+  const frame = useCurrentFrame();
+  return from !== null && frame >= from ? null : <AbsoluteFill>{children}</AbsoluteFill>;
+};
+
 const OutroLayer: React.FC<{
   outro: NonNullable<ResolvedTimeline["outro"]>;
   src: string;
@@ -357,7 +373,7 @@ const OutroLayer: React.FC<{
   const t = outro.transitionIn;
   const style =
     t && frame < t.durationInFrames
-      ? transitionStyles(t, frame / t.durationInFrames, width, height).enter
+      ? outroTransitionStyles(t, frame / t.durationInFrames, width, height).enter
       : undefined;
   return (
     <AbsoluteFill style={style}>
@@ -473,11 +489,13 @@ export const Main: React.FC<MainProps> = ({ timeline, styles, srcs, fonts }) => 
       z: c.z,
       key: `${c.id}-${c.part}`,
       node: (
-        <CardGate spans={timeline.cardSpans}>
-          <Sequence key={`${c.id}-${c.part}`} from={c.from} durationInFrames={c.durationInFrames}>
-            <CaptionLayer c={c} style={styleOf(c.style, "caption-word-yellow")} fps={fps} />
-          </Sequence>
-        </CardGate>
+        <BeforeOutro from={outro?.from ?? null}>
+          <CardGate spans={timeline.cardSpans}>
+            <Sequence key={`${c.id}-${c.part}`} from={c.from} durationInFrames={c.durationInFrames}>
+              <CaptionLayer c={c} style={styleOf(c.style, "caption-word-yellow")} fps={fps} />
+            </Sequence>
+          </CardGate>
+        </BeforeOutro>
       ),
     });
   }
@@ -489,16 +507,18 @@ export const Main: React.FC<MainProps> = ({ timeline, styles, srcs, fonts }) => 
       z: o.size === "full" ? o.z + 0.5 : o.z,
       key: o.id,
       node: (
-        <Sequence key={o.id} from={o.from} durationInFrames={o.durationInFrames}>
-          <OverlayLayer
-            o={o}
-            style={styleOf(o.style, def ?? "title-bar-yellow")}
-            srcs={srcs}
-            fps={fps}
-            width={width}
-            height={height}
-          />
-        </Sequence>
+        <BeforeOutro from={outro?.from ?? null}>
+          <Sequence key={o.id} from={o.from} durationInFrames={o.durationInFrames}>
+            <OverlayLayer
+              o={o}
+              style={styleOf(o.style, def ?? "title-bar-yellow")}
+              srcs={srcs}
+              fps={fps}
+              width={width}
+              height={height}
+            />
+          </Sequence>
+        </BeforeOutro>
       ),
     });
   }

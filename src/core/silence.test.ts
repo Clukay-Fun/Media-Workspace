@@ -39,6 +39,24 @@ describe("detectSilence", () => {
     expect(silenceCutRanges([{ startMs: 100, endMs: 300 }], 120)).toEqual([]);
   });
 
+  it("剪净素材头尾静音，不留下独立的 120 毫秒空白", () => {
+    expect(
+      silenceCutRanges(
+        [
+          { startMs: 0, endMs: 1000 },
+          { startMs: 2000, endMs: 2800 },
+          { startMs: 4000, endMs: 5000 },
+        ],
+        120,
+        5000,
+      ),
+    ).toEqual([
+      { startMs: 0, endMs: 1000 },
+      { startMs: 2120, endMs: 2680 },
+      { startMs: 4000, endMs: 5000 },
+    ]);
+  });
+
   it("merges silence split by a brief transient", () => {
     const samples = join(tone(1), silent(0.35), tone(0.02), silent(0.35), tone(1));
     expect(detectSilence(samples, 8000, { minPauseMs: 500, mergeGapMs: 40 })).toEqual([
