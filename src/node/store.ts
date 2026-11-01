@@ -11,7 +11,8 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
-import { EditorState, type HistoryEntry } from "../core/api";
+import { EditorState, type HistoryEntry, type RevisionDiffResponse } from "../core/api";
+import { diffProjects } from "../core/diff";
 import { MwError } from "../core/errors";
 import { migrate } from "../core/migrations";
 import { type ApplyOptions, applyOps, Ops } from "../core/ops";
@@ -293,6 +294,26 @@ export async function historyState(dir: string): Promise<{
     ops: (e.ops ?? []).map((o) => String((o as { op?: unknown })?.op ?? "?")),
   }));
   return { entries, ...undoState(log) };
+}
+
+/** 第 revision 版相对它基于的那一版改了什么；任一版已经被清出历史时报 NOT_FOUND */
+export async function revisionDiff(dir: string, revision: number): Promise<RevisionDiffResponse> {
+  const entry = (await readLog(dir)).find((e) => e.revision === revision);
+  if (!entry || entry.kind === "init") {
+    throw new MwError("NOT_FOUND", `修改记录里没有第 ${revision} 版的改动`, {
+      hint: "用 mw history 查看修改记录",
+    });
+  }
+  const current = await loadProject(dir);
+  // 历史目录里存的是被替换掉的旧版，最新一版只在 project.json 里
+  const after = revision === current.revision ? current : await readHistory(dir, revision);
+  const before = await readHistory(dir, entry.baseRevision);
+  return {
+    ok: true,
+    revision,
+    baseRevision: entry.baseRevision,
+    changes: diffProjects(before, after),
+  };
 }
 
 export async function readLog(dir: string): Promise<LogEntry[]> {

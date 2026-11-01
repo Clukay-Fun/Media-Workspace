@@ -31,6 +31,7 @@ import {
   loadProject,
   loadReview,
   removeCommentFromProject,
+  revisionDiff,
   saveEditor,
   setCommentOnProject,
   undoProject,
@@ -161,6 +162,11 @@ export function createApp(ctx: AppContext): Hono {
   );
 
   app.get(ROUTES.history, async (c) => c.json({ ok: true, ...(await historyState(ctx.dir)) }));
+  app.get("/api/history/:rev", async (c) => {
+    const rev = Number(c.req.param("rev"));
+    if (!Number.isInteger(rev) || rev < 0) throw new MwError("USAGE", "版本号必须是非负整数");
+    return c.json(await revisionDiff(ctx.dir, rev));
+  });
 
   for (const direction of ["undo", "redo"] as const) {
     app.post(ROUTES[direction], async (c) => {

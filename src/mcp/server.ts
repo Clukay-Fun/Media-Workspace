@@ -41,6 +41,7 @@ import {
   applyToProject,
   historyState,
   revertProject,
+  revisionDiff,
   setCommentOnProject,
   undoProject,
 } from "../node/store";
@@ -540,8 +541,20 @@ export function createMcpServer(): McpServer {
 
   server.registerTool(
     "history",
-    { description: "修改记录，以及现在撤销 / 重做会回到哪一版", inputSchema: { project } },
-    ({ project: p }) => call(async () => ({ ok: true, ...(await historyState(dirOf(p))) })),
+    {
+      description:
+        "修改记录，以及现在撤销 / 重做会回到哪一版。带 revision 时改为返回这一版改了什么（每个元素的前后值），例如 { revision: 12 }",
+      inputSchema: {
+        project,
+        revision: z.number().int().nonnegative().optional().describe("只看这一版的改动"),
+      },
+    },
+    ({ project: p, revision }) =>
+      call(async () =>
+        revision === undefined
+          ? { ok: true, ...(await historyState(dirOf(p))) }
+          : revisionDiff(dirOf(p), revision),
+      ),
   );
 
   for (const direction of ["undo", "redo"] as const) {

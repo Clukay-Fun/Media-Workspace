@@ -61,6 +61,7 @@ import {
   listHistory,
   loadEditor,
   revertProject,
+  revisionDiff,
   saveEditor,
   setCommentOnProject,
   undoProject,
@@ -588,12 +589,16 @@ cli
     }),
   );
 
-cli.command("history <proj>", "修改记录、可以回退的版本、撤销 / 重做状态").action(
-  act(async (proj: string) => {
-    const dir = resolveProjectDir(proj);
-    out({ ok: true, revisions: await listHistory(dir), ...(await historyState(dir)) });
-  }),
-);
+cli
+  .command("history <proj>", "修改记录、可以回退的版本、撤销 / 重做状态")
+  .option("--rev <rev>", "只看这一版改了什么（每个元素的前后值）")
+  .action(
+    act(async (proj: string, o: { rev?: number }) => {
+      const dir = resolveProjectDir(proj);
+      if (o.rev !== undefined) return out(await revisionDiff(dir, Number(o.rev)));
+      out({ ok: true, revisions: await listHistory(dir), ...(await historyState(dir)) });
+    }),
+  );
 
 cli
   .command("revert <proj>", "回退到某个版本（作为新的一版写入）")

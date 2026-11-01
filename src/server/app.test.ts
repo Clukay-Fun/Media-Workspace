@@ -145,6 +145,17 @@ describe("本地服务接口", () => {
     expect(await r.json()).toMatchObject({ revision: 4, changed: ["c1"] });
   });
 
+  it("某一版的改动：前后值；版本号不对返回 400 / 404", async () => {
+    const { req } = setup();
+    await req("/api/ops", { body: { ops: [asset], baseRevision: 0 } });
+    await req("/api/ops", { body: { ops: [addClip], baseRevision: 1 } });
+    const d = await (await req("/api/history/2")).json();
+    expect(d).toMatchObject({ ok: true, revision: 2, baseRevision: 1 });
+    expect(d.changes).toEqual([expect.objectContaining({ id: "c1", status: "added" })]);
+    expect((await req("/api/history/x")).status).toBe(400);
+    expect((await req("/api/history/9")).status).toBe(404);
+  });
+
   it("编辑器状态读写，不增加 revision", async () => {
     const { req } = setup();
     const { editor } = await (await req("/api/editor")).json();

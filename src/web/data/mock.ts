@@ -5,6 +5,7 @@ import {
   type ServerEvent,
 } from "../../core/api";
 import { compile } from "../../core/compile";
+import { diffProjects } from "../../core/diff";
 import { MwError } from "../../core/errors";
 import { Layout } from "../../core/layout";
 import { lintProject } from "../../core/lint";
@@ -240,6 +241,17 @@ export function createMockApi(): Api {
     history: async () => {
       const logs = entries.map((e) => e.log);
       return { ok: true, entries: logs, ...undoState(logs) };
+    },
+    revision: async (rev) => {
+      const after = entries.find((e) => e.log.revision === rev)?.project;
+      if (!after) throw new ApiFailure("NOT_FOUND", `修改记录里没有第 ${rev} 版的改动`);
+      const before = entries.find((e) => e.log.revision === rev - 1)?.project ?? init;
+      return {
+        ok: true,
+        revision: rev,
+        baseRevision: before.revision,
+        changes: diffProjects(before, after),
+      };
     },
     lint: async () => ({
       ok: true,

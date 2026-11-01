@@ -12,6 +12,7 @@ import {
   loadProject,
   readLog,
   revertProject,
+  revisionDiff,
   undoProject,
   withLock,
 } from "./store";
@@ -222,5 +223,40 @@ describe("store", () => {
     expect(await code(applyToProject(join(root, "nope.mwproj"), req([asset], 0)))).toBe(
       "NOT_FOUND",
     );
+  });
+});
+
+describe("revisionDiff", () => {
+  it("最新一版和历史里的版本都能比，撤销那一版也能看出改回了什么", async () => {
+    await applyToProject(dir, req([asset, addClip], 0));
+    const clip = (await loadProject(dir)).tracks[0]?.items[0]?.id ?? "";
+    await applyToProject(dir, req([{ op: "item.update", id: clip, set: { speed: 1.1 } }], 1));
+
+    const latest = await revisionDiff(dir, 2);
+    expect(latest).toMatchObject({ revision: 2, baseRevision: 1 });
+    expect(latest.changes).toEqual([
+      expect.objectContaining({
+        id: clip,
+        status: "updated",
+        fields: [{ field: "speed", label: "倍速", before: "1×", after: "1.1×" }],
+      }),
+    ]);
+
+    const first = await revisionDiff(dir, 1);
+    expect(first.changes.map((c) => [c.id, c.status])).toEqual([
+      ["a1", "added"],
+      [clip, "added"],
+    ]);
+
+    await undoProject(dir, { direction: "undo", baseRevision: 2, source: "cli", actor: "test" });
+    expect((await revisionDiff(dir, 3)).changes[0]?.fields[0]).toMatchObject({
+      before: "1.1×",
+      after: "1×",
+    });
+  });
+
+  it("初始化那一版和不存在的版本报 NOT_FOUND", async () => {
+    expect(await code(revisionDiff(dir, 0))).toBe("NOT_FOUND");
+    expect(await code(revisionDiff(dir, 9))).toBe("NOT_FOUND");
   });
 });

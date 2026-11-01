@@ -19,6 +19,7 @@ import {
   type RestoreCutRequest,
   type RestoreCutResponse,
   type ReviewResponse,
+  type RevisionDiffResponse,
   ROUTES,
   type SaveLibraryStyleRequest,
   type ServerEvent,
@@ -31,6 +32,8 @@ export type Api = {
   project(): Promise<ProjectResponse>;
   preview(): Promise<PreviewResponse>;
   history(): Promise<HistoryResponse>;
+  /** 某一版相对上一版改了什么 */
+  revision(rev: number): Promise<RevisionDiffResponse>;
   lint(): Promise<LintResponse>;
   review(): Promise<ReviewResponse>;
   editor(): Promise<EditorResponse>;
@@ -84,6 +87,7 @@ export const httpApi: Api = {
   project: () => request(ROUTES.project),
   preview: () => request(ROUTES.preview),
   history: () => request(ROUTES.history),
+  revision: (rev) => request(ROUTES.revision(rev)),
   lint: () => request(ROUTES.lint),
   review: () => request(ROUTES.comments),
   editor: () => request(ROUTES.editor),

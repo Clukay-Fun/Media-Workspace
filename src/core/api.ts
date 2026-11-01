@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ResolvedTimeline } from "./compile";
+import type { EntityChange } from "./diff";
 import type { ErrorCode, Issue } from "./errors";
 import type { Layout } from "./layout";
 import type { LintIssue } from "./lint";
@@ -145,6 +146,14 @@ export type HistoryResponse = {
   redo: { revision: number } | null;
 };
 
+/** 某一版相对它的上一版改了什么（GET /api/history/:rev） */
+export type RevisionDiffResponse = {
+  ok: true;
+  revision: number;
+  baseRevision: number;
+  changes: EntityChange[];
+};
+
 export type ExportStarted = { ok: true; jobId: string };
 
 /** 导出封面（POST /api/cover）：file 是生成的 PNG 绝对路径，frame 是截的那一帧 */
@@ -218,6 +227,7 @@ export const ROUTES = {
   editor: "/api/editor",
   ops: "/api/ops",
   history: "/api/history",
+  revision: (rev: number) => `/api/history/${rev}`,
   undo: "/api/undo",
   redo: "/api/redo",
   peaks: (assetId: string) => `/api/media/${encodeURIComponent(assetId)}/peaks`,
