@@ -3117,6 +3117,10 @@ textarea:focus-visible {
   background: var(--text);
 }
 
+.caption-tabs {
+  margin-bottom: 8px;
+}
+
 .style-chip:active:not(:disabled),
 .slot:active:not(:disabled),
 .segmented button:active:not(:disabled) {

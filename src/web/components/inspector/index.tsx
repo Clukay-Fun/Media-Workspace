@@ -2,7 +2,6 @@ import { findItem } from "../../lib/project";
 import { useStore } from "../../store";
 import { CommentCard } from "../comment-card";
 import { CaptionInspector } from "./caption";
-import { CaptionList } from "./caption-list";
 import { ClipInspector } from "./clip";
 import type { InspectorProps } from "./common";
 import { ImageInspector } from "./image";
@@ -17,13 +16,11 @@ export function SelectionCard() {
   const selected = useStore((s) => s.selected);
   const preview = useStore((s) => s.preview);
   const review = useStore((s) => s.review);
-  const listing = useStore((s) => s.captionList);
   const ref = project && selected ? findItem(project, selected) : null;
   if (!project || !ref || !selected) return null;
   const comments = (review?.comments ?? []).filter(
     (c) => c.target === selected && c.status === "open",
   );
-  if (ref.track.kind === "caption" && listing) return <CaptionList />;
   const props: InspectorProps = {
     project,
     id: selected,

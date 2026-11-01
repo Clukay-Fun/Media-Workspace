@@ -105,29 +105,16 @@ export function TextStyleEditor({
   return (
     <div className="text-style-editor">
       <Field label="修改范围">
-        <div className="segmented" role="radiogroup" aria-label="样式修改范围">
-          <button
-            type="button"
-            role="radio"
-            aria-checked={scope === "item"}
-            className={scope === "item" ? "on" : undefined}
-            disabled={locked}
-            onClick={() => setScope("item")}
-          >
-            仅当前{elementLabel}
-          </button>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={scope === "shared"}
-            className={scope === "shared" ? "on" : undefined}
-            disabled={locked}
-            title="后续调整会影响使用当前样式的所有元素"
-            onClick={() => setScope("shared")}
-          >
-            应用到所有用这个样式的
-          </button>
-        </div>
+        <select
+          className="select"
+          value={scope}
+          disabled={locked}
+          aria-label="样式修改范围"
+          onChange={(e) => setScope(e.target.value as StyleScope)}
+        >
+          <option value="item">仅当前{elementLabel}</option>
+          <option value="shared">应用到所有用这个样式的</option>
+        </select>
         <p className="hint">
           {scope === "item"
             ? `后续调整只影响当前${elementLabel}`
