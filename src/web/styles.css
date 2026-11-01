@@ -2,7 +2,7 @@
    琥珀 = 人的批注，紫 = AI 的改动，橙红 = 质检问题，绿 = 已锁定 / 已完成，黑 = 选中 */
 
 :root {
-  --topbar-height: 44px;
+  --topbar-height: 38px;
   --bg: #f5f5f3;
   --panel: #ffffff;
   --raised: #f5f4f0;
@@ -427,9 +427,9 @@ textarea:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 30px;
+  height: 28px;
   margin-left: 4px;
-  padding: 0 14px;
+  padding: 0 12px;
   border-radius: var(--radius);
   font-weight: 600;
   color: var(--accent-ink);
@@ -842,37 +842,6 @@ textarea:focus-visible {
   overflow: hidden;
 }
 
-.stage-header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  flex: 0 0 36px;
-  align-items: center;
-  min-width: 0;
-  margin: 0 6px;
-  padding: 0 4px;
-}
-
-.stage-name {
-  min-width: 0;
-  margin: 0;
-  overflow: hidden;
-  color: var(--text);
-  font-size: 14px;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.stage-ai-status {
-  display: flex;
-  justify-content: center;
-  min-width: 0;
-}
-
-.stage-ai-status .ai-change {
-  max-width: min(420px, 100%);
-}
-
 .stage-area {
   position: relative;
   flex: 1;
@@ -884,12 +853,12 @@ textarea:focus-visible {
   place-items: center;
 }
 
+/* 预览设置浮在预览区右上角，不占播放控制栏 */
 .preview-settings {
-  position: relative;
+  position: absolute;
+  top: 8px;
+  right: 8px;
   z-index: 12;
-  grid-column: 3;
-  flex: 0 0 auto;
-  justify-self: end;
 }
 
 .preview-settings > summary {
@@ -903,24 +872,24 @@ textarea:focus-visible {
 
 .preview-settings-trigger {
   color: var(--text-2);
-  background: transparent;
-  border: 0;
-  box-shadow: none;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
 }
 
 .preview-settings[open] > .preview-settings-trigger {
   color: var(--accent);
-  background: transparent;
+  background: var(--panel);
 }
 
 .preview-settings-trigger:hover:not(:disabled) {
-  background: transparent;
+  background: var(--panel);
   color: var(--text);
 }
 
 .preview-settings-panel {
   position: absolute;
-  bottom: calc(100% + 8px);
+  top: calc(100% + 6px);
   right: 0;
   width: 184px;
   padding: 12px;
@@ -961,7 +930,7 @@ textarea:focus-visible {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  min-height: 42px;
+  min-height: 32px;
   padding: 0 8px;
   background: var(--panel);
 }
@@ -980,14 +949,14 @@ textarea:focus-visible {
 }
 
 .player-transport .player-step {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
 }
 
 .player-transport .play-btn {
-  width: 32px;
-  height: 32px;
+  width: 26px;
+  height: 26px;
 }
 
 .player-status {
@@ -3292,7 +3261,7 @@ textarea:focus-visible {
 
 .preview-settings-panel:has(.layout-fields) {
   width: 288px;
-  max-height: min(480px, calc(100vh - 380px));
+  max-height: min(480px, calc(100vh - 200px));
   overflow-y: auto;
 }
 

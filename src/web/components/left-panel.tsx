@@ -1,6 +1,6 @@
 import { Player } from "@remotion/player";
 import type React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
 import { TextBlock } from "../../composition/TextBlock";
 import type { LibraryStyle } from "../../core/api";
@@ -23,9 +23,25 @@ export function LeftPanel() {
   const tab = useStore((s) => s.leftTab);
   const open = useStore((s) => s.leftOpen);
   const { setLeftTab, setLeftOpen } = useStore.getState();
+  const box = useRef<HTMLElement>(null);
+  // 抽屉盖在预览上，点外面任意处就收起；顶栏开关自己会切换，不算外面
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: PointerEvent) => {
+      const t = e.target as Element | null;
+      if (box.current?.contains(t) || t?.closest(".left-toggle")) return;
+      useStore.getState().setLeftOpen(false);
+    };
+    window.addEventListener("pointerdown", close);
+    return () => window.removeEventListener("pointerdown", close);
+  }, [open]);
 
   return (
-    <aside className={open ? "left-panel panel open" : "left-panel panel"} aria-label="素材和样式">
+    <aside
+      ref={box}
+      className={open ? "left-panel panel open" : "left-panel panel"}
+      aria-label="素材和样式"
+    >
       <div className="tabs" role="tablist">
         {TABS.map((t) => (
           <button

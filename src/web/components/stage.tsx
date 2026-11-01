@@ -337,6 +337,7 @@ export function Stage() {
   return (
     <main className="stage panel" aria-label={name || "预览"}>
       <div className="stage-area" ref={area}>
+        <PreviewSettings />
         {inputProps && scale > 0 ? (
           <div className="canvas" style={{ width: W * scale, height: H * scale }}>
             <Player
@@ -594,12 +595,8 @@ function PlayerFooter({
         </button>
       </div>
       <div className="player-status">
-        <PreviewSettings />
-        <span
-          className="player-resolution mono"
-          aria-label={`播放速度 1 倍，画布 ${width}×${height}`}
-        >
-          1× · {width}×{height}
+        <span className="player-resolution mono" aria-label={`画布 ${width}×${height}`}>
+          {width}×{height}
         </span>
       </div>
     </footer>
