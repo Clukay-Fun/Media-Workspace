@@ -9,6 +9,7 @@ import {
   Caption,
   Chapter,
   Cover,
+  Crop,
   Id,
   Keyframe,
   Outro,
@@ -452,6 +453,7 @@ function run(ctx: Ctx, op: Op): void {
     case "item.add": {
       const { track } = ctx.track(op.track);
       ctx.unlocked(track);
+      if ("crop" in op.item) assertCropOp(op.item.crop, "item.crop");
       const prefix = track.kind === "caption" ? "s" : track.kind === "overlay" ? "o" : "c";
       const id = typeof op.item.id === "string" ? op.item.id : ctx.newId(prefix);
       if (ctx.allIds().has(id)) throw new MwError("DUPLICATE_ID", `ID「${id}」已经存在`);
@@ -464,6 +466,7 @@ function run(ctx: Ctx, op: Op): void {
       const { track, item } = ctx.find(op.id);
       ctx.unlocked(track);
       if ("id" in op.set) throw new MwError("INVALID_OP", "不能修改 id");
+      if ("crop" in op.set && op.set.crop !== null) assertCropOp(op.set.crop, "set.crop");
       // 改了字幕文字：没改的字保留原来的时间，新加、换掉的字插值
       const text = op.set.text;
       if (
@@ -708,6 +711,18 @@ function parseStyle(input: unknown): TextStyle {
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function assertCropOp(value: unknown, path: string): void {
+  const parsed = Crop.safeParse(value);
+  if (parsed.success) return;
+  throw new MwError("INVALID_OP", "裁切矩形无效", {
+    issues: parsed.error.issues.map((issue) => ({
+      code: "INVALID_OP",
+      path: [path, ...issue.path.map(String)].join("."),
+      message: issue.message,
+    })),
+  });
 }
 
 /** 样式按字段深度合并：style.update 只写要改的那几个字段 */

@@ -143,6 +143,53 @@ describe("applyOps：原子性和锁定", () => {
   });
 });
 
+describe("素材裁切操作", () => {
+  it.each([
+    { x: -0.1, y: 0, width: 0.5, height: 1 },
+    { x: 0.8, y: 0, width: 0.3, height: 1 },
+    { x: 0, y: 0, width: 0, height: 1 },
+    { x: 0, y: 0.8, width: 1, height: 0.3 },
+  ])("无效矩形 $x,$y,$width,$height 返回 INVALID_OP", (crop) => {
+    expect(
+      fail(() => applyOps(project(), [{ op: "item.update", id: "c1", set: { crop } }])).code,
+    ).toBe("INVALID_OP");
+  });
+
+  it("item.add 的无效矩形也返回 INVALID_OP", () => {
+    expect(
+      fail(() =>
+        applyOps(project(), [
+          {
+            op: "item.add",
+            track: "main",
+            item: {
+              id: "c2",
+              type: "clip",
+              asset: "a1",
+              inMs: 0,
+              outMs: 1000,
+              crop: { x: 0.5, y: 0, width: 0.6, height: 1 },
+            },
+          },
+        ]),
+      ).code,
+    ).toBe("INVALID_OP");
+  });
+
+  it("有效裁切可更新，crop: null 清除裁切", () => {
+    const p = project();
+    p.assets.a1!.probe = { durationMs: 20_000, width: 1080, height: 1920 };
+    const cropped = applyOps(p, [
+      { op: "item.update", id: "c1", set: { crop: { x: 0.1, y: 0.2, width: 0.8, height: 0.7 } } },
+    ]).project;
+    expect(cropped.tracks[0]?.items[0]).toMatchObject({
+      crop: { x: 0.1, y: 0.2, width: 0.8, height: 0.7 },
+    });
+    const reset = applyOps(cropped, [{ op: "item.update", id: "c1", set: { crop: null } }]);
+    expect(reset.project.tracks[0]?.items[0]).not.toHaveProperty("crop");
+  });
+});
+
 describe("卡片尺寸和模板素材（v7）", () => {
   const opts = {
     templates: ["card", "bar"],

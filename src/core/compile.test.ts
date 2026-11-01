@@ -419,6 +419,53 @@ describe("schema", () => {
   });
 });
 
+describe("compile：裁切信息", () => {
+  it("把主轨片段、画中画和图片的 crop 与素材尺寸传给合成", () => {
+    const crop = { x: 0.1, y: 0.2, width: 0.8, height: 0.7 };
+    const p = make({
+      canvas: { width: 540, height: 960 },
+      assets: {
+        a1: {
+          kind: "video",
+          path: "/raw.mov",
+          probe: { durationMs: 2000, width: 1920, height: 1080 },
+        },
+        outro: {
+          kind: "image",
+          path: "/still.png",
+          probe: { durationMs: 1000, width: 400, height: 300 },
+        },
+      },
+      tracks: [
+        {
+          id: "main",
+          kind: "video",
+          main: true,
+          items: [{ id: "c1", type: "clip", asset: "a1", inMs: 0, outMs: 1000, crop }],
+        },
+        {
+          id: "pip",
+          kind: "video",
+          items: [
+            { id: "p1", type: "clip", asset: "a1", at: { ms: 0 }, inMs: 0, outMs: 1000, crop },
+            { id: "i1", type: "image", asset: "outro", at: { ms: 0 }, durationMs: 1000, crop },
+          ],
+        },
+      ],
+    });
+    const tl = compile(p);
+    expect(tl.videos.find((v) => v.id === "c1")).toMatchObject({
+      crop,
+      sourceSize: { width: 1920, height: 1080 },
+    });
+    expect(tl.videos.find((v) => v.id === "p1")).toMatchObject({
+      crop,
+      sourceSize: { width: 1920, height: 1080 },
+    });
+    expect(tl.images[0]).toMatchObject({ crop, sourceSize: { width: 400, height: 300 } });
+  });
+});
+
 describe("卡片尺寸和半屏让位（v7）", () => {
   const card = (id: string, ms: number, durationMs: number, size?: string) => ({
     id,

@@ -4,6 +4,7 @@ import {
   type Anchor,
   type Caption,
   type CardSize,
+  type CropRect,
   type FloatClip,
   type Highlight,
   isMainClip,
@@ -43,6 +44,9 @@ export type ResolvedVideo = Flags & {
   /** 主轨片段为 true；渲染时主轨按 TransitionSeries 排列 */
   main: boolean;
   asset: string;
+  crop?: CropRect;
+  /** 供裁切渲染和几何计算使用；未探测到尺寸时退回画布尺寸。 */
+  sourceSize?: { width: number; height: number };
   from: number;
   durationInFrames: number;
   trimBeforeFrames: number;
@@ -61,6 +65,8 @@ export type ResolvedVideo = Flags & {
 export type ResolvedImage = Flags & {
   id: string;
   asset: string;
+  crop?: CropRect;
+  sourceSize?: { width: number; height: number };
   from: number;
   durationInFrames: number;
   transform: FullTransform;
@@ -258,6 +264,17 @@ export function compile(project: Project): ResolvedTimeline {
     t
       ? { type: t.type, direction: t.direction ?? "left", durationInFrames: f(t.durationMs) }
       : null;
+  const cropVisual = (asset: string, crop: CropRect | undefined) => {
+    if (!crop) return {};
+    const probe = project.assets[asset]?.probe;
+    return {
+      crop,
+      sourceSize: {
+        width: probe?.width ?? width,
+        height: probe?.height ?? height,
+      },
+    };
+  };
 
   // 1. 主轨：用理想毫秒的结束位置取整，前后片段首尾帧严格相接，不会累计误差
   const segments = layoutMainTrack(project);
@@ -284,6 +301,7 @@ export function compile(project: Project): ResolvedTimeline {
       muted: mainTrack?.muted ?? false,
       locked: mainTrack?.locked ?? false,
       asset: clip.asset,
+      ...cropVisual(clip.asset, clip.crop),
       from,
       durationInFrames: end - from,
       trimBeforeFrames: f(clip.inMs),
@@ -459,6 +477,7 @@ export function compile(project: Project): ResolvedTimeline {
             ...flags,
             id: item.id,
             asset: item.asset,
+            ...cropVisual(item.asset, item.crop),
             from,
             durationInFrames: Math.max(1, f(item.durationMs)),
             transform: t,
@@ -479,6 +498,7 @@ export function compile(project: Project): ResolvedTimeline {
           kind: track.kind,
           main: false,
           asset: clip.asset,
+          ...cropVisual(clip.asset, clip.crop),
           from,
           durationInFrames: Math.max(1, f(clipTimelineMs(clip))),
           trimBeforeFrames: f(clip.inMs),

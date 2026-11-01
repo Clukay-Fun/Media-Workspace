@@ -8,6 +8,7 @@ import {
   mapTimelineMs,
   type ResolvedOverlay,
 } from "./compile";
+import { cropLayout, croppedSize, faceInCrop } from "./crop";
 import { typicalFace } from "./frame";
 import type { Layout } from "./layout";
 import { safeAreaFor } from "./safe-area";
@@ -298,7 +299,13 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
   for (const v of [...tl.images, ...tl.videos.filter((x) => !x.main && x.kind === "video")]) {
     if (v.hidden) continue;
     const probe = project.assets[v.asset]?.probe;
-    const content = containBox(width, height, probe?.width, probe?.height);
+    const sourceSize = v.sourceSize ?? {
+      width: probe?.width ?? width,
+      height: probe?.height ?? height,
+    };
+    const content = v.crop
+      ? cropLayout({ width, height }, sourceSize, v.crop).box
+      : containBox(width, height, probe?.width, probe?.height);
     const end = v.from + v.durationInFrames;
     // 每 0.5 秒一次，再加上每个关键帧的时刻和最后一帧，停在关键帧上的位置不会漏掉
     const frames = new Set<number>([end - 1]);
@@ -394,17 +401,22 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
         const a = project.assets[src.asset];
         const sw = a?.probe?.width ?? width;
         const sh = a?.probe?.height ?? height;
+        const source = croppedSize({ width: sw, height: sh }, v.crop);
         const t = transformAt(v.transform, v.keyframes, f - v.from);
-        const k = Math.min(width / sw, height / sh);
-        const ox = (width - sw * k) / 2;
-        const oy = (height - sh * k) / 2;
+        const k = Math.min(width / source.width, height / source.height);
+        const ox = (width - source.width * k) / 2;
+        const oy = (height - source.height * k) / 2;
         // 半屏卡出现时主画面整体上移并略放大（v7，见 mainLiftTransform）
         const m = mainLiftTransform(tl, f);
         const toCanvas = (nx: number, ny: number) => ({
-          x: width / 2 + m.scale * (t.x + t.scale * (ox + nx * sw * k - width / 2) - width / 2),
-          y: m.scale * (t.y + t.scale * (oy + ny * sh * k - height / 2)) - m.lift,
+          x:
+            width / 2 +
+            m.scale * (t.x + t.scale * (ox + nx * source.width * k - width / 2) - width / 2),
+          y: m.scale * (t.y + t.scale * (oy + ny * source.height * k - height / 2)) - m.lift,
         });
-        for (const fb of sample.boxes) {
+        for (const rawFace of sample.boxes) {
+          const fb = faceInCrop(rawFace, v.crop);
+          if (!fb) continue;
           const a0 = toCanvas(fb.x, fb.y);
           const a1 = toCanvas(fb.x + fb.w, fb.y + fb.h);
           const face: Box = { x0: a0.x, y0: a0.y, x1: a1.x, y1: a1.y };
@@ -433,17 +445,17 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
       const v = mains.find((x) => x.id === clip.id);
       const a = project.assets[clip.asset];
       if (!track || !v || !a?.probe?.width || !a.probe.height) continue;
-      const face = typicalFace(track, [{ fromMs: clip.inMs, toMs: clip.outMs }]);
+      const face = typicalFace(track, [{ fromMs: clip.inMs, toMs: clip.outMs }], clip.crop);
       if (!face) continue;
-      const sw = a.probe.width;
-      const sh = a.probe.height;
+      const source = croppedSize({ width: a.probe.width, height: a.probe.height }, clip.crop);
       const t = transformAt(v.transform, v.keyframes, Math.round(v.durationInFrames / 2));
-      const k = Math.min(width / sw, height / sh);
-      const ox = (width - sw * k) / 2;
-      const oy = (height - sh * k) / 2;
-      const cx = (t.x + t.scale * (ox + (face.x + face.w / 2) * sw * k - width / 2)) / width;
-      const top = (t.y + t.scale * (oy + face.y * sh * k - height / 2)) / height;
-      const h = (t.scale * face.h * sh * k) / height;
+      const k = Math.min(width / source.width, height / source.height);
+      const ox = (width - source.width * k) / 2;
+      const oy = (height - source.height * k) / 2;
+      const cx =
+        (t.x + t.scale * (ox + (face.x + face.w / 2) * source.width * k - width / 2)) / width;
+      const top = (t.y + t.scale * (oy + face.y * source.height * k - height / 2)) / height;
+      const h = (t.scale * face.h * source.height * k) / height;
       const want = target.bottom - target.top;
       const off = [
         Math.abs(cx - target.cx) > FACE_POS_TOLERANCE &&

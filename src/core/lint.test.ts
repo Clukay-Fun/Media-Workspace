@@ -111,6 +111,71 @@ describe("质检", () => {
     expect(codes(make([cap("s1", 0, "一句")]))).toEqual([]);
   });
 
+  it("主轨裁切后按可见人脸位置检查遮挡，并忽略裁切外的人脸", () => {
+    const crop = { x: 0.5, y: 0, width: 0.5, height: 1 };
+    const p = make(
+      [],
+      [{ id: "title", template: "x", at: { ms: 0 }, durationMs: 1000, props: {} }],
+    );
+    const main = p.tracks.find((track) => track.kind === "video" && track.main);
+    if (!main || main.kind !== "video") throw new Error("缺少主轨");
+    (main.items[0] as { crop?: typeof crop }).crop = crop;
+    const faces: FaceTrack = {
+      intervalMs: 500,
+      frames: [{ ms: 500, boxes: [{ x: 0.55, y: 0.4, w: 0.1, h: 0.1 }] }],
+    };
+    const overlayBounds: OverlayBounds = () => ({
+      text: [{ x0: 340, y0: 770, x1: 410, y1: 950 }],
+      shapes: [],
+    });
+    expect(codes(p, { faces: { a1: faces }, overlayBounds })).toContain("FACE_COVERED:title");
+
+    faces.frames[0]!.boxes = [{ x: 0.1, y: 0.4, w: 0.1, h: 0.1 }];
+    expect(codes(p, { faces: { a1: faces }, overlayBounds })).not.toContain("FACE_COVERED:title");
+  });
+
+  it("画中画与文字的遮挡框按裁切后的可见区域计算", () => {
+    const base = make(
+      [],
+      [{ id: "title", template: "x", at: { ms: 0 }, durationMs: 1000, props: {} }],
+    );
+    const overlayBounds: OverlayBounds = () => ({
+      text: [{ x0: 300, y0: 300, x1: 400, y1: 400 }],
+      shapes: [],
+    });
+    const withPip = (crop?: object) =>
+      Project.parse({
+        ...base,
+        tracks: [
+          ...base.tracks,
+          {
+            id: "pip",
+            kind: "video",
+            items: [
+              {
+                id: "p1",
+                type: "clip",
+                asset: "a1",
+                at: { ms: 0 },
+                inMs: 0,
+                outMs: 1000,
+                ...(crop ? { crop } : {}),
+              },
+            ],
+          },
+        ],
+      });
+    const rightHalf = { x: 0.5, y: 0, width: 0.5, height: 1 };
+    expect(codes(withPip(rightHalf), { overlayBounds })).toContain("OVERLAP:p1");
+    expect(codes(withPip(), { overlayBounds })).toContain("OVERLAP:p1");
+    const leftText: OverlayBounds = () => ({
+      text: [{ x0: 0, y0: 300, x1: 100, y1: 400 }],
+      shapes: [],
+    });
+    expect(codes(withPip(rightHalf), { overlayBounds: leftText })).not.toContain("OVERLAP:p1");
+    expect(codes(withPip(), { overlayBounds: leftText })).toContain("OVERLAP:p1");
+  });
+
   it("字幕放不下、字太小、出安全区", () => {
     const p = make([
       cap("long", 0, "一".repeat(25)),

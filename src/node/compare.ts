@@ -17,6 +17,7 @@ import {
   transformFaceBoxToCanvas,
 } from "../core/compare";
 import { compile, layoutMainTrack } from "../core/compile";
+import { croppedSize, faceInCrop } from "../core/crop";
 import { MwError } from "../core/errors";
 import { isMainClip, type Project } from "../core/schema";
 import { frameToMs, msToFrame } from "../core/time";
@@ -400,13 +401,22 @@ async function compareFacePositions(
       if (frame && video && asset && dims) {
         const localFrame = msToFrame(atMs, timeline.fps) - video.from;
         const transform = transformAt(video.transform, video.keyframes, localFrame);
+        const source = croppedSize(dims, segment.clip.crop);
         projectBoxes.push(
-          ...frame.boxes.map((box) =>
-            transformFaceBoxToCanvas(box, dims, project.canvas, transform),
-          ),
+          ...frame.boxes.flatMap((box) => {
+            const visible = faceInCrop(box, segment.clip.crop);
+            return visible
+              ? [transformFaceBoxToCanvas(visible, source, project.canvas, transform)]
+              : [];
+          }),
         );
       } else if (frame) {
-        projectBoxes.push(...frame.boxes);
+        projectBoxes.push(
+          ...frame.boxes.flatMap((box) => {
+            const visible = faceInCrop(box, segment.clip.crop);
+            return visible ? [visible] : [];
+          }),
+        );
       }
     }
     const referenceFrame = nearestFaceFrame(referenceFaces?.frames ?? [], atMs);

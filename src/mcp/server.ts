@@ -80,7 +80,7 @@ export function createMcpServer(): McpServer {
     "guide",
     {
       description:
-        "第一次使用前先调用：编排规则、全部操作（ops）和文本样式的 JSON Schema、模板、动画预设、安全区",
+        "第一次使用前先调用：编排规则、全部操作（ops）和文本样式的 JSON Schema、模板、动画预设、安全区；v8 裁切示例见规则中的 crop",
     },
     () => call(async () => guideInfo()),
   );
@@ -167,7 +167,7 @@ export function createMcpServer(): McpServer {
     "apply",
     {
       description:
-        '提交一批操作（全部成功或全部不生效）。必须带 baseRevision；返回 CONFLICT 时重新 inspect。操作格式见 guide。封面字段放在 set 里，例如 {op:"cover.update",set:{atMs:2000,title:{template:"title-bar",props:{lines:["示例标题"]}}}}',
+        '提交一批操作（全部成功或全部不生效）。必须带 baseRevision；返回 CONFLICT 时重新 inspect。操作格式见 guide。裁切例：{op:"item.update",id:"c1",set:{crop:{x:0.1,y:0.15,width:0.8,height:0.7}}}；crop:null 恢复完整画面。封面字段放在 set 里，例如 {op:"cover.update",set:{atMs:2000,title:{template:"title-bar",props:{lines:["示例标题"]}}}}',
       inputSchema: {
         project,
         ops: z

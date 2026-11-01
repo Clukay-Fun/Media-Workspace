@@ -59,6 +59,24 @@ export const Transform = z.strictObject({
   radius: z.number().nonnegative().optional(),
 });
 
+/** 素材源坐标中的裁切范围（v8）：原点在左上角，所有值归一化到 0–1。 */
+export const Crop = z
+  .strictObject({
+    x: z.number().min(0).max(1),
+    y: z.number().min(0).max(1),
+    width: z.number().positive().max(1),
+    height: z.number().positive().max(1),
+  })
+  .refine((crop) => crop.x + crop.width <= 1, {
+    path: ["width"],
+    message: "裁切区域的 x + width 不能超过 1",
+  })
+  .refine((crop) => crop.y + crop.height <= 1, {
+    path: ["height"],
+    message: "裁切区域的 y + height 不能超过 1",
+  });
+export type CropRect = z.infer<typeof Crop>;
+
 export const Keyframe = z.strictObject({
   /** 相对条目在时间线上开始位置的毫秒数 */
   atMs: Ms,
@@ -101,6 +119,8 @@ const Visual = {
   animLoop: LoopAnim.optional(),
 };
 
+const CropVisual = { crop: Crop.optional() };
+
 /** 主轨片段：首尾相连，不写 at */
 export const MainClip = z.strictObject({
   id: Id,
@@ -114,6 +134,7 @@ export const MainClip = z.strictObject({
   /** 这一段前面剪掉的内容为什么剪（口误、重复、停顿…），AI 粗剪时写，审片时标在时间线上（v4） */
   cutBefore: z.string().min(1).max(16).optional(),
   ...Visual,
+  ...CropVisual,
 });
 
 /** 普通轨道上的视频 / 音频片段 */
@@ -128,6 +149,7 @@ export const FloatClip = z.strictObject({
   gainDb: z.number().min(-60).max(20).default(0),
   slot: Slot.optional(),
   ...Visual,
+  ...CropVisual,
 });
 
 export const ImageItem = z.strictObject({
@@ -138,6 +160,7 @@ export const ImageItem = z.strictObject({
   durationMs: z.number().int().positive(),
   slot: Slot.optional(),
   ...Visual,
+  ...CropVisual,
 });
 
 export const Highlight = z.strictObject({
@@ -210,7 +233,7 @@ export const OverlayTrack = z.strictObject({
 export const AudioTrack = z.strictObject({
   ...TrackBase,
   kind: z.literal("audio"),
-  items: z.array(FloatClip),
+  items: z.array(FloatClip.omit({ crop: true })),
 });
 
 export const Track = z.discriminatedUnion("kind", [
@@ -245,7 +268,10 @@ export const Chapter = z.strictObject({
 });
 
 export const Project = z.strictObject({
-  version: z.literal(PROJECT_FORMAT_VERSION),
+  // v7 → v8 只新增可选 crop，省略时就是完整素材；兼容直接构造 Project 的旧消费者。
+  version: z
+    .union([z.literal(PROJECT_FORMAT_VERSION), z.literal(PROJECT_FORMAT_VERSION - 1)])
+    .transform(() => PROJECT_FORMAT_VERSION),
   revision: z.number().int().nonnegative(),
   canvas: Canvas,
   theme: Theme.default({ accent: "#FFD400", font: "alibaba-puhuiti-3" }),
