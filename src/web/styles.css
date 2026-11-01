@@ -1662,6 +1662,60 @@ textarea:focus-visible {
   min-width: 0;
 }
 
+.tl-delete {
+  height: 30px;
+  padding: 0 8px;
+  border-radius: var(--radius);
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.tl-delete:hover:not(:disabled) {
+  color: var(--warn);
+  background: var(--warn-soft);
+}
+
+.tl-menu {
+  position: fixed;
+  z-index: 40;
+  width: 220px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 12px 32px rgb(28 27 24 / 0.16);
+}
+
+.tl-menu-name {
+  padding: 4px 8px 0;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tl-menu-track {
+  padding: 0 8px 6px;
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.tl-menu-delete {
+  display: block;
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  color: var(--warn);
+  font-size: 12px;
+  text-align: left;
+}
+
+.tl-menu-delete:hover:not(:disabled) {
+  background: var(--warn-soft);
+}
+
 .tl-zoom-controls {
   display: flex;
   align-items: center;
@@ -2207,9 +2261,25 @@ textarea:focus-visible {
 
 .block-label {
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.block-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.block-speed {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 10px;
 }
 
 .block.clip .block-label {
@@ -3511,5 +3581,8 @@ textarea:focus-visible {
 .block.caption .block-label {
   font-size: 11px;
   letter-spacing: -0.02em;
+}
+
+.block.caption .block-name {
   text-overflow: clip;
 }
