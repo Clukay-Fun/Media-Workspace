@@ -17,8 +17,6 @@ import { ProjectOverview } from "./inspector/project";
 export function ReviewSidebar() {
   const tab = useStore((s) => s.sideTab);
   const open = useStore((s) => s.sideOpen);
-  // 和顶栏一样只数警告，提示（level: hint）不算
-  const issues = useStore((s) => s.lint?.issues.filter((i) => i.level !== "hint").length ?? 0);
   const comments = useStore(
     (s) => s.review?.comments.filter((c) => c.status === "open").length ?? 0,
   );
@@ -28,7 +26,7 @@ export function ReviewSidebar() {
   const { setSideTab, setSideOpen } = useStore.getState();
 
   const tabs: { id: SideTab; label: string; count: number; tone: string }[] = [
-    { id: "props", label: "属性", count: issues, tone: "warn" },
+    { id: "props", label: "属性", count: 0, tone: "warn" },
     { id: "comments", label: "批注", count: comments, tone: "comment" },
     { id: "changes", label: "AI 改动", count: pending, tone: "ai" },
   ];
@@ -81,19 +79,12 @@ function Properties() {
   const selected = useStore((s) => s.selected);
   const project = useStore((s) => s.project);
   if (selected && project) {
-    return (
-      <>
-        <SelectionCard />
-        <IssueList only={selected} />
-      </>
-    );
+    return <SelectionCard />;
   }
   return (
     <>
       <ProjectOverview />
       <Chapters />
-      <h3 className="panel-title">质检</h3>
-      <IssueList />
     </>
   );
 }
@@ -131,49 +122,6 @@ function Chapters() {
         </ol>
       )}
     </>
-  );
-}
-
-function IssueList({ only }: { only?: string }) {
-  const lint = useStore((s) => s.lint);
-  const fps = useStore((s) => s.preview?.timeline.fps ?? 30);
-  const issues = (lint?.issues ?? []).filter((i) => !only || i.id === only);
-  if (issues.length === 0) return only ? null : <Empty text="质检没有发现问题" />;
-  return (
-    <div className="card-list">
-      {issues.map((i, n) => (
-        <article
-          key={`${i.id}-${n}`}
-          className={i.level === "hint" ? "card issue hint" : "card issue"}
-        >
-          <button type="button" className="card-main" onClick={() => jumpTo(i.id, i.atMs)}>
-            <div className="card-meta">
-              <Icon name="warn" size={12} />
-              {i.level === "hint" && <span>提示</span>}
-              <span className="mono">{timecode(frameOfMs(i.atMs, fps), fps)}</span>
-              {i.id && <span className="target">{i.id}</span>}
-            </div>
-            <p>{i.message}</p>
-          </button>
-          <div className="card-actions">
-            <button
-              type="button"
-              className="link"
-              onClick={() =>
-                void useStore.getState().addComment({
-                  text: `质检：${i.message}`,
-                  atMs: i.atMs,
-                  ...(i.id ? { target: i.id } : {}),
-                })
-              }
-            >
-              <Icon name="spark" size={12} />
-              交给 AI
-            </button>
-          </div>
-        </article>
-      ))}
-    </div>
   );
 }
 
