@@ -11,6 +11,7 @@ import { findItem, type ItemRef, kindLabel } from "../lib/project";
 import { seekFrameOnSelect } from "../lib/seek";
 import {
   type Block,
+  filmstripTiles,
   frameOfMs,
   itemFrames,
   msOfFrame,
@@ -549,6 +550,7 @@ function RowView({
   setOpenTransitionId: (id: string | null) => void;
 }) {
   const { track } = row;
+  const hasVideo = row.blocks.some((b) => b.kind === "clip" && b.mediaKind === "video");
   const { submit, select, seek } = useStore.getState();
   const toggle = (key: "locked" | "hidden" | "muted", label: string) =>
     void submit([{ op: "track.update", id: track.id, set: { [key]: !track[key] } }], label);
@@ -590,6 +592,7 @@ function RowView({
         className={[
           "tl-lane",
           row.kind,
+          hasVideo ? "media-video" : "",
           track.locked ? "locked" : "",
           track.hidden ? "is-hidden" : "",
         ].join(" ")}
@@ -614,7 +617,6 @@ function RowView({
                 flash={flashIds.includes(b.id) ? flashAt : 0}
                 peaks={b.asset ? (peaks[b.asset] ?? null) : null}
                 videoSrc={b.mediaKind === "video" && b.asset ? videoSrcs[b.asset] : undefined}
-                thumbnailHeight={row.kind === "main" ? 36 : 26}
                 onSelect={() => {
                   if (b.kind === "outro") return;
                   select(b.id);
@@ -704,7 +706,6 @@ function BlockView({
   flash,
   peaks,
   videoSrc,
-  thumbnailHeight,
   onSelect,
   dragging,
   editable,
@@ -719,7 +720,6 @@ function BlockView({
   flash: number;
   peaks: { msPerPeak: number; peaks: number[] } | null;
   videoSrc?: string;
-  thumbnailHeight: number;
   onSelect: () => void;
   track: Track;
   dragging: boolean;
@@ -728,22 +728,15 @@ function BlockView({
   onContextMenu: (e: React.MouseEvent) => void;
 }) {
   const columns = Math.floor(width / 3);
+  const videoClip = block.kind === "clip" && block.mediaKind === "video";
   const wave = useMemo(
     () =>
-      peaks && block.kind === "clip" && block.mediaKind === "audio"
+      peaks && block.kind === "clip" && (block.mediaKind === "audio" || block.mediaKind === "video")
         ? waveform(block, peaks, fps, columns)
         : null,
     [peaks, block, fps, columns],
   );
-  const thumbnailCount =
-    block.kind === "clip" && block.mediaKind === "video"
-      ? Math.max(
-          1,
-          Math.min(block.to - block.from, 24, Math.ceil(width / (thumbnailHeight * (16 / 9)))),
-        )
-      : 0;
-  const speedText =
-    block.kind === "clip" && block.mediaKind === "video" ? formatSpeed(block.speed) : null;
+  const speedText = videoClip ? formatSpeed(block.speed) : null;
   return (
     <button
       type="button"
@@ -784,48 +777,74 @@ function BlockView({
           {block.cut}
         </span>
       )}
-      {videoSrc && thumbnailCount > 0 && (
-        <VideoFilmstrip
-          src={videoSrc}
-          block={block}
-          fps={fps}
-          count={thumbnailCount}
-          tileHeight={thumbnailHeight}
-        />
+      {videoClip ? (
+        <>
+          <span className="block-namebar">
+            <span className="block-name">{block.label}</span>
+            {speedText ? <span className="block-speed">{speedText}</span> : null}
+          </span>
+          <span className="block-picture">
+            {videoSrc && (
+              <VideoFilmstrip
+                src={videoSrc}
+                block={block}
+                fps={fps}
+                bandWidth={Math.max(1, width)}
+              />
+            )}
+          </span>
+          <span className="block-waveband">
+            {wave && (
+              <svg
+                className="wave"
+                viewBox={`0 0 ${Math.max(columns, 1) * 3} 100`}
+                preserveAspectRatio="none"
+                aria-hidden="true"
+              >
+                {wave.map((v, i) => (
+                  <rect key={i} x={i * 3} width={2} y={50 - v * 46} height={Math.max(1, v * 92)} />
+                ))}
+              </svg>
+            )}
+          </span>
+        </>
+      ) : (
+        <>
+          {wave && (
+            <svg
+              className="wave"
+              viewBox={`0 0 ${columns * 3} 100`}
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              {wave.map((v, i) => (
+                <rect key={i} x={i * 3} width={2} y={50 - v * 46} height={Math.max(1, v * 92)} />
+              ))}
+            </svg>
+          )}
+          <span className="block-label">
+            <span className="block-name">{block.label}</span>
+          </span>
+        </>
       )}
-      {wave && (
-        <svg
-          className="wave"
-          viewBox={`0 0 ${columns * 3} 100`}
-          preserveAspectRatio="none"
-          aria-hidden="true"
-        >
-          {wave.map((v, i) => (
-            <rect key={i} x={i * 3} width={2} y={50 - v * 46} height={Math.max(1, v * 92)} />
-          ))}
-        </svg>
-      )}
-      <span className="block-label">
-        <span className="block-name">{block.label}</span>
-        {speedText ? <span className="block-speed">{speedText}</span> : null}
-      </span>
       {flash > 0 && <span key={flash} className="block-flash" aria-hidden="true" />}
     </button>
   );
 }
 
+/** 画面带取样高度。显示时按格子比例缩放，不另拉宽高。 */
+const PICTURE_BAND = 40;
+
 function VideoFilmstrip({
   src,
   block,
   fps,
-  count,
-  tileHeight,
+  bandWidth,
 }: {
   src: string;
   block: Block;
   fps: number;
-  count: number;
-  tileHeight: number;
+  bandWidth: number;
 }) {
   const [strip, setStrip] = useState<string | null>(null);
 
@@ -837,9 +856,6 @@ function VideoFilmstrip({
     video.muted = true;
     video.playsInline = true;
     const canvas = document.createElement("canvas");
-    const tileWidth = Math.round((tileHeight * 16) / 9);
-    canvas.width = tileWidth * count;
-    canvas.height = tileHeight;
     const context = canvas.getContext("2d");
     if (!context) return;
     context.imageSmoothingQuality = "medium";
@@ -847,20 +863,33 @@ function VideoFilmstrip({
     const frames = Math.max(1, block.to - block.from);
     const trim = block.trimBeforeFrames ?? 0;
     const speed = block.speed ?? 1;
-    const sampleTimes = Array.from({ length: count }, (_, index) => {
-      const offset = Math.min(frames - 1, Math.floor(((index + 0.5) / count) * frames));
-      return frameToMs(sourceFrameAt(trim, speed, offset), fps) / 1000;
-    });
+    let tiles = filmstripTiles(bandWidth, PICTURE_BAND, 16 / 9, frames);
+    let sampleTimes: number[] = [];
+    const layout = () => {
+      const aspect =
+        video.videoWidth > 0 && video.videoHeight > 0
+          ? video.videoWidth / video.videoHeight
+          : 16 / 9;
+      tiles = filmstripTiles(bandWidth, PICTURE_BAND, aspect, frames);
+      canvas.width = tiles.tileWidth * tiles.count;
+      canvas.height = tiles.tileHeight;
+      sampleTimes = Array.from({ length: tiles.count }, (_, index) => {
+        const offset = Math.min(frames - 1, Math.floor(((index + 0.5) / tiles.count) * frames));
+        return frameToMs(sourceFrameAt(trim, speed, offset), fps) / 1000;
+      });
+    };
     let stopped = false;
     let index = 0;
     let pendingSeek: (() => void) | null = null;
 
     const drawFrame = () => {
       if (stopped) return;
+      const { tileWidth, tileHeight, count } = tiles;
       const sourceWidth = video.videoWidth;
       const sourceHeight = video.videoHeight;
       if (sourceWidth > 0 && sourceHeight > 0) {
-        const scale = Math.max(tileWidth / sourceWidth, tileHeight / sourceHeight);
+        // 整帧放进格子，比例不对时留白，不裁掉人物
+        const scale = Math.min(tileWidth / sourceWidth, tileHeight / sourceHeight);
         const drawWidth = sourceWidth * scale;
         const drawHeight = sourceHeight * scale;
         const x = index * tileWidth;
@@ -913,6 +942,7 @@ function VideoFilmstrip({
     };
     const onLoadedData = () => seekFrame();
     const onLoadedMetadata = () => {
+      layout();
       if ((sampleTimes[0] ?? 0) <= 0.015 && video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
         video.addEventListener("loadeddata", onLoadedData, { once: true });
         return;
@@ -935,7 +965,7 @@ function VideoFilmstrip({
       video.removeAttribute("src");
       video.load();
     };
-  }, [src, block.from, block.to, block.trimBeforeFrames, block.speed, fps, count, tileHeight]);
+  }, [src, block.from, block.to, block.trimBeforeFrames, block.speed, fps, bandWidth]);
 
   return strip ? <img className="filmstrip" src={strip} alt="" draggable={false} /> : null;
 }

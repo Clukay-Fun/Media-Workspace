@@ -128,6 +128,24 @@ export function timecode(frame: number, fps: number): string {
 export const frameOfMs = (ms: number, fps: number) => msToFrame(ms, fps);
 export const msOfFrame = (frame: number, fps: number) => Math.round(frameToMs(frame, fps));
 
+/**
+ * 胶片格按素材自己的宽高比排，不拉成 16:9。
+ * 格子总宽超过画面带时少画几格，由界面裁掉末尾或留白。
+ */
+export function filmstripTiles(
+  bandWidth: number,
+  bandHeight: number,
+  aspect: number,
+  frames: number,
+): { count: number; tileWidth: number; tileHeight: number } {
+  const safeAspect = aspect > 0 && Number.isFinite(aspect) ? aspect : 16 / 9;
+  const tileHeight = Math.max(1, Math.round(bandHeight));
+  const tileWidth = Math.max(1, Math.round(tileHeight * safeAspect));
+  const fit = Math.floor(Math.max(0, bandWidth) / tileWidth);
+  const count = Math.max(1, Math.min(Math.max(1, Math.floor(frames)), 24, fit || 1));
+  return { count, tileWidth, tileHeight };
+}
+
 /** 刻度间隔（秒）：让相邻两个刻度至少隔 minPx 像素 */
 export function tickStep(pxPerSecond: number, minPx = 64): number {
   return [0.5, 1, 2, 5, 10, 15, 30, 60, 120].find((s) => s * pxPerSecond >= minPx) ?? 300;

@@ -1874,6 +1874,11 @@ textarea:focus-visible {
   min-height: 44px;
 }
 
+/* 有视频画面的轨道加高，容纳文件名、画面、波形三层。纯图片轨保持原高。 */
+.tl-lane.media-video {
+  min-height: 78px;
+}
+
 .tl-lane.markers {
   min-height: 24px;
 }
@@ -2298,6 +2303,56 @@ textarea:focus-visible {
   background: rgb(20 22 26 / 0.78);
 }
 
+/* 视频块：文件名单独一行，不再压在缩略图上。主视频和画中画同一套。 */
+.block.clip.video {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
+  padding: 0;
+}
+
+.block.clip.video .block-namebar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  height: 16px;
+  min-width: 0;
+  padding: 0 6px;
+  overflow: hidden;
+  background: var(--clip);
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.block.clip.video:has(.cut-tag) .block-namebar {
+  padding-left: calc(2em + 14px);
+}
+
+.block.clip.video .block-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.block.clip.video .block-picture {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  background: #282b31;
+}
+
+.block.clip.video .block-waveband {
+  position: relative;
+  flex: none;
+  height: 16px;
+  background: rgb(0 0 0 / 0.28);
+}
+
 .block.clip.audio .block-label {
   padding: 1px 4px;
   border-radius: 3px;
@@ -2312,6 +2367,16 @@ textarea:focus-visible {
   width: 100%;
   height: 100%;
   pointer-events: none;
+}
+
+/* 按格子原始比例显示：更高时加宽，不把竖屏拉满整块 */
+.block.clip.video .filmstrip {
+  inset: auto;
+  top: 0;
+  left: 0;
+  width: auto;
+  height: 100%;
+  max-width: none;
 }
 
 .wave {
@@ -2332,6 +2397,12 @@ textarea:focus-visible {
 .block.clip.audio .wave {
   fill: #3f83be;
   opacity: 0.9;
+}
+
+.block.clip.video .block-waveband .wave {
+  inset: 1px 0;
+  width: auto;
+  height: calc(100% - 2px);
 }
 
 .block-flash {
