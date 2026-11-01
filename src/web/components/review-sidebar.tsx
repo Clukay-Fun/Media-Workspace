@@ -1,10 +1,9 @@
 import { useState } from "react";
-import type { HistoryEntry } from "../../core/api";
 import type { Comment } from "../../core/review";
 import { aiChanges } from "../lib/changes";
-import { findItem } from "../lib/project";
 import { frameOfMs, itemFrames, timecode } from "../lib/timeline";
 import { type SideTab, useStore } from "../store";
+import { AiChanges } from "./ai-changes";
 import { CommentCard } from "./comment-card";
 import { Icon } from "./icons";
 import { SelectionCard } from "./inspector";
@@ -60,7 +59,7 @@ export function ReviewSidebar() {
       </div>
       <div className="panel-scroll">
         {tab === "props" && <Properties />}
-        {tab === "changes" && <ChangeList />}
+        {tab === "changes" && <AiChanges />}
         {tab === "comments" && <Comments />}
       </div>
     </aside>
@@ -174,136 +173,6 @@ function IssueList({ only }: { only?: string }) {
         </article>
       ))}
     </div>
-  );
-}
-
-const hhmm = (iso: string) => {
-  const d = new Date(iso);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-};
-
-function ChangeList() {
-  const history = useStore((s) => s.history);
-  const reviewedRev = useStore((s) => s.reviewedRev);
-  const project = useStore((s) => s.project);
-  const { all, pending } = aiChanges(history, reviewedRev);
-  const { confirmAiChanges, undo } = useStore.getState();
-  if (all.length === 0) return <Empty text="AI 还没有改过这个工程" />;
-  const latest = all[0];
-  const canUndoLatest = latest?.revision === project?.revision && history?.undo;
-  return (
-    <>
-      {pending.length > 0 && (
-        <div className="confirm-bar">
-          <span>{pending.length} 次待确认</span>
-          {canUndoLatest && (
-            <button type="button" className="mini-btn" onClick={() => void undo("undo")}>
-              撤销
-            </button>
-          )}
-          <button type="button" className="mini-btn primary" onClick={confirmAiChanges}>
-            <Icon name="check" size={12} />
-            确认
-          </button>
-        </div>
-      )}
-      <div className="card-list">
-        {all.slice(0, 30).map((e) => (
-          <ChangeCard key={e.revision} entry={e} pending={pending.includes(e)} />
-        ))}
-      </div>
-    </>
-  );
-}
-
-const OP_LABEL: Record<string, string> = {
-  "canvas.update": "改画布",
-  "outro.set": "设片尾",
-  "asset.add": "导入素材",
-  "track.add": "加轨道",
-  "track.update": "改轨道",
-  "item.add": "加元素",
-  "item.update": "改元素",
-  "item.move": "移动元素",
-  "item.remove": "删元素",
-  "clip.split": "分割",
-  "clip.trim": "裁剪",
-  "keyframe.set": "改关键帧",
-  "caption.import": "导入字幕",
-  "caption.add": "加字幕",
-  "caption.update": "改字幕",
-  "caption.remove": "删字幕",
-  "caption.merge": "合并字幕",
-  "caption.split": "拆字幕",
-  "cut.removeCaptions": "删句",
-  "cut.removePauses": "去停顿",
-  "cut.restore": "恢复剪辑点",
-  "style.add": "加样式",
-  "style.update": "改样式",
-  "style.remove": "删样式",
-  "theme.update": "改主题",
-  "cover.update": "改封面",
-  "outro.remove": "去掉片尾",
-  "chapters.set": "分章节",
-  "asset.relink": "重新关联素材",
-  "asset.cache": "更新素材缓存",
-  "asset.remove": "删素材",
-  "track.move": "调轨道顺序",
-  "track.remove": "删轨道",
-  "keyframe.remove": "删关键帧",
-  "caption.reflow": "重排字幕",
-  "cut.removeSilence": "剪静音",
-};
-
-/** 改动里的 ID 换成看得懂的名字：字幕取前几个字，片段取素材文件名，标题 / 卡片取文字 */
-function itemName(id: string): string {
-  const project = useStore.getState().project;
-  if (!project) return id;
-  if (project.assets[id]) return project.assets[id].path.split("/").pop() ?? id;
-  const ref = findItem(project, id);
-  if (!ref) return id;
-  const short = (t: string) => ([...t].length > 8 ? `${[...t].slice(0, 8).join("")}…` : t);
-  const it = ref.item as Record<string, unknown>;
-  if (typeof it.text === "string") return short(it.text);
-  if (typeof it.asset === "string")
-    return short(project.assets[it.asset]?.path.split("/").pop() ?? it.asset);
-  const props = it.props as Record<string, unknown> | undefined;
-  const lines = props?.lines ?? props?.text ?? props?.title;
-  if (Array.isArray(lines)) return short(lines.join(" "));
-  if (typeof lines === "string") return short(lines);
-  return id;
-}
-
-function ChangeCard({ entry: e, pending }: { entry: HistoryEntry; pending: boolean }) {
-  const ops = [...new Set(e.ops.map((o) => OP_LABEL[o] ?? o))].join("、");
-  const kind =
-    e.kind === "undo" ? "撤销" : e.kind === "redo" ? "重做" : e.kind === "revert" ? "回退" : ops;
-  return (
-    <article className={pending ? "card change pending" : "card change"}>
-      <div className="card-meta">
-        {pending && <span className="dot" aria-label="待确认" />}
-        <b>{e.actor}</b>
-        <span>第 {e.revision} 版</span>
-        <span className="when">{hhmm(e.at)}</span>
-      </div>
-      <p>{kind || "修改"}</p>
-      {e.changed.length > 0 && (
-        <div className="tags">
-          {e.changed.slice(0, 12).map((id) => (
-            <button
-              type="button"
-              key={id}
-              className="tag link-tag"
-              title={id}
-              onClick={() => jumpTo(id)}
-            >
-              {itemName(id)}
-            </button>
-          ))}
-          {e.changed.length > 12 && <span className="tag dim">+{e.changed.length - 12}</span>}
-        </div>
-      )}
-    </article>
   );
 }
 

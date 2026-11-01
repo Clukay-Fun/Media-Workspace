@@ -2746,6 +2746,151 @@ textarea:focus-visible {
   cursor: pointer;
 }
 
+/* AI 改动：卡片头整块可点，展开后逐个元素列前后值 */
+.change-head {
+  display: block;
+  width: 100%;
+  text-align: left;
+}
+
+.change-head .chevron {
+  display: inline-flex;
+  width: 14px;
+  vertical-align: -1px;
+  color: var(--text-3);
+  transition: transform 160ms var(--ease-out);
+}
+
+.change-head .chevron.open {
+  transform: rotate(90deg);
+}
+
+.change-count {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.change-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.change-detail ul {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.change-detail > .link {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.change-row {
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.change-row-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.change-status {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 17px;
+  color: var(--ai);
+  background: var(--ai-soft);
+}
+
+.change-status.added {
+  color: var(--ok);
+  background: var(--ok-soft);
+}
+
+.change-status.removed {
+  color: var(--warn);
+  background: var(--warn-soft);
+}
+
+.change-target {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  text-align: left;
+}
+
+button.change-target:hover .change-name {
+  text-decoration: underline;
+}
+
+.change-kind {
+  flex: none;
+  color: var(--text-3);
+}
+
+.change-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.change-row.removed .change-name {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+
+.change-fields {
+  display: grid;
+  gap: 2px;
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+
+.change-fields > div {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 6px;
+}
+
+.change-fields dt {
+  color: var(--text-3);
+}
+
+.change-fields dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.change-fields s {
+  color: var(--text-3);
+}
+
+.change-fields dd > span {
+  color: var(--text-3);
+}
+
+.change-fields b {
+  font-weight: 500;
+}
+
 .confirm-bar {
   display: flex;
   align-items: center;
