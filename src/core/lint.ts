@@ -8,13 +8,15 @@ import {
   mapTimelineMs,
   type ResolvedOverlay,
 } from "./compile";
-import { cropLayout, croppedSize, faceInCrop } from "./crop";
+import { containBox, contentBox, cropLayout, croppedSize, faceInCrop } from "./crop";
 import { typicalFace } from "./frame";
 import type { Layout } from "./layout";
 import { SAFE_AREA_LABEL, safeAreaFor } from "./safe-area";
 import type { Project } from "./schema";
 import type { TextStyle } from "./text-style";
 import { frameToMs } from "./time";
+
+export { containBox };
 
 // 成片质检（docs/decisions/0007，借鉴 Remotion Koubo 的几何断言和 Ghost Editor 的人脸避让）：
 // 不看像素，按工程数据估算每个元素在画面上占的区域，找出字太小、出安全区、放不下、互相遮挡、挡脸。
@@ -110,25 +112,6 @@ export function textBox(text: string, style: TextStyle): Box {
         ? layout.y - h
         : layout.y - h / 2;
   return { x0, y0, x1: x0 + width, y1: y0 + h };
-}
-
-/**
- * 素材在画布上按 objectFit: contain 显示后的内容框（画布像素）。
- * 渲染时图片和视频都铺满画布再 contain，所以宽高比不同时会上下或左右留黑边。
- * 没有素材尺寸（或数据不合法）时退回整幅画布。
- */
-export function containBox(
-  width: number,
-  height: number,
-  sourceWidth?: number,
-  sourceHeight?: number,
-): Box {
-  if (!sourceWidth || !sourceHeight || sourceWidth <= 0 || sourceHeight <= 0)
-    return { x0: 0, y0: 0, x1: width, y1: height };
-  const scale = Math.min(width / sourceWidth, height / sourceHeight);
-  const w = sourceWidth * scale;
-  const h = sourceHeight * scale;
-  return { x0: (width - w) / 2, y0: (height - h) / 2, x1: (width + w) / 2, y1: (height + h) / 2 };
 }
 
 const area = (b: Box) => Math.max(0, b.x1 - b.x0) * Math.max(0, b.y1 - b.y0);
@@ -298,14 +281,11 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
   const visuals: { id: string; from: number; to: number; box: Box }[] = [];
   for (const v of [...tl.images, ...tl.videos.filter((x) => !x.main && x.kind === "video")]) {
     if (v.hidden) continue;
-    const probe = project.assets[v.asset]?.probe;
-    const sourceSize = v.sourceSize ?? {
-      width: probe?.width ?? width,
-      height: probe?.height ?? height,
-    };
-    const content = v.crop
-      ? cropLayout({ width, height }, sourceSize, v.crop).box
-      : containBox(width, height, probe?.width, probe?.height);
+    const content = contentBox(
+      { width, height },
+      v.sourceSize ?? project.assets[v.asset]?.probe,
+      v.crop,
+    );
     const end = v.from + v.durationInFrames;
     // 每 0.5 秒一次，再加上每个关键帧的时刻和最后一帧，停在关键帧上的位置不会漏掉
     const frames = new Set<number>([end - 1]);

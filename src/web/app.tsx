@@ -109,6 +109,8 @@ function useShortcuts() {
       if (el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT" || el.tagName === "SELECT"))
         return;
       const s = useStore.getState();
+      // 裁切时 Esc / 回车归裁切框（crop-editor），其它快捷键也先停用
+      if (s.cropEditing) return;
       const fps = s.preview?.timeline.fps ?? 30;
       const total = s.preview?.timeline.durationInFrames ?? 1;
       const mod = e.metaKey || e.ctrlKey;

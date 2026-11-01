@@ -5,6 +5,7 @@ import { msOfFrame } from "../../lib/timeline";
 import { useStore } from "../../store";
 import { VisualAnims } from "./anims";
 import { Field, InspectorHead, type InspectorProps, SlotPicker } from "./common";
+import { CropField } from "./crop";
 import { KeyframesInspector } from "./keyframes";
 import { useNumberDraft } from "./number-draft";
 
@@ -86,6 +87,7 @@ export function ImageInspector(props: InspectorProps) {
           />
         </div>
       </Field>
+      <CropField project={project} id={id} crop={image.crop} locked={locked} />
       <VisualAnims id={id} item={image} locked={locked} />
       <KeyframesInspector id={id} fps={props.fps} locked={locked} keyframes={image.keyframes} />
     </div>

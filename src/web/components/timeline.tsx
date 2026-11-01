@@ -101,8 +101,8 @@ export function Timeline() {
         target.closest("input, textarea, select, [contenteditable='true']")
       )
         return;
-      const { project, selected, preview, submit, toast } = useStore.getState();
-      if (!project || !selected || !preview) return;
+      const { project, selected, preview, submit, toast, cropEditing } = useStore.getState();
+      if (!project || !selected || !preview || cropEditing) return;
       const found = project.tracks.find((track) =>
         track.items.some((item) => item.id === selected),
       );

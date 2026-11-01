@@ -14,6 +14,7 @@ import { findItem } from "../lib/project";
 import { frameOfMs, msOfFrame, timecode } from "../lib/timeline";
 import { useStore } from "../store";
 import { addGuide, CanvasGuides, SafeAreaOverlay, safeAreaMode } from "./canvas-guides";
+import { CropOverlay, CropToolbar } from "./crop-editor";
 import { Icon } from "./icons";
 import { AccountGuides, LayoutEditorCard } from "./layout-editor";
 
@@ -58,6 +59,7 @@ export function Stage() {
   const annotating = useStore((s) => s.annotating);
   const selected = useStore((s) => s.selected);
   const layoutEditing = useStore((s) => s.layoutEditing);
+  const cropping = useStore((s) => s.cropEditing !== null);
   const flash = useStore((s) => s.flash);
   const review = useStore((s) => s.review);
   const lint = useStore((s) => s.lint);
@@ -388,7 +390,7 @@ export function Stage() {
                   .map((b) => (
                     <div key={`${b.id}-${flashing.at}`} className="box flash" style={rect(b.box)} />
                   ))}
-              {selBox && (selBox.kind !== "video" || !selBox.main) && (
+              {selBox && !cropping && (selBox.kind !== "video" || !selBox.main) && (
                 <div
                   className={[
                     "box selected",
@@ -427,6 +429,7 @@ export function Stage() {
               {pin && (
                 <span className="pin draft" style={{ left: pin.x * scale, top: pin.y * scale }} />
               )}
+              <CropOverlay width={W} height={H} scale={scale} />
             </div>
           </div>
         ) : (
@@ -443,6 +446,7 @@ export function Stage() {
             )}
           </div>
         )}
+        <CropToolbar />
         {annotating && (
           <div className="annotation-hint" role="status">
             点选画面元素添加批注 <kbd>Esc</kbd>

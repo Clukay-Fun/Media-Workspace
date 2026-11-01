@@ -1,11 +1,11 @@
 import { transformAt } from "../../core/animate";
 import { cardShownAt, type FullTransform, type ResolvedTimeline } from "../../core/compile";
+import { contentBox, type Size } from "../../core/crop";
 import { type Box, textBox } from "../../core/lint";
 import { BUILTIN_STYLES } from "../../core/presets";
-import type { Project } from "../../core/schema";
+import type { CropRect, Project } from "../../core/schema";
 import type { TextStyle } from "../../core/text-style";
 import { overlayBounds, TEMPLATES } from "../../templates";
-import { containBox } from "./pip";
 
 // 预览画面上的点选：算出当前帧每个可见元素在画布上占的区域（画布像素）。
 // 文字区域和质检（core/lint）用同一套估算，模板通过 bounds 声明自己占的区域。
@@ -77,11 +77,9 @@ export function hitBoxes(
 ): HitBox[] {
   const { width, height } = tl;
   const canvas: Box = { x0: 0, y0: 0, x1: width, y1: height };
-  // 图片和画中画按 objectFit: contain 后的真实画面区域算，不能按整幅画布
-  const content = (assetId: string): Box => {
-    const probe = assets?.[assetId]?.probe;
-    return containBox(width, height, probe?.width, probe?.height);
-  };
+  // 图片和画中画按 objectFit: contain 后的真实画面区域算，不能按整幅画布；有裁切时按裁切后的画面
+  const content = (v: { asset: string; crop?: CropRect; sourceSize?: Size }): Box =>
+    contentBox({ width, height }, v.sourceSize ?? assets?.[v.asset]?.probe, v.crop);
   const out: HitBox[] = [];
   const top = 1000;
   // 有卡片时字幕不显示，也点不到
@@ -118,7 +116,7 @@ export function hitBoxes(
       kind: "image",
       // 有关键帧时按此刻插值后的位置算，和画面一致
       box: transformBox(
-        content(img.asset),
+        content(img),
         transformAt(img.transform, img.keyframes, frame - img.from),
         width,
         height,
@@ -136,7 +134,7 @@ export function hitBoxes(
       box: v.main
         ? canvas
         : transformBox(
-            content(v.asset),
+            content(v),
             transformAt(v.transform, v.keyframes, frame - v.from),
             width,
             height,

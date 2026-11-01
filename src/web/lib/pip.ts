@@ -1,7 +1,8 @@
+import { contentBox } from "../../core/crop";
 import { MwError } from "../../core/errors";
 import { type Box, containBox } from "../../core/lint";
 import type { Op } from "../../core/ops";
-import type { Project } from "../../core/schema";
+import type { CropRect, Project } from "../../core/schema";
 
 export { containBox };
 
@@ -36,8 +37,10 @@ export function cornerPlacement(
   canvas: Project["canvas"],
   sourceWidth?: number,
   sourceHeight?: number,
+  crop?: CropRect,
 ): Placement {
-  const content = containBox(canvas.width, canvas.height, sourceWidth, sourceHeight);
+  // 有裁切时按裁切后的画面贴角
+  const content = contentBox(canvas, { width: sourceWidth, height: sourceHeight }, crop);
   const scale = roundScale(SMALL_SCALE);
   // 内容框按 contain 居中，缩放时中心不动，所以 1/3 后的内容尺寸直接乘 scale
   const w = (content.x1 - content.x0) * scale;

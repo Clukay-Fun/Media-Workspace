@@ -56,7 +56,7 @@ export function PipInspector({
 
   const probe = project.assets[item.asset]?.probe;
   const placementFor = (c: Corner) =>
-    cornerPlacement(c, project.canvas, probe?.width, probe?.height);
+    cornerPlacement(c, project.canvas, probe?.width, probe?.height, item.crop);
 
   const active = CORNERS.find((c) => {
     const p = placementFor(c);

@@ -1592,6 +1592,169 @@ textarea:focus-visible {
 
 /* 浮动批注：点选目标后贴近光标出现，提交后回到常规审阅 */
 
+/* 预览里调整裁切：盖住整个画面挡掉点选；框外压暗，虚线是整张素材的范围 */
+.crop-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  overflow: hidden;
+  pointer-events: auto;
+  cursor: default;
+}
+
+.crop-source {
+  position: absolute;
+  outline: 1px dashed rgb(255 255 255 / 0.45);
+  pointer-events: none;
+}
+
+.crop-box {
+  position: absolute;
+  outline: 1.5px solid var(--on-canvas);
+  box-shadow: 0 0 0 9999px rgb(0 0 0 / 0.55);
+  cursor: move;
+  touch-action: none;
+}
+
+/* 三分线，方便对齐人脸 */
+.crop-thirds {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(
+      to right,
+      transparent calc(33.33% - 0.5px),
+      rgb(255 255 255 / 0.3) 0,
+      rgb(255 255 255 / 0.3) calc(33.33% + 0.5px),
+      transparent 0,
+      transparent calc(66.67% - 0.5px),
+      rgb(255 255 255 / 0.3) 0,
+      rgb(255 255 255 / 0.3) calc(66.67% + 0.5px),
+      transparent 0
+    ),
+    linear-gradient(
+      to bottom,
+      transparent calc(33.33% - 0.5px),
+      rgb(255 255 255 / 0.3) 0,
+      rgb(255 255 255 / 0.3) calc(33.33% + 0.5px),
+      transparent 0,
+      transparent calc(66.67% - 0.5px),
+      rgb(255 255 255 / 0.3) 0,
+      rgb(255 255 255 / 0.3) calc(66.67% + 0.5px),
+      transparent 0
+    );
+}
+
+.crop-handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border-radius: 2px;
+  background: var(--on-canvas);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.4);
+  touch-action: none;
+}
+
+.crop-handle.nw {
+  left: 0;
+  top: 0;
+  cursor: nwse-resize;
+}
+.crop-handle.n {
+  left: 50%;
+  top: 0;
+  cursor: ns-resize;
+}
+.crop-handle.ne {
+  left: 100%;
+  top: 0;
+  cursor: nesw-resize;
+}
+.crop-handle.e {
+  left: 100%;
+  top: 50%;
+  cursor: ew-resize;
+}
+.crop-handle.se {
+  left: 100%;
+  top: 100%;
+  cursor: nwse-resize;
+}
+.crop-handle.s {
+  left: 50%;
+  top: 100%;
+  cursor: ns-resize;
+}
+.crop-handle.sw {
+  left: 0;
+  top: 100%;
+  cursor: nesw-resize;
+}
+.crop-handle.w {
+  left: 0;
+  top: 50%;
+  cursor: ew-resize;
+}
+
+/* 边上的手柄做成短条，和角区分开 */
+.crop-handle.n,
+.crop-handle.s {
+  width: 22px;
+  height: 6px;
+  margin: -3px 0 0 -11px;
+}
+
+.crop-handle.e,
+.crop-handle.w {
+  width: 6px;
+  height: 22px;
+  margin: -11px 0 0 -3px;
+}
+
+.crop-size {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 10px;
+  background: rgb(0 0 0 / 0.6);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.crop-toolbar {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 20px);
+  padding: 6px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.crop-toolbar .segmented button {
+  flex: none;
+  padding: 0 8px;
+}
+
+.crop-toolbar-gap {
+  flex: 1;
+  min-width: 4px;
+}
+
 .annotation-hint {
   position: absolute;
   top: 10px;

@@ -5,6 +5,7 @@ import { useStore } from "../../store";
 import { TransitionEditor } from "../transition-editor";
 import { VisualAnims } from "./anims";
 import { Field, InspectorHead, type InspectorProps } from "./common";
+import { CropField } from "./crop";
 import { KeyframesInspector } from "./keyframes";
 import { useNumberDraft } from "./number-draft";
 import { PipInspector } from "./pip";
@@ -38,6 +39,9 @@ export function ClipInspector(props: InspectorProps) {
         </p>
       )}
       {pip && <PipInspector project={project} id={id} item={pip} locked={track.locked} />}
+      {clip && track.kind === "video" && (
+        <CropField project={project} id={id} crop={clip.crop} locked={track.locked} />
+      )}
       {pip && <VisualAnims id={id} item={pip} locked={track.locked} />}
       {clip && (
         <SpeedField

@@ -5,7 +5,7 @@ import { planSplit } from "../core/edit";
 import { Layout, type LayoutInput } from "../core/layout";
 import type { Op } from "../core/ops";
 import type { NewComment, Review } from "../core/review";
-import type { Project } from "../core/schema";
+import type { CropRect, Project } from "../core/schema";
 import { type Api, ApiFailure, type LiveEvent } from "./data/client";
 import { msOfFrame } from "./lib/timeline";
 
@@ -15,6 +15,8 @@ import { msOfFrame } from "./lib/timeline";
 /** 右栏三页：属性（选中元素能点的选项；没选中时是工程概览和章节）、批注、AI 改动 */
 export type SideTab = "props" | "comments" | "changes";
 export type CaptionTab = "edit" | "style" | "list";
+/** 预览里调整裁切：拖动中的框（素材 0–1 坐标）和锁定的像素宽高比（null 为自由） */
+export type CropEditing = { id: string; crop: CropRect; aspect: number | null };
 
 /** 左栏两页：素材、样式库 */
 export type LeftTab = "assets" | "styles";
@@ -95,6 +97,8 @@ type State = {
   snap: boolean;
   /** 选中字幕时右栏看哪一页；换一句字幕时保持不变 */
   captionTab: CaptionTab;
+  /** 正在预览里调整裁切的元素（问题 20）；调整时预览临时显示整张素材 */
+  cropEditing: CropEditing | null;
   /** 正在等待用户在预览画面中点选批注目标 */
   annotating: boolean;
   /** 点选画面目标时钉下的位置（画布像素），写批注时一起提交 */
@@ -129,6 +133,7 @@ type State = {
   saveLayout(next: LayoutInput): Promise<void>;
   toggleSnap(): void;
   setCaptionTab(tab: CaptionTab): void;
+  setCropEditing(editing: CropEditing | null): void;
   setAnnotating(on: boolean): void;
   setPin(pin: State["pin"]): void;
   dismissAiChange(): void;
@@ -233,6 +238,7 @@ export const useStore = create<State>((set, get) => {
     layoutEditing: false,
     snap: true,
     captionTab: "edit",
+    cropEditing: null,
     annotating: false,
     pin: null,
     revealNonce: 0,
@@ -430,6 +436,7 @@ export const useStore = create<State>((set, get) => {
     },
     toggleSnap: () => set((s) => ({ snap: !s.snap })),
     setCaptionTab: (captionTab) => set({ captionTab }),
+    setCropEditing: (cropEditing) => set({ cropEditing }),
     setAnnotating: (annotating) =>
       set((s) => ({
         annotating,
