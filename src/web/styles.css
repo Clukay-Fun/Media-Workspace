@@ -1649,8 +1649,8 @@ textarea:focus-visible {
   z-index: 3;
   display: flex;
   align-items: center;
-  height: 34px;
-  padding: 0 6px 0 4px;
+  height: 26px;
+  padding: 0 4px;
   border-bottom: 1px solid var(--line);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   background: var(--panel);
@@ -1663,9 +1663,14 @@ textarea:focus-visible {
   min-width: 0;
 }
 
+.tl-toolbar .icon-btn {
+  width: 22px;
+  height: 22px;
+}
+
 .tl-delete {
-  height: 30px;
-  padding: 0 8px;
+  height: 22px;
+  padding: 0 6px;
   border-radius: var(--radius);
   color: var(--text-2);
   font-size: 12px;
@@ -1725,10 +1730,10 @@ textarea:focus-visible {
   padding-left: 6px;
 }
 
-.tl-zoom-step {
-  width: 24px;
-  height: 24px;
-  font-size: 17px;
+.tl-toolbar .tl-zoom-step {
+  width: 20px;
+  height: 20px;
+  font-size: 15px;
   line-height: 1;
 }
 
@@ -1741,7 +1746,7 @@ textarea:focus-visible {
 }
 
 .tl-zoom-fit {
-  height: 24px;
+  height: 20px;
   padding: 0 7px;
   border-radius: 6px;
   color: var(--text-2);
@@ -1756,7 +1761,7 @@ textarea:focus-visible {
 
 .snap-line {
   position: absolute;
-  top: 34px;
+  top: 26px;
   bottom: 0;
   width: 1px;
   margin-left: -0.5px;
@@ -2527,7 +2532,7 @@ textarea:focus-visible {
 
 .playhead {
   position: absolute;
-  top: 36px;
+  top: 28px;
   bottom: 0;
   z-index: 4;
   width: 14px;
@@ -2548,7 +2553,7 @@ textarea:focus-visible {
 
 .playhead-grip {
   position: absolute;
-  top: 36px;
+  top: 28px;
   z-index: 4;
   width: 14px;
   height: 12px;
