@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { FloatClip, ImageItem, MainClip } from "../../../core/schema";
 import type { Anim } from "../../../core/text-style";
 import { useStore } from "../../store";
@@ -23,6 +24,8 @@ export function VisualAnims({
   item: ImageItem | FloatClip | MainClip;
   locked: boolean;
 }) {
+  const [tab, setTab] = useState<"in" | "out" | "loop">("in");
+
   const set = (key: "animIn" | "animOut" | "animLoop", anim: Anim) => {
     const label =
       anim.preset === "none"
@@ -34,32 +37,70 @@ export function VisualAnims({
             : "已加循环动画";
     void useStore.getState().submit([{ op: "item.update", id, set: { [key]: anim } }], label);
   };
+
   return (
-    <>
-      <AnimField
-        label="入场动画"
-        anim={item.animIn ?? null}
-        locked={locked}
-        onChange={(a) => set("animIn", a)}
-      />
-      <AnimField
-        label="出场动画"
-        anim={item.animOut ?? null}
-        locked={locked}
-        onChange={(a) => set("animOut", a)}
-      />
-      <AnimField
-        label="循环动画"
-        anim={item.animLoop ?? null}
-        presets={LOOPS}
-        // 呼吸：约 2.4 秒一个周期；幅度 ±6%（intensity 2）——验收时 ±3% 看不出来
-        defaultMs={2400}
-        extra={{ intensity: 2 }}
-        durationLabel="周期（毫秒）"
-        locked={locked}
-        onChange={(a) => set("animLoop", a)}
-      />
-    </>
+    <Field label="动画">
+      <div className="segmented anim-tabs" role="tablist" aria-label="动画分类">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "in"}
+          className={tab === "in" ? "on" : undefined}
+          onClick={() => setTab("in")}
+        >
+          入场
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "out"}
+          className={tab === "out" ? "on" : undefined}
+          onClick={() => setTab("out")}
+        >
+          出场
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "loop"}
+          className={tab === "loop" ? "on" : undefined}
+          onClick={() => setTab("loop")}
+        >
+          循环
+        </button>
+      </div>
+      <div className="anim-tab-panel">
+        {tab === "in" && (
+          <AnimControls
+            label="入场动画"
+            anim={item.animIn ?? null}
+            locked={locked}
+            onChange={(a) => set("animIn", a)}
+          />
+        )}
+        {tab === "out" && (
+          <AnimControls
+            label="出场动画"
+            anim={item.animOut ?? null}
+            locked={locked}
+            onChange={(a) => set("animOut", a)}
+          />
+        )}
+        {tab === "loop" && (
+          <AnimControls
+            label="循环动画"
+            anim={item.animLoop ?? null}
+            presets={LOOPS}
+            // 呼吸：约 2.4 秒一个周期；幅度 ±6%（intensity 2）——验收时 ±3% 看不出来
+            defaultMs={2400}
+            extra={{ intensity: 2 }}
+            durationLabel="周期（毫秒）"
+            locked={locked}
+            onChange={(a) => set("animLoop", a)}
+          />
+        )}
+      </div>
+    </Field>
   );
 }
 
@@ -73,7 +114,7 @@ const PRESETS: { value: Anim["preset"]; label: string }[] = [
 ];
 
 /** 入场 / 出场动画：先选预设，再调时长；「无」也是一条合法动画（preset: none） */
-function AnimField({
+function AnimControls({
   label,
   anim,
   presets = PRESETS,
@@ -94,39 +135,37 @@ function AnimField({
   onChange: (a: Anim) => void;
 }) {
   return (
-    <Field label={label}>
-      <div className="insp-row">
-        <select
-          className="select"
-          value={anim?.preset ?? "none"}
-          disabled={locked}
-          aria-label={label}
-          onChange={(e) => {
-            const preset = e.target.value as Anim["preset"];
-            if (preset === "none") {
-              onChange({ preset: "none", durationMs: defaultMs, easing: "ease-out" });
-              return;
-            }
-            const base = anim && anim.preset !== "none" ? anim : null;
-            onChange({
-              ...(base ?? extra ?? {}),
-              preset,
-              durationMs: base?.durationMs ?? defaultMs,
-              easing: base?.easing ?? "ease-out",
-            });
-          }}
-        >
-          {presets.map((p) => (
-            <option key={p.value} value={p.value}>
-              {p.label}
-            </option>
-          ))}
-        </select>
-        {anim && anim.preset !== "none" && (
-          <AnimDuration anim={anim} label={durationLabel} locked={locked} onChange={onChange} />
-        )}
-      </div>
-    </Field>
+    <div className="insp-row">
+      <select
+        className="select"
+        value={anim?.preset ?? "none"}
+        disabled={locked}
+        aria-label={label}
+        onChange={(e) => {
+          const preset = e.target.value as Anim["preset"];
+          if (preset === "none") {
+            onChange({ preset: "none", durationMs: defaultMs, easing: "ease-out" });
+            return;
+          }
+          const base = anim && anim.preset !== "none" ? anim : null;
+          onChange({
+            ...(base ?? extra ?? {}),
+            preset,
+            durationMs: base?.durationMs ?? defaultMs,
+            easing: base?.easing ?? "ease-out",
+          });
+        }}
+      >
+        {presets.map((p) => (
+          <option key={p.value} value={p.value}>
+            {p.label}
+          </option>
+        ))}
+      </select>
+      {anim && anim.preset !== "none" && (
+        <AnimDuration anim={anim} label={durationLabel} locked={locked} onChange={onChange} />
+      )}
+    </div>
   );
 }
 

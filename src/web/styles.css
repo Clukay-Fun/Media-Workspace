@@ -3111,6 +3111,10 @@ textarea:focus-visible {
   background: var(--raised);
 }
 
+.anim-tab-panel {
+  margin-top: 8px;
+}
+
 .segmented button {
   flex: 1;
   height: 28px;
