@@ -7,7 +7,7 @@ import type { Anim, TextStyle } from "../../../core/text-style";
 import { ApiFailure } from "../../data/client";
 import type { ItemRef } from "../../lib/project";
 import { useStore } from "../../store";
-import { editStyle, Field } from "./common";
+import { editStyle, Field, isImeComposing } from "./common";
 
 type TextStyleEditorProps = {
   project: Project;
@@ -580,6 +580,7 @@ function NumberControl({
           commit();
         }}
         onKeyDown={(e) => {
+          if (isImeComposing(e)) return;
           if (e.key === "Enter") {
             e.preventDefault();
             commit();

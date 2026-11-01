@@ -313,3 +313,21 @@ function describeAnchor(project: Project, at: Anchor): string {
   }
   return cap ? `跟随字幕「${cap.text}」开始${off}` : `跟随字幕 ${at.caption}${off}`;
 }
+
+//#region 输入法状态判断
+
+/**
+ * 判断键盘事件是否处于输入法组合输入（选字/组字）状态
+ *
+ * 用处，参数:
+ *   - e: React 键盘事件或原生键盘事件
+ *
+ * 功能:
+ *   - 在 isComposing 为 true 或 keyCode 为 229 时返回 true，防止输入法选字回车误提交或失焦
+ */
+export function isImeComposing(e: React.KeyboardEvent<HTMLElement> | KeyboardEvent): boolean {
+  const isComp = "nativeEvent" in e ? e.nativeEvent.isComposing : e.isComposing;
+  return Boolean(isComp) || e.keyCode === 229;
+}
+
+//#endregion

@@ -4,7 +4,7 @@ import { BUILTIN_STYLES } from "../../../core/presets";
 import type { Project } from "../../../core/schema";
 import { frameOfMs, msOfFrame, timecode } from "../../lib/timeline";
 import { useStore } from "../../store";
-import { Field } from "./common";
+import { Field, isImeComposing } from "./common";
 
 type Cover = NonNullable<Project["cover"]>;
 type CoverTitle = NonNullable<Cover["title"]>;
@@ -124,6 +124,7 @@ export function CoverPanel() {
           onChange={(e) => setLines(e.target.value)}
           onBlur={() => submitTitle(lines, styleId)}
           onKeyDown={(e) => {
+            if (isImeComposing(e)) return;
             if (e.key === "Escape") {
               setLines(linesOf(title).join("\n"));
               e.currentTarget.blur();
