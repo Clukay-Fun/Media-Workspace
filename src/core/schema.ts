@@ -8,15 +8,11 @@ import { PROJECT_FORMAT_VERSION } from "./version";
 export const Id = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/, "ID 只能包含字母、数字、- 和 _");
 const Ms = z.number().int().nonnegative();
 
-export const SafeAreaPreset = z.enum(["all", "douyin", "channels", "xiaohongshu"]);
-
 export const Canvas = z.strictObject({
   width: z.number().int().positive().default(1080),
   height: z.number().int().positive().default(1920),
   fps: z.number().int().positive().max(120).default(30),
   background: Color.default("#000000"),
-  // 用户主要发视频号（2026-11-01），新工程默认按视频号的界面边距；老工程文件里写着什么就是什么
-  safeArea: z.strictObject({ preset: SafeAreaPreset }).default({ preset: "channels" }),
 });
 
 export const Theme = z.strictObject({

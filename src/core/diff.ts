@@ -301,7 +301,6 @@ function fmt(ctx: Ctx, key: string, v: unknown): string {
     if (key === "transform") return transform(v);
     if (key === "crop") return crop(v);
     if (key === "at") return anchor(ctx, v);
-    if (key === "safeArea" && typeof v.preset === "string") return v.preset;
     if (typeof v.preset === "string") return PRESET_LABEL[v.preset] ?? v.preset;
     if (key === "transitionIn" && typeof v.type === "string")
       return TRANSITION_LABEL[v.type] ?? v.type;

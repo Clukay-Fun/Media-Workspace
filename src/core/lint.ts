@@ -11,7 +11,7 @@ import {
 import { containBox, contentBox, cropLayout, croppedSize, faceInCrop } from "./crop";
 import { typicalFace } from "./frame";
 import type { Layout } from "./layout";
-import { SAFE_AREA_LABEL, safeAreaFor } from "./safe-area";
+import { safeAreaFor } from "./safe-area";
 import type { Project } from "./schema";
 import type { TextStyle } from "./text-style";
 import { frameToMs } from "./time";
@@ -218,7 +218,7 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
   // 2. 字号和安全区
   // 按短边换算：横屏 1920×1080 和竖屏 1080×1920 全屏看时字一样大
   const min = (opts.minFontSize ?? 40) * (Math.min(width, height) / 1080);
-  const safe = safeAreaFor(project.canvas.safeArea.preset, width, height);
+  const safe = safeAreaFor(width, height);
   const outside = new Map<string, { count: number; out: string }>();
   const inner: Box = {
     x0: safe.left,
@@ -257,8 +257,8 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
         id: p.id,
         atMs: ms(p.from),
         message: opts.layout
-          ? `文字超出了${SAFE_AREA_LABEL[project.canvas.safeArea.preset]}安全区（${out.join("、")}）；位置按账号版式，只作参考，不用改`
-          : `文字超出了${SAFE_AREA_LABEL[project.canvas.safeArea.preset]}安全区（${out.join("、")}），可能被平台的按钮或标题挡住`,
+          ? `文字超出了视频号安全区（${out.join("、")}）；位置按账号版式，只作参考，不用改`
+          : `文字超出了视频号安全区（${out.join("、")}），可能被平台的按钮或标题挡住`,
         // 有账号版式时位置以版式为准，通用安全区只作参考（0025）
         ...(opts.layout ? { level: "hint" as const } : {}),
       });

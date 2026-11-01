@@ -536,9 +536,8 @@ describe("asset.cache", () => {
 });
 
 describe("canvas.update / theme.update 只改写了的字段", () => {
-  it("只改宽高时安全区、帧率、背景色不被重置成默认值", () => {
+  it("只改宽高时帧率、背景色不被重置成默认值", () => {
     const p = project();
-    p.canvas.safeArea = { preset: "all" };
     p.canvas.fps = 25;
     p.canvas.background = "#112233";
     p.theme.font = "noto-sans-sc";
@@ -551,7 +550,6 @@ describe("canvas.update / theme.update 只改写了的字段", () => {
       height: 1080,
       fps: 25,
       background: "#112233",
-      safeArea: { preset: "all" },
     });
     expect(out.theme).toEqual({ accent: "#FF0000", font: "noto-sans-sc" });
   });

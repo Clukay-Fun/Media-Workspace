@@ -13,7 +13,7 @@ import { guidesInPx, type LayoutFace } from "../core/layout";
 import { lintProject } from "../core/lint";
 import { applyOps, Op } from "../core/ops";
 import { BUILTIN_STYLES } from "../core/presets";
-import { SAFE_AREAS, type SafeAreaName, safeAreaFor } from "../core/safe-area";
+import { SAFE_AREA, SAFE_AREA_LANDSCAPE, safeAreaFor } from "../core/safe-area";
 import { type Caption, isMainClip, type MainClip } from "../core/schema";
 import { detectSilence, edgeCutRanges, edgeSilences, silenceCutRanges } from "../core/silence";
 import { AnimPresetName, charsPerLine, TextStyle } from "../core/text-style";
@@ -835,7 +835,8 @@ export type PreviewOptions = {
   frame?: number;
   /** 均匀截 n 帧拼成网格图 */
   sheet?: number;
-  safeArea?: string | null;
+  /** 叠加视频号安全区 */
+  safeArea?: boolean;
   guides?: boolean;
   out?: string;
   onLog?: (s: string) => void;
@@ -862,7 +863,7 @@ export async function previewProject(dir: string, o: PreviewOptions) {
   // 参考线：账号版式的（所有工程共用）加上这个工程自己的
   const layout = o.guides ? await getLayout() : null;
   const overlays = overlayFilters(tl, {
-    safeArea: o.safeArea ?? null,
+    safeArea: Boolean(o.safeArea),
     guides: o.guides
       ? [...(layout ? guidesInPx(layout, tl.width, tl.height) : []), ...editor.guides.items]
       : [],
@@ -1017,7 +1018,7 @@ export function guideInfo() {
     animationPresets: AnimPresetName.options,
     templates: Object.values(TEMPLATES).map((t) => t.meta),
     builtinStyles: Object.keys(BUILTIN_STYLES),
-    safeAreas: SAFE_AREAS,
+    safeArea: { portrait: SAFE_AREA, landscape: SAFE_AREA_LANDSCAPE },
   };
 }
 
@@ -1033,13 +1034,11 @@ function frameAt(tl: ResolvedTimeline, at: string): number {
 
 function overlayFilters(
   tl: ResolvedTimeline,
-  o: { safeArea: string | null; guides: { axis: "h" | "v"; pos: number }[] },
+  o: { safeArea: boolean; guides: { axis: "h" | "v"; pos: number }[] },
 ): string {
   const f: string[] = [];
   if (o.safeArea) {
-    if (!(o.safeArea in SAFE_AREAS))
-      throw new MwError("USAGE", `没有这个安全区预设：${o.safeArea}`);
-    const s = safeAreaFor(o.safeArea as SafeAreaName, tl.width, tl.height);
+    const s = safeAreaFor(tl.width, tl.height);
     const w = tl.width - s.left - s.right;
     const h = tl.height - s.top - s.bottom;
     f.push(`drawbox=x=${s.left}:y=${s.top}:w=${w}:h=${h}:color=red@0.8:t=4`);

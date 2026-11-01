@@ -2,31 +2,19 @@ import type { Slot } from "./schema";
 
 export type Insets = { top: number; bottom: number; left: number; right: number };
 
-/**
- * 竖屏按 1080×1920 估计的边距（PLAN 5.5），其他尺寸按比例缩放。
- * 视频号 2026-11-01 用实机截图核对过：顶部按钮到 y≈177、底部作者名从 y≈1574 起（留了余量）、右侧按钮离右边约 149，
- * 屏幕比 9:16 窄时左右各裁掉约 58
- */
-export const SAFE_AREAS = {
-  douyin: { top: 160, bottom: 420, left: 60, right: 160 },
-  channels: { top: 170, bottom: 400, left: 60, right: 150 },
-  xiaohongshu: { top: 180, bottom: 360, left: 60, right: 150 },
-  all: { top: 180, bottom: 440, left: 60, right: 170 },
-} as const satisfies Record<string, Insets>;
-
-export type SafeAreaName = keyof typeof SAFE_AREAS;
+// 只按视频号（用户只发视频号，2026-11-01，docs/decisions/0031）。两张表都用 2026-11-01 的实机截图核对过。
 
 /**
- * 横屏（16:9）按 1920×1080 的边距（docs/decisions/0030）。视频号按 2026-11-01 的实机截图量过：
- * 全屏横看时按钮在画面外的黑边里、进度条在画面下沿以下，竖着刷到横屏视频时画面上也没有遮挡；
- * 只给没有黑边的 16:9 手机留出角上按钮的位置（左右 5%）。抖音、小红书还没截图，先按估计
+ * 竖屏按 1080×1920 的边距（PLAN 5.5），其他尺寸按比例缩放。实测：顶部按钮到 y≈177、
+ * 底部作者名从 y≈1574 起（留了余量）、右侧按钮离右边约 149，屏幕比 9:16 窄时左右各裁掉约 58
  */
-export const SAFE_AREAS_LANDSCAPE = {
-  douyin: { top: 60, bottom: 150, left: 90, right: 90 },
-  channels: { top: 60, bottom: 60, left: 96, right: 96 },
-  xiaohongshu: { top: 60, bottom: 140, left: 90, right: 90 },
-  all: { top: 70, bottom: 160, left: 100, right: 100 },
-} as const satisfies Record<SafeAreaName, Insets>;
+export const SAFE_AREA: Insets = { top: 170, bottom: 400, left: 60, right: 150 };
+
+/**
+ * 横屏按 1920×1080 的边距（docs/decisions/0030）：全屏横看时按钮在画面外的黑边里、进度条在画面下沿以下，
+ * 竖着刷到横屏视频时画面上也没有遮挡；只给没有黑边的 16:9 手机留出角上按钮的位置（左右 5%）
+ */
+export const SAFE_AREA_LANDSCAPE: Insets = { top: 60, bottom: 60, left: 96, right: 96 };
 
 export const isLandscape = (width: number, height: number) => width > height;
 
@@ -37,17 +25,9 @@ export const isLandscape = (width: number, height: number) => width > height;
 export const captionLine = (width: number, height: number) =>
   isLandscape(width, height) ? 0.84 : 1167 / 1920;
 
-/** 给人看的名字（lint 提示里用） */
-export const SAFE_AREA_LABEL: Record<SafeAreaName, string> = {
-  all: "三平台",
-  douyin: "抖音",
-  channels: "视频号",
-  xiaohongshu: "小红书",
-};
-
-export function safeAreaFor(name: SafeAreaName, width: number, height: number): Insets {
+export function safeAreaFor(width: number, height: number): Insets {
   const landscape = isLandscape(width, height);
-  const base = (landscape ? SAFE_AREAS_LANDSCAPE : SAFE_AREAS)[name];
+  const base = landscape ? SAFE_AREA_LANDSCAPE : SAFE_AREA;
   const sx = width / (landscape ? 1920 : 1080);
   const sy = height / (landscape ? 1080 : 1920);
   return {
@@ -63,13 +43,8 @@ export function safeAreaFor(name: SafeAreaName, width: number, height: number): 
  * 安全区左右不对称，取它的中线会偏左），纵向按画面比例。
  * caption 槽位取字幕中心线（captionLine）。
  */
-export function slotCenter(
-  slot: Slot,
-  name: SafeAreaName,
-  width: number,
-  height: number,
-): { x: number; y: number } {
-  const s = safeAreaFor(name, width, height);
+export function slotCenter(slot: Slot, width: number, height: number): { x: number; y: number } {
+  const s = safeAreaFor(width, height);
   const ys: Record<Slot, number> = {
     top: s.top + height * 0.07,
     "upper-third": height * 0.3,

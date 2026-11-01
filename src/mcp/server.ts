@@ -499,10 +499,7 @@ export function createMcpServer(): McpServer {
           .max(48)
           .optional()
           .describe("均匀抽取的帧数，拼成网格图"),
-        safeArea: z
-          .enum(["all", "douyin", "channels", "xiaohongshu"])
-          .optional()
-          .describe("叠加的安全区：全部、抖音、视频号或小红书"),
+        safeArea: z.boolean().default(false).describe("叠加视频号安全区（红框）"),
         guides: z.boolean().default(false).describe("叠加账号版式参考线"),
       },
     },

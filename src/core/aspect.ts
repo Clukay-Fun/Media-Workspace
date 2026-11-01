@@ -30,19 +30,17 @@ export function aspectSize(target: AspectName, canvas: Size): Size {
 /** 内置样式、旧的模板库样式是按这个画布定的数值 */
 export const STYLE_REFERENCE: Size = { width: 1080, height: 1920 };
 
-type CanvasLike = Size & { safeArea: Project["canvas"]["safeArea"] };
-
 /** 把按 from 画布定的样式换算到 canvas 上（和切换画幅同一套规则）；尺寸相同时原样返回 */
-export function fitStyle(style: TextStyle, from: Size, canvas: CanvasLike): TextStyle {
+export function fitStyle(style: TextStyle, from: Size, canvas: Size): TextStyle {
   if (from.width === canvas.width && from.height === canvas.height) return style;
-  return mapper(from, canvas, canvas.safeArea.preset).style(style);
+  return mapper(from, canvas).style(style);
 }
 
 const builtinCache = new Map<string, Record<string, TextStyle>>();
 
 /** 按画布换算好的内置样式。工程里没有某个样式时退回的就是它，横屏、720 的工程也对得上 */
-export function builtinStyles(canvas: CanvasLike): Record<string, TextStyle> {
-  const key = `${canvas.width}x${canvas.height}:${canvas.safeArea.preset}`;
+export function builtinStyles(canvas: Size): Record<string, TextStyle> {
+  const key = `${canvas.width}x${canvas.height}`;
   let out = builtinCache.get(key);
   if (!out) {
     out = Object.fromEntries(
@@ -66,14 +64,14 @@ export function planAspect(project: Project, target: AspectName): AspectPlan {
   const size = aspectSize(target, from);
   if (size.width === from.width && size.height === from.height)
     return { ops: [], size, skipped: [] };
-  const m = mapper(from, size, project.canvas.safeArea.preset);
+  const m = mapper(from, size);
   const ops: Op[] = [{ op: "canvas.update", set: { width: size.width, height: size.height } }];
 
   for (const [id, style] of Object.entries(project.styles)) {
     ops.push({ op: "style.update", id, set: m.style(style) });
   }
   // 工程里没有的内置样式按新画布写进去，以后套用时直接是对的数值
-  const builtins = builtinStyles({ ...size, safeArea: project.canvas.safeArea });
+  const builtins = builtinStyles(size);
   for (const [id, style] of Object.entries(builtins)) {
     if (!project.styles[id]) ops.push({ op: "style.add", id, style });
   }
@@ -167,7 +165,7 @@ const r0 = (v: number) => Math.round(v);
 const r1 = (v: number) => Math.round(v * 10) / 10;
 const r3 = (v: number) => Math.round(v * 1000) / 1000;
 
-function mapper(from: Size, to: Size, preset: Project["canvas"]["safeArea"]["preset"]) {
+function mapper(from: Size, to: Size) {
   const W = from.width;
   const H = from.height;
   const W2 = to.width;
@@ -180,7 +178,7 @@ function mapper(from: Size, to: Size, preset: Project["canvas"]["safeArea"]["pre
   // 文字的纵向位置分段换算：顶部安全区、画面中线、字幕线各自对上，标题还在上面、字幕还在下面
   const knots = (s: Size) => [
     0,
-    safeAreaFor(preset, s.width, s.height).top / s.height,
+    safeAreaFor(s.width, s.height).top / s.height,
     0.5,
     captionLine(s.width, s.height),
     1,

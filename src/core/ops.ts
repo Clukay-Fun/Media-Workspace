@@ -36,7 +36,6 @@ const CanvasPatch = z.strictObject({
   height: C.height.unwrap().optional(),
   fps: C.fps.unwrap().optional(),
   background: C.background.unwrap().optional(),
-  safeArea: C.safeArea.unwrap().optional(),
 });
 const ThemePatch = z.strictObject({
   accent: Theme.shape.accent.unwrap().optional(),

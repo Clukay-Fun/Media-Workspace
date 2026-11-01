@@ -11,7 +11,7 @@ describe("卡片占位", () => {
 
   it("横屏：字号和内边距按短边，和竖屏一样大；小卡、半屏卡在横屏安全区里", () => {
     expect(cardScale(1920, 1080)).toBe(cardScale(1080, 1920));
-    const safe = safeAreaFor("all", 1920, 1080);
+    const safe = safeAreaFor(1920, 1080);
     for (const size of ["small", "half"] as const) {
       const b = cardBox(size, 1920, 1080);
       expect(b.y1, size).toBeLessThanOrEqual(1080 - safe.bottom);

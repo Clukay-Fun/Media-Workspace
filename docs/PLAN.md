@@ -190,8 +190,7 @@ AI 应用（Codex、Claude Code 等）通过 CLI 或本地 MCP 提交操作；
 {
   "version": 1,
   "revision": 42,
-  "canvas": { "width": 1080, "height": 1920, "fps": 30, "background": "#000000",
-              "safeArea": { "preset": "all" } },
+  "canvas": { "width": 1080, "height": 1920, "fps": 30, "background": "#000000" },
   "theme": { "accent": "#FFD400", "font": "alibaba-puhuiti-3" },
   "assets": {
     "a1": { "kind": "video", "path": "/Users/…/剪辑前.mov", "fingerprint": "…", "probe": { … } },
@@ -298,14 +297,12 @@ AI 应用（Codex、Claude Code 等）通过 CLI 或本地 MCP 提交操作；
 
 - 画布坐标以像素为单位，原点在左上角。`transform`：`x`、`y`（中心点）、`scale`、`rotation`、`opacity`、`radius`（圆角）、`crop`（画中画可以裁切，主轨不裁切）。
 - 槽位：`top`、`upper-third`、`center`、`lower-third`、`caption`。AI 可以只写槽位，`compile` 会结合安全区换算成坐标；人在界面上拖动后会写入具体坐标。
-- 安全区预设（1080×1920，像素边距，初始估计值，阶段 B 用平台截图校准）：
+- 安全区只按视频号（v9 起去掉了平台预设，docs/decisions/0031），像素边距，2026-11-01 用实机截图核对：
 
-| 预设 | 上 | 下 | 左 | 右 |
+| 画幅 | 上 | 下 | 左 | 右 |
 |---|---|---|---|---|
-| `douyin` | 160 | 420 | 60 | 160 |
-| `channels`（视频号） | 170 | 400 | 60 | 150 |
-| `xiaohongshu` | 180 | 360 | 60 | 150 |
-| **`all`（默认）** | 180 | 440 | 60 | 170 |
+| 竖屏 1080×1920 | 170 | 400 | 60 | 150 |
+| 横屏 1920×1080 | 60 | 60 | 96 | 96 |
 
 ### 5.6 `editor.json`（编辑器状态）
 

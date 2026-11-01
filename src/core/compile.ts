@@ -246,7 +246,7 @@ export function compile(project: Project): ResolvedTimeline {
     t: Transform | undefined,
     slot?: Parameters<typeof slotCenter>[0],
   ): FullTransform => {
-    const pos = slot ? slotCenter(slot, project.canvas.safeArea.preset, width, height) : null;
+    const pos = slot ? slotCenter(slot, width, height) : null;
     return { ...base, ...(pos ?? {}), ...stripUndefined(t ?? {}) };
   };
   const keyframes = (

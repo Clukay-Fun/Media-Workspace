@@ -4,7 +4,7 @@ import type { TextStyle } from "../core/text-style";
 
 // 卡片的占位（docs/decisions/0022）。竖屏、横屏各一套比例（横屏见 docs/decisions/0030）；
 // 字号、内边距都按短边算，两种画幅全屏看时一样大。
-// 小卡、半屏卡的文字要在「全平台」安全区里（下沿 440、右边 170，1080×1920），阶段 E 验收时四个工程都超出了下沿。
+// 小卡、半屏卡的文字要在安全区里（当时按「全平台」下沿 440、右边 170 定，比现在只按视频号的更严），阶段 E 验收时四个工程都超出了下沿。
 // 有卡时字幕隐藏（core/compile 的 cardSpans）。半屏卡在下半屏，出现时主画面上移 HALF_CARD_SHIFT；
 // 全屏卡盖住整个画面和标题条，底板要不透明。
 
@@ -15,7 +15,7 @@ const BOXES: Record<CardSize, [number, number, number, number]> = {
 };
 
 /**
- * 横屏：字幕隐藏时卡片占下方字幕那一带，下沿在横屏「三平台」安全区（下 160 / 1080）以内；
+ * 横屏：字幕隐藏时卡片占下方字幕那一带，下沿离底边留 15%（比视频号横屏安全区宽松）；
  * 小卡和竖屏小卡一样高（按短边），宽一些；半屏卡仍在下半部，主画面照样上移
  */
 const LANDSCAPE_BOXES: Record<CardSize, [number, number, number, number]> = {

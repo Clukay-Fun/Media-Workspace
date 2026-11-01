@@ -36,7 +36,7 @@ export function SafeAreaOverlay({ width, height, scale }: Dims) {
     );
   }
   if (mode === "channels") {
-    const s = safeAreaFor("channels", width, height);
+    const s = safeAreaFor(width, height);
     return (
       <div
         className="safe-area"

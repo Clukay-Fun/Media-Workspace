@@ -85,6 +85,18 @@ describe("migrate", () => {
     expect(migrate(v7)).not.toHaveProperty("tracks.0.items.0.crop");
   });
 
+  it("v8 → v9：去掉画布上的平台安全区预设，其它画布字段不变", () => {
+    const canvas = { width: 1080, height: 1920, fps: 25, background: "#112233" };
+    const v8 = { version: 8, revision: 2, canvas: { ...canvas, safeArea: { preset: "all" } } };
+    expect(migrate(v8)).toEqual({ version: PROJECT_FORMAT_VERSION, revision: 2, canvas });
+    // 没写 safeArea 的老工程原样升版本
+    expect(migrate({ version: 8, revision: 0, canvas })).toEqual({
+      version: PROJECT_FORMAT_VERSION,
+      revision: 0,
+      canvas,
+    });
+  });
+
   it("当前版本原样返回", () => {
     const p = { version: PROJECT_FORMAT_VERSION, revision: 0 };
     expect(migrate(p)).toBe(p);

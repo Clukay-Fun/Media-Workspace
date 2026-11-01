@@ -22,7 +22,16 @@ const STEPS: Record<number, (p: Raw) => Raw> = {
   6: (p) => ({ ...p, version: 7, ...coverV7(p) }),
   // 7 → 8：主轨、画中画和图片新增可选裁切 crop；省略时显示完整素材（docs/decisions/0029）
   7: (p) => ({ ...p, version: 8 }),
+  // 8 → 9：只按视频号的安全区，去掉画布上的平台预设 canvas.safeArea（docs/decisions/0031）
+  8: (p) => ({ ...p, version: 9, ...dropSafeArea(p) }),
 };
+
+function dropSafeArea(p: Raw): Raw {
+  const canvas = p.canvas as Raw | undefined;
+  if (!canvas || typeof canvas !== "object" || !("safeArea" in canvas)) return {};
+  const { safeArea: _, ...rest } = canvas;
+  return { canvas: rest };
+}
 
 /** 只有封面标题是旧的叠加层 ID 时才改 cover，其它情况原样不动 */
 function coverV7(p: Raw): Raw {

@@ -499,7 +499,7 @@ cli
   .option("--at <ms|id>", "毫秒，或者条目 ID（取它显示时间的 80% 处）")
   .option("--frame <n>", "帧号")
   .option("--sheet [n]", "均匀截 n 帧拼成网格图（默认 12）")
-  .option("--safe-area [preset]", "叠加安全区（all/douyin/channels/xiaohongshu）")
+  .option("--safe-area", "叠加视频号安全区")
   .option("--guides", "叠加参考线（账号版式的和这个工程 editor.json 里的）")
   .option("--out <file>", "输出 PNG")
   .action(
@@ -510,7 +510,7 @@ cli
           at?: string;
           frame?: number;
           sheet?: number | boolean;
-          safeArea?: string | boolean;
+          safeArea?: boolean;
           guides?: boolean;
           out?: string;
         },
@@ -525,12 +525,7 @@ cli
                 : typeof o.sheet === "number"
                   ? o.sheet
                   : 12,
-            safeArea:
-              o.safeArea === undefined || o.safeArea === false
-                ? null
-                : typeof o.safeArea === "string" && o.safeArea !== ""
-                  ? o.safeArea
-                  : "all",
+            safeArea: Boolean(o.safeArea),
             guides: Boolean(o.guides),
             out: o.out,
             onLog: log,
