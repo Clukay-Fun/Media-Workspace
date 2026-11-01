@@ -36,6 +36,12 @@ export type DragPlan = {
 /** 最短保留一帧多一点，避免拖成 0 长度 */
 const MIN_MS = 40;
 
+/** 选中后方向键的步长：一帧，按住 Shift 是一秒 */
+export function nudgeDeltaMs(fps: number, shift: boolean, direction: -1 | 1): number {
+  const step = shift ? 1000 : 1000 / Math.max(1, fps);
+  return direction * step;
+}
+
 type Found = { track: Track; index: number; item: Track["items"][number] };
 
 function findItem(project: Project, id: string): Found {

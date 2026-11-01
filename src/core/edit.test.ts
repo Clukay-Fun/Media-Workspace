@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { compile } from "./compile";
-import { planDrag, planSplit, planTrackMove, planTransform } from "./edit";
+import { nudgeDeltaMs, planDrag, planSplit, planTrackMove, planTransform } from "./edit";
 import { MwError } from "./errors";
 import { applyOps } from "./ops";
 import { type ImageItem, Project } from "./schema";
@@ -331,6 +331,15 @@ describe("planTransform", () => {
   it("没有关键帧时即使传了 atMs 也照旧写 transform", () => {
     const r = planTransform(project(), { id: "i1", transform: { x: 545 }, snap: false, atMs: 0 });
     expect(r.ops[0]).toMatchObject({ op: "item.update" });
+  });
+});
+
+describe("方向键步长", () => {
+  it("一帧，按住 Shift 是一秒", () => {
+    expect(nudgeDeltaMs(30, false, 1)).toBeCloseTo(1000 / 30);
+    expect(nudgeDeltaMs(30, false, -1)).toBeCloseTo(-1000 / 30);
+    expect(nudgeDeltaMs(30, true, 1)).toBe(1000);
+    expect(nudgeDeltaMs(30, true, -1)).toBe(-1000);
   });
 });
 

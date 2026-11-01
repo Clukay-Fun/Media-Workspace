@@ -2,7 +2,13 @@ import type React from "react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { EditorState } from "../../core/api";
-import { type DragMode, planDrag, planTrackMove, trackInsertFloor } from "../../core/edit";
+import {
+  type DragMode,
+  nudgeDeltaMs,
+  planDrag,
+  planTrackMove,
+  trackInsertFloor,
+} from "../../core/edit";
 import type { Op } from "../../core/ops";
 import type { Project, Track } from "../../core/schema";
 import { frameToMs, sourceFrameAt } from "../../core/time";
@@ -83,6 +89,50 @@ export function Timeline() {
     const onWheel = (event: WheelEvent) => zoomWheelAction.current(event);
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+  // 捕获阶段先于页面的播放头快捷键。没选中时不拦截，方向键仍然移动播放头。
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        target.closest("input, textarea, select, [contenteditable='true']")
+      )
+        return;
+      const { project, selected, preview, submit, toast } = useStore.getState();
+      if (!project || !selected || !preview) return;
+      const found = project.tracks.find((track) =>
+        track.items.some((item) => item.id === selected),
+      );
+      if (!found) return;
+      const item = found.items.find((it) => it.id === selected);
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (found.kind === "video" && found.main && item && "type" in item && item.type === "clip") {
+        toast("主视频片段的位置跟着上一段");
+        return;
+      }
+      const fps = preview.timeline.fps;
+      const direction = event.key === "ArrowLeft" ? -1 : 1;
+      try {
+        const plan = planDrag(project, {
+          id: selected,
+          mode: "move",
+          deltaMs: nudgeDeltaMs(fps, event.shiftKey, direction),
+          snap: false,
+        });
+        const range = itemFrames(preview.timeline, selected);
+        const current = range ? msOfFrame(range.from, fps) : plan.preview.startMs;
+        if (plan.ops.length === 0 || Math.abs(plan.preview.startMs - current) < 0.5) return;
+        void submit(plan.ops, "微调了出现时间");
+      } catch (err) {
+        toast(err instanceof Error ? err.message : String(err), "error");
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, []);
   useEffect(
     () => () => {
@@ -1197,6 +1247,7 @@ function Toolbar({
           onClick={() => st.setAnnotating(!annotating)}
         />
         <DeleteButton />
+        <span className="tl-nudge-hint">选中后 ←→ 1 帧，Shift 1 秒</span>
       </div>
       <div className="tl-zoom-controls" aria-label="时间线缩放">
         <button

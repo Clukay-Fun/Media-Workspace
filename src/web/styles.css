@@ -1676,6 +1676,13 @@ textarea:focus-visible {
   font-size: 12px;
 }
 
+.tl-nudge-hint {
+  margin-left: 6px;
+  color: var(--text-3);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .tl-delete:hover:not(:disabled) {
   color: var(--warn);
   background: var(--warn-soft);
