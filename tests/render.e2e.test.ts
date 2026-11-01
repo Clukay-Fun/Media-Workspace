@@ -152,6 +152,154 @@ describe("渲染", () => {
   });
 });
 
+describe("画面裁切导出", () => {
+  it("主轨片段设置 crop 后导出画面只显示保留区域", async () => {
+    const d = join(root, "crop.mwproj");
+    await initProject(d);
+    const src = join(root, "crop-src.mp4");
+    execFileSync(ffmpeg, [
+      "-v",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=red:size=270x480:rate=30:duration=1",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=green:size=270x480:rate=30:duration=1",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=blue:size=270x480:rate=30:duration=1",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=yellow:size=270x480:rate=30:duration=1",
+      "-filter_complex",
+      "[0:v][1:v]hstack=inputs=2[top];[2:v][3:v]hstack=inputs=2[bottom];[top][bottom]vstack=inputs=2[out]",
+      "-map",
+      "[out]",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      src,
+    ]);
+    const imported = await importMedia(d, src, { proxy: false, peaks: false, faces: false });
+    const imageSrc = join(root, "crop-src.png");
+    execFileSync(ffmpeg, ["-v", "error", "-y", "-i", src, "-frames:v", "1", imageSrc]);
+    const importedImage = await importMedia(d, imageSrc, {
+      proxy: false,
+      peaks: false,
+      faces: false,
+    });
+    await applyToProject(d, {
+      baseRevision: 0,
+      source: "cli",
+      actor: "test",
+      ops: [
+        { op: "asset.add", id: "crop-src", asset: imported.asset },
+        { op: "asset.add", id: "crop-image-src", asset: importedImage.asset },
+        { op: "canvas.update", set: { width: 540, height: 960 } },
+        {
+          op: "item.add",
+          track: "main",
+          item: {
+            id: "crop-main",
+            type: "clip",
+            asset: "crop-src",
+            inMs: 0,
+            outMs: 1000,
+            crop: { x: 0.5, y: 0, width: 0.5, height: 1 },
+          },
+        },
+        { op: "track.add", track: { id: "pip", kind: "video", items: [] } },
+        {
+          op: "item.add",
+          track: "pip",
+          item: {
+            id: "crop-pip",
+            type: "clip",
+            asset: "crop-src",
+            at: { ms: 0 },
+            inMs: 0,
+            outMs: 1000,
+            gainDb: -60,
+            crop: { x: 0, y: 0, width: 0.5, height: 1 },
+            transform: { x: 135, y: 240, scale: 0.5 },
+          },
+        },
+        {
+          op: "item.add",
+          track: "pip",
+          item: {
+            id: "crop-image",
+            type: "image",
+            asset: "crop-image-src",
+            at: { ms: 0 },
+            durationMs: 1000,
+            crop: { x: 0, y: 0.5, width: 1, height: 0.5 },
+            transform: { x: 405, y: 720, scale: 0.5 },
+          },
+        },
+      ],
+    });
+    const p = await loadProject(d);
+    const baseline = structuredClone(p);
+    const baselineMain = baseline.tracks.find((track) => track.kind === "video" && track.main);
+    const baselineClip = baselineMain?.kind === "video" ? baselineMain.items[0] : undefined;
+    if (!baselineClip || baselineClip.type !== "clip" || "at" in baselineClip)
+      throw new Error("主轨素材测试数据缺失");
+    delete baselineClip.crop;
+
+    const out = join(root, "crop-out.mp4");
+    await exportVideo(d, p, { out, concurrency: 2 });
+    const [croppedStill] = await renderStills(d, p, [0], join(root, "crop-still"));
+    const [originalStill] = await renderStills(d, baseline, [0], join(root, "crop-original-still"));
+    const pixel = (file: string, x: number, y: number) => {
+      const r = spawnSync(
+        ffmpeg,
+        [
+          "-v",
+          "error",
+          "-i",
+          file,
+          "-vf",
+          `format=rgb24,crop=1:1:${x}:${y}`,
+          "-frames:v",
+          "1",
+          "-f",
+          "rawvideo",
+          "-pix_fmt",
+          "rgb24",
+          "-",
+        ],
+        { maxBuffer: 1024 },
+      );
+      if (r.status !== 0 || r.stdout.length < 3)
+        throw new Error(`无法读取像素：${file}；${String(r.stderr)}`);
+      return [...r.stdout.subarray(0, 3)];
+    };
+
+    const originalLeft = pixel(originalStill ?? "", 50, 100);
+    const croppedLeft = pixel(croppedStill ?? "", 50, 100);
+    const exportedLeft = pixel(out, 50, 100);
+    const croppedCenter = pixel(croppedStill ?? "", 270, 100);
+    const pipPixel = pixel(croppedStill ?? "", 100, 100);
+    const imagePixel = pixel(croppedStill ?? "", 450, 650);
+    expect(originalLeft[0]).toBeGreaterThan(150);
+    expect(croppedLeft.every((channel) => channel < 35)).toBe(true);
+    expect(exportedLeft.every((channel) => channel < 45)).toBe(true);
+    expect(croppedCenter[1]).toBeGreaterThan(80);
+    expect(pipPixel[0]).toBeGreaterThan(150);
+    expect(imagePixel[0]).toBeGreaterThan(150);
+    expect(imagePixel[1]).toBeGreaterThan(100);
+    expect(imagePixel[2]).toBeLessThan(80);
+  }, 180_000);
+});
+
 // 阶段 D 的画面能力（docs/decisions/0017）：主轨转场、画中画（横屏素材 + 关键帧）、图片（入场动画 + 关键帧），
 // 每一项都在动的那几帧上比对截图和导出。
 describe("画面能力", () => {

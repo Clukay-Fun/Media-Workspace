@@ -20,6 +20,8 @@ const STEPS: Record<number, (p: Raw) => Raw> = {
   // 6 → 7：叠加层新增可选的卡片尺寸 size；封面标题从「叠加层 ID」改成直接写在 cover 里
   // （原来的 ID 渲染时没有用上，叠加层还会出现在视频里），按 ID 把那个叠加层的模板、样式、内容抄过来（docs/decisions/0022）
   6: (p) => ({ ...p, version: 7, ...coverV7(p) }),
+  // 7 → 8：主轨、画中画和图片新增可选裁切 crop；省略时显示完整素材（docs/decisions/0029）
+  7: (p) => ({ ...p, version: 8 }),
 };
 
 /** 只有封面标题是旧的叠加层 ID 时才改 cover，其它情况原样不动 */

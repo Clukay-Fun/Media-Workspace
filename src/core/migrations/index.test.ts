@@ -60,6 +60,31 @@ describe("migrate", () => {
     });
   });
 
+  it("v7 → v8：不改现有画面字段，未设置 crop 的素材仍显示完整画面", () => {
+    const v7 = {
+      version: 7,
+      revision: 4,
+      tracks: [
+        {
+          id: "main",
+          kind: "video",
+          main: true,
+          items: [{ id: "c1", type: "clip", asset: "a1", inMs: 0, outMs: 1000 }],
+        },
+        {
+          id: "pip",
+          kind: "video",
+          items: [
+            { id: "p1", type: "clip", asset: "a2", at: { ms: 0 }, inMs: 0, outMs: 1000 },
+            { id: "i1", type: "image", asset: "a3", at: { ms: 0 }, durationMs: 1000 },
+          ],
+        },
+      ],
+    };
+    expect(migrate(v7)).toEqual({ ...v7, version: PROJECT_FORMAT_VERSION });
+    expect(migrate(v7)).not.toHaveProperty("tracks.0.items.0.crop");
+  });
+
   it("当前版本原样返回", () => {
     const p = { version: PROJECT_FORMAT_VERSION, revision: 0 };
     expect(migrate(p)).toBe(p);

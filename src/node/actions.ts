@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { z } from "zod";
 import { compile, type ResolvedTimeline } from "../core/compile";
 import { coverView } from "../core/cover";
+import { croppedSize } from "../core/crop";
 import { MwError } from "../core/errors";
 import { type FramePlan, planFrame, typicalFace } from "../core/frame";
 import { guidesInPx, type LayoutFace } from "../core/layout";
@@ -477,28 +478,42 @@ export async function frameProject(
     await facesProject(dir, { source: o.source, actor: o.actor, onLog: o.onLog });
     p = await loadProject(dir);
   }
-  const byAsset = new Map<string, MainClip[]>();
-  for (const c of clipsOf()) byAsset.set(c.asset, [...(byAsset.get(c.asset) ?? []), c]);
+  const groups = new Map<string, { asset: string; crop: MainClip["crop"]; clips: MainClip[] }>();
+  for (const c of clipsOf()) {
+    const key = `${c.asset}:${JSON.stringify(c.crop ?? null)}`;
+    const group = groups.get(key) ?? { asset: c.asset, crop: c.crop, clips: [] };
+    group.clips.push(c);
+    groups.set(key, group);
+  }
+  const faceCache = new Map<string, Awaited<ReturnType<typeof readFaces>>>();
   const ops: Op[] = [];
   const plans: (FramePlan & { asset: string; clips: string[] })[] = [];
   const skipped: { id: string; reason: string }[] = [];
-  for (const [assetId, clips] of byAsset) {
+  for (const { asset: assetId, crop, clips } of groups.values()) {
     const a = p.assets[assetId];
-    const faces = a?.cache?.faces ? await readFaces(join(dir, a.cache.faces)) : null;
+    let faces = faceCache.get(assetId);
+    if (faces === undefined) {
+      faces = a?.cache?.faces ? await readFaces(join(dir, a.cache.faces)) : null;
+      faceCache.set(assetId, faces);
+    }
     const box = faces
       ? typicalFace(
           faces,
           clips.map((c) => ({ fromMs: c.inMs, toMs: c.outMs })),
+          crop,
         )
       : null;
     const sw = a?.probe?.width;
     const sh = a?.probe?.height;
     if (!box || !sw || !sh) {
       for (const c of clips)
-        skipped.push({ id: c.id, reason: box ? "素材没有尺寸信息" : "没有检测到人脸" });
+        skipped.push({
+          id: c.id,
+          reason: box ? "素材没有尺寸信息" : crop ? "裁切区域内没有检测到人脸" : "没有检测到人脸",
+        });
       continue;
     }
-    const plan = planFrame(box, { width: sw, height: sh }, p.canvas, target);
+    const plan = planFrame(box, croppedSize({ width: sw, height: sh }, crop), p.canvas, target);
     const moved: string[] = [];
     for (const c of clips) {
       if (c.keyframes.length > 0) {
@@ -948,6 +963,7 @@ export function guideInfo() {
       "文字装饰（格式 v5）：gradient 竖直渐变、glow 发光；highlight.underline 给关键词画下划线，highlight.activeBox 给正在念的字 / 词垫色块（跟着 animation.unit），highlight.gradient / glow 只作用于高亮的字。改完用 preview 截两三帧看效果",
       "转场（主轨片段的 transitionIn）只用在换话题、开场、接片尾，大部分剪辑点硬切；slide 是新画面盖住旧画面，push 是新画面推走旧画面，direction 是画面往哪边走；主轨转场不占时间、声音硬切（前一段停在最后一帧和后一段过渡），不会叠音",
       "画中画：非主轨视频轨道（没有就 track.add 一条 kind: video）上放 FloatClip，transform 定中心点和缩放（素材按比例完整放进画布再缩放）；空镜、录屏写 gainDb: -60 静音；滑动入场不写方向时从最近的画面边缘滑进来",
+      '画面裁切（v8）：主轨片段、画中画和图片都可用 item.update 设置素材源归一化区域，例如 {op:"item.update",id:"c1",set:{crop:{x:0.1,y:0.15,width:0.8,height:0.7}}}；x/y 是左上角，范围和宽高都在 0–1 内，crop:null 恢复完整画面。裁切先于 contain 和 transform；省略 crop 保持旧画面不变',
       "图片和画中画可以加循环动画 animLoop（v6）：只有 breathe（呼吸），durationMs 是周期，默认 2400、intensity 2（±6%，±3% 看不出来）；一条视频里别多处同时呼吸",
       "关键帧（keyframe.set，atMs 相对元素开始）：元素有关键帧后 transform 不再起作用，以关键帧为准；推近 1.5–2.5 秒、幅度 10–20%（4 秒以上显得拖）",
       "卡片：先看 templates 的 useFor / sizes / example 选模板；卡片必须写 size（v7）：small 金句 / 数字 / 人名 / 提示，half 要点 / 截图 / 长金句（主画面自动上移），full 只给整段原文（盖住标题条）；有卡时字幕自动隐藏；按内容需要才用，30 秒左右的短视频默认不加（没有值得停下来看的数字、清单、金句时建议人不加），加的话 30 秒 0–2 张、60 秒不超过 4 张；字数守住 schema 的上限",

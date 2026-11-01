@@ -69,6 +69,14 @@ export function validate(input: unknown, opts: ValidateOptions = {}): ValidateRe
       err("REF_MISSING", path, `素材「${id}」是 ${a.kind}，这里需要 ${kinds.join(" / ")}`);
     return a;
   };
+  const cropSize = (
+    crop: unknown,
+    a: { probe?: { width?: number; height?: number } } | undefined,
+    path: string,
+  ) => {
+    if (crop !== undefined && (!a?.probe?.width || !a.probe.height))
+      err("CROP_DIMENSIONS", `${path}.crop`, "裁切需要素材包含宽高信息，请重新导入素材");
+  };
 
   const style = (id: string | undefined, path: string) => {
     if (id !== undefined && !p.styles[id]) err("REF_MISSING", path, `样式「${id}」不存在`);
@@ -149,7 +157,8 @@ export function validate(input: unknown, opts: ValidateOptions = {}): ValidateRe
       }
       const v = item as { type: string; asset: string; inMs?: number; outMs?: number };
       if (v.type === "image") {
-        asset(v.asset, `${path}.asset`, ["image"]);
+        const a = asset(v.asset, `${path}.asset`, ["image"]);
+        cropSize((item as { crop?: unknown }).crop, a, path);
         return;
       }
       const a = asset(
@@ -157,6 +166,7 @@ export function validate(input: unknown, opts: ValidateOptions = {}): ValidateRe
         `${path}.asset`,
         t.kind === "audio" ? ["audio", "video"] : ["video"],
       );
+      cropSize((item as { crop?: unknown }).crop, a, path);
       range(v.inMs ?? 0, v.outMs ?? 0, a?.probe?.durationMs, path);
     });
   });

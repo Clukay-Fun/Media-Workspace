@@ -16,6 +16,7 @@ import {
   type ResolvedTransition,
   type ResolvedVideo,
 } from "../core/compile";
+import { cropLayout } from "../core/crop";
 import { BUILTIN_STYLES } from "../core/presets";
 import type { Anim, TextStyle } from "../core/text-style";
 import { overlaySize, TEMPLATES } from "../templates";
@@ -38,6 +39,43 @@ function useFonts(fonts: MainProps["fonts"]) {
 }
 
 const dbToGain = (db: number) => 10 ** (db / 20);
+
+const CropView: React.FC<{
+  crop: ResolvedVideo["crop"] | ResolvedImage["crop"];
+  sourceSize: ResolvedVideo["sourceSize"] | ResolvedImage["sourceSize"];
+  width: number;
+  height: number;
+  children: React.ReactNode;
+}> = ({ crop, sourceSize, width, height, children }) => {
+  if (!crop) return children;
+  const layout = cropLayout({ width, height }, sourceSize ?? { width, height }, crop);
+  const boxWidth = layout.box.x1 - layout.box.x0;
+  const boxHeight = layout.box.y1 - layout.box.y0;
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: layout.box.x0,
+        top: layout.box.y0,
+        width: boxWidth,
+        height: boxHeight,
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          left: layout.media.x,
+          top: layout.media.y,
+          width: layout.media.width,
+          height: layout.media.height,
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+};
 
 function cssTransform(t: FullTransform, width: number, height: number): React.CSSProperties {
   return {
@@ -125,17 +163,19 @@ const VideoLayer: React.FC<{
         visibility: v.hidden ? "hidden" : "visible",
       }}
     >
-      <Video
-        src={src}
-        trimBefore={v.trimBeforeFrames}
-        playbackRate={v.speed}
-        preservePitch
-        muted={v.muted}
-        volume={dbToGain(v.gainDb)}
-        objectFit="contain"
-        // 不给宽高时按素材自然尺寸贴在左上角，横屏素材不会上下居中（和图片的 contain 不一致）
-        style={{ width: "100%", height: "100%" }}
-      />
+      <CropView crop={v.crop} sourceSize={v.sourceSize} width={width} height={height}>
+        <Video
+          src={src}
+          trimBefore={v.trimBeforeFrames}
+          playbackRate={v.speed}
+          preservePitch
+          muted={v.muted}
+          volume={dbToGain(v.gainDb)}
+          objectFit="contain"
+          // 不给宽高时按素材自然尺寸贴在左上角，横屏素材不会上下居中（和图片的 contain 不一致）
+          style={{ width: "100%", height: "100%" }}
+        />
+      </CropView>
     </AbsoluteFill>
   );
 };
@@ -152,7 +192,9 @@ const ImageLayer: React.FC<{
   const a = visualState(img, t, frame, fps, width, height);
   return (
     <AbsoluteFill style={animatedStyle(t, a, width, height)}>
-      <Img src={src} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+      <CropView crop={img.crop} sourceSize={img.sourceSize} width={width} height={height}>
+        <Img src={src} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+      </CropView>
     </AbsoluteFill>
   );
 };

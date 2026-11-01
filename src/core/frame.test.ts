@@ -23,6 +23,28 @@ describe("人脸代表位置", () => {
     expect((b?.x ?? 0) + (b?.w ?? 0) / 2).toBeCloseTo(0.5);
     expect(typicalFace(track, [{ fromMs: 3000, toMs: 4000 }])).toBeNull();
   });
+
+  it("只统计裁切后可见的人脸，并把部分可见的人脸换到裁切坐标", () => {
+    const track = {
+      intervalMs: 500,
+      frames: [
+        {
+          ms: 250,
+          boxes: [
+            { x: 0.1, y: 0.2, w: 0.2, h: 0.2 },
+            { x: 0.45, y: 0.3, w: 0.2, h: 0.2 },
+          ],
+        },
+      ],
+    };
+    const face = typicalFace(track, [{ fromMs: 0, toMs: 1000 }], {
+      x: 0.5,
+      y: 0,
+      width: 0.5,
+      height: 1,
+    });
+    expect(face).toEqual({ x: 0, y: 0.3, w: 0.3, h: 0.2 });
+  });
 });
 
 describe("按版式摆人物", () => {

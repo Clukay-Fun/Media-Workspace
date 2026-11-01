@@ -1,1 +1,1 @@
-export const PROJECT_FORMAT_VERSION = 7;
+export const PROJECT_FORMAT_VERSION = 8;

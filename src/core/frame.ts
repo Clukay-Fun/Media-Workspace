@@ -1,5 +1,7 @@
+import { faceInCrop } from "./crop";
 import type { LayoutFace } from "./layout";
 import type { FaceTrack } from "./lint";
+import type { CropRect } from "./schema";
 
 // 按账号版式摆人物（阶段 F，docs/decisions/0025）：从人脸检测结果算主画面的缩放和位置，
 // 让人脸框落在版式规定的位置上；画面不够大时宁可脸大一点、偏一点，也不露黑边。
@@ -13,10 +15,15 @@ export type FaceBox = { x: number; y: number; w: number; h: number };
 export function typicalFace(
   track: FaceTrack,
   ranges: { fromMs: number; toMs: number }[],
+  crop?: CropRect,
 ): FaceBox | null {
   const boxes = track.frames.flatMap((f) => {
     if (!ranges.some((r) => f.ms >= r.fromMs && f.ms < r.toMs)) return [];
-    const big = f.boxes.reduce<FaceBox | null>(
+    const visible = f.boxes.flatMap((box) => {
+      const face = faceInCrop(box, crop);
+      return face ? [face] : [];
+    });
+    const big = visible.reduce<FaceBox | null>(
       (a, b) => (!a || b.w * b.h > a.w * a.h ? b : a),
       null,
     );
