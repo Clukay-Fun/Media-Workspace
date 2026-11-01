@@ -6,4 +6,4 @@
 | 事项 | 谁在做 | 目录 / 分支 | 状态 | 下一步 / 卡在哪 |
 |---|---|---|---|---|
 | 审查、合并各分支，跑全部测试 | Claude | `media-workspace` / dev | 持续 | 各分支做完后通知 |
-| 第三轮：画幅 9:16 / 16:9（裁切界面已完成，b8c599b） | Claude | `media-workspace` / dev | 进行中 | 裁切几何在 `core/crop.ts` |
+| 第三轮：用新样片走一遍全流程验收，之后开 dev → main 的 PR（裁切、画幅已完成） | Claude | `media-workspace` / dev | 进行中 | 画幅见 docs/decisions/0030 |
