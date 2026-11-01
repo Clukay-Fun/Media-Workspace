@@ -2,7 +2,11 @@ import type { Slot } from "./schema";
 
 export type Insets = { top: number; bottom: number; left: number; right: number };
 
-/** 竖屏按 1080×1920 估计的边距（PLAN 5.5），其他尺寸按比例缩放。阶段 B 用平台截图校准 */
+/**
+ * 竖屏按 1080×1920 估计的边距（PLAN 5.5），其他尺寸按比例缩放。
+ * 视频号 2026-11-01 用实机截图核对过：顶部按钮到 y≈177、底部作者名从 y≈1574 起（留了余量）、右侧按钮离右边约 149，
+ * 屏幕比 9:16 窄时左右各裁掉约 58
+ */
 export const SAFE_AREAS = {
   douyin: { top: 160, bottom: 420, left: 60, right: 160 },
   channels: { top: 170, bottom: 400, left: 60, right: 150 },
@@ -13,12 +17,13 @@ export const SAFE_AREAS = {
 export type SafeAreaName = keyof typeof SAFE_AREAS;
 
 /**
- * 横屏（16:9）全屏播放时按 1920×1080 估计的边距（docs/decisions/0030）：上面是标题栏，下面是进度条和按钮，
- * 两侧比竖屏宽松。各平台差不多，还没用截图校准
+ * 横屏（16:9）按 1920×1080 的边距（docs/decisions/0030）。视频号按 2026-11-01 的实机截图量过：
+ * 全屏横看时按钮在画面外的黑边里、进度条在画面下沿以下，竖着刷到横屏视频时画面上也没有遮挡；
+ * 只给没有黑边的 16:9 手机留出角上按钮的位置（左右 5%）。抖音、小红书还没截图，先按估计
  */
 export const SAFE_AREAS_LANDSCAPE = {
   douyin: { top: 60, bottom: 150, left: 90, right: 90 },
-  channels: { top: 60, bottom: 140, left: 90, right: 90 },
+  channels: { top: 60, bottom: 60, left: 96, right: 96 },
   xiaohongshu: { top: 60, bottom: 140, left: 90, right: 90 },
   all: { top: 70, bottom: 160, left: 100, right: 100 },
 } as const satisfies Record<SafeAreaName, Insets>;
@@ -27,10 +32,10 @@ export const isLandscape = (width: number, height: number) => width > height;
 
 /**
  * 字幕中心线占画面高度的比例：竖屏按样片测得的 y≈1167（docs/decisions/0001）；
- * 横屏放在下方安全区上面一点，两行字幕也不压进度条
+ * 横屏放在下方，84 号字两行也在视频号安全区（下 60）以内
  */
 export const captionLine = (width: number, height: number) =>
-  isLandscape(width, height) ? 0.82 : 1167 / 1920;
+  isLandscape(width, height) ? 0.84 : 1167 / 1920;
 
 /** 给人看的名字（lint 提示里用） */
 export const SAFE_AREA_LABEL: Record<SafeAreaName, string> = {
