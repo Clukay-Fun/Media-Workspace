@@ -2,12 +2,14 @@ import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import cac from "cac";
 import { API_PORT } from "../core/api";
+import { ASPECTS, type AspectName } from "../core/aspect";
 import { MwError } from "../core/errors";
 import { LayoutFace } from "../core/layout";
 import { BUILTIN_STYLES } from "../core/presets";
 import { runMcpStdio } from "../mcp/server";
 import {
   alignProject,
+  aspectProject,
   attachOutro,
   commentsInfo,
   compareProject,
@@ -119,14 +121,55 @@ const templates = templateOpts;
 
 const cli = cac("mw");
 
+function parseAspect(v: string): AspectName {
+  const a = ASPECTS.find((x) => x === String(v));
+  if (!a) throw new MwError("USAGE", `画幅只能是 ${ASPECTS.join(" 或 ")}`);
+  return a;
+}
+
 cli
   .command("init <name>", "新建工程（名字或路径）")
   .option("--no-styles", "不复制内置样式")
+  .option("--aspect <ratio>", "画幅：9:16（默认，竖屏）或 16:9（横屏）")
   .option("--actor <name>", "操作者", { default: "user" })
   .action(
-    act(async (name: string, o: { styles: boolean; actor: string }) => {
-      out(await createProject(name, { styles: o.styles, source: "cli", actor: String(o.actor) }));
+    act(async (name: string, o: { styles: boolean; aspect?: string; actor: string }) => {
+      out(
+        await createProject(name, {
+          styles: o.styles,
+          ...(o.aspect !== undefined && { aspect: parseAspect(o.aspect) }),
+          source: "cli",
+          actor: String(o.actor),
+        }),
+      );
     }),
+  );
+
+cli
+  .command(
+    "aspect <proj> <ratio>",
+    "切换画幅（9:16 或 16:9）：画布、字幕和标题样式、元素位置、主轨裁切一起换算，一次撤销",
+  )
+  .option("--base <rev>", "基于哪个 revision（默认当前）")
+  .option("--actor <name>", "操作者", { default: "user" })
+  .option("--dry-run", "只计算，不写入")
+  .action(
+    act(
+      async (
+        proj: string,
+        ratio: string,
+        o: { base?: number; actor: string; dryRun?: boolean },
+      ) => {
+        out(
+          await aspectProject(resolveProjectDir(proj), parseAspect(ratio), {
+            baseRevision: o.base === undefined ? undefined : Number(o.base),
+            dryRun: Boolean(o.dryRun),
+            source: "cli",
+            actor: o.actor,
+          }),
+        );
+      },
+    ),
   );
 
 cli

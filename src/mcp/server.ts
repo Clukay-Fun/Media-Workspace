@@ -2,10 +2,12 @@ import { readFile } from "node:fs/promises";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { ASPECTS } from "../core/aspect";
 import { MwError } from "../core/errors";
 import { Layout, LayoutFace } from "../core/layout";
 import {
   alignProject,
+  aspectProject,
   attachOutro,
   commentsInfo,
   compareProject,
@@ -95,11 +97,33 @@ export function createMcpServer(): McpServer {
       inputSchema: {
         project,
         styles: z.boolean().default(true).describe("false = 不复制内置样式"),
+        aspect: z.enum(ASPECTS).default("9:16").describe("画幅：9:16 竖屏（默认）或 16:9 横屏"),
         actor,
       },
     },
-    ({ project: p, styles, actor: a }) =>
-      call(() => createProject(p, { styles, source: "mcp", actor: a })),
+    ({ project: p, styles, aspect, actor: a }) =>
+      call(() => createProject(p, { styles, aspect, source: "mcp", actor: a })),
+  );
+
+  server.registerTool(
+    "aspect",
+    {
+      description:
+        "切换画幅 9:16 ⇄ 16:9：画布、字幕和标题样式（字号按短边、位置按安全区换算）、标题 / 图片 / 画中画位置、关键帧、" +
+        "主轨裁切一次提交，可以 undo。不要只用 canvas.update 改宽高，字幕会跑出画面。" +
+        "锁定轨道上的元素不动，列在 skipped 里；换完用 frame 重新摆人物、lint 检查",
+      inputSchema: {
+        project,
+        aspect: z.enum(ASPECTS),
+        baseRevision: base.optional(),
+        actor,
+        dryRun: z.boolean().default(false),
+      },
+    },
+    ({ project: p, aspect, baseRevision, actor: a, dryRun }) =>
+      call(() =>
+        aspectProject(dirOf(p), aspect, { baseRevision, dryRun, source: "mcp", actor: a }),
+      ),
   );
 
   server.registerTool(

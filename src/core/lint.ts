@@ -216,7 +216,8 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
   }
 
   // 2. 字号和安全区
-  const min = (opts.minFontSize ?? 40) * (width / 1080);
+  // 按短边换算：横屏 1920×1080 和竖屏 1080×1920 全屏看时字一样大
+  const min = (opts.minFontSize ?? 40) * (Math.min(width, height) / 1080);
   const safe = safeAreaFor(project.canvas.safeArea.preset, width, height);
   const outside = new Map<string, { count: number; out: string }>();
   const inner: Box = {

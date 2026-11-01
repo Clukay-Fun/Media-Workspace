@@ -28,10 +28,25 @@ import { type ValidateOptions, validate } from "./validate";
 const Patch = z.record(z.string(), z.unknown());
 const AnyObj = z.record(z.string(), z.unknown());
 
+// 只改写了的字段。不能用 .partial()：zod 4 会给没写的字段补默认值，
+// 只改画布宽高时安全区、帧率会被悄悄重置成默认
+const C = Canvas.shape;
+const CanvasPatch = z.strictObject({
+  width: C.width.unwrap().optional(),
+  height: C.height.unwrap().optional(),
+  fps: C.fps.unwrap().optional(),
+  background: C.background.unwrap().optional(),
+  safeArea: C.safeArea.unwrap().optional(),
+});
+const ThemePatch = z.strictObject({
+  accent: Theme.shape.accent.unwrap().optional(),
+  font: Theme.shape.font.unwrap().optional(),
+});
+
 export const Op = z.discriminatedUnion("op", [
   // 工程
-  z.strictObject({ op: z.literal("canvas.update"), set: Canvas.partial() }),
-  z.strictObject({ op: z.literal("theme.update"), set: Theme.partial() }),
+  z.strictObject({ op: z.literal("canvas.update"), set: CanvasPatch }),
+  z.strictObject({ op: z.literal("theme.update"), set: ThemePatch }),
   z.strictObject({ op: z.literal("cover.update"), set: Cover.nullable() }),
   z.strictObject({ op: z.literal("outro.set"), outro: Outro }),
   z.strictObject({ op: z.literal("outro.remove") }),

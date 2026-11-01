@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
+import type { z } from "zod";
 import { compile } from "./compile";
 import { MwError } from "./errors";
-import { applyOps } from "./ops";
+import { applyOps, Op } from "./ops";
 import { BUILTIN_STYLES } from "./presets";
-import { type MainClip, Project } from "./schema";
+import { Canvas, type MainClip, Project, Theme } from "./schema";
 import { PROJECT_FORMAT_VERSION } from "./version";
 
 const project = (locked = false) =>
@@ -531,5 +532,36 @@ describe("asset.cache", () => {
     expect(fail(() => applyOps(project(), [{ op: "asset.cache", id: "nope", set: {} }])).code).toBe(
       "NOT_FOUND",
     );
+  });
+});
+
+describe("canvas.update / theme.update 只改写了的字段", () => {
+  it("只改宽高时安全区、帧率、背景色不被重置成默认值", () => {
+    const p = project();
+    p.canvas.safeArea = { preset: "all" };
+    p.canvas.fps = 25;
+    p.canvas.background = "#112233";
+    p.theme.font = "noto-sans-sc";
+    const out = applyOps(p, [
+      { op: "canvas.update", set: { width: 1920, height: 1080 } },
+      { op: "theme.update", set: { accent: "#FF0000" } },
+    ]).project;
+    expect(out.canvas).toEqual({
+      width: 1920,
+      height: 1080,
+      fps: 25,
+      background: "#112233",
+      safeArea: { preset: "all" },
+    });
+    expect(out.theme).toEqual({ accent: "#FF0000", font: "noto-sans-sc" });
+  });
+
+  it("画布、主题加了字段时，补丁也要加（否则 strictObject 不认）", () => {
+    const shapeOf = (op: string) =>
+      Object.keys(
+        (Op.options.find((o) => o.shape.op.value === op)?.shape as { set: z.ZodObject }).set.shape,
+      );
+    expect(shapeOf("canvas.update")).toEqual(Object.keys(Canvas.shape));
+    expect(shapeOf("theme.update")).toEqual(Object.keys(Theme.shape));
   });
 });

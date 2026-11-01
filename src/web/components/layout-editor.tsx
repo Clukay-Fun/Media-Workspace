@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import type { Layout, LayoutGuide } from "../../core/layout";
+import { isLandscape } from "../../core/safe-area";
 import { useStore } from "../store";
 
 // 账号版式（docs/decisions/0027）：画面上的参考线和人脸位置，所有工程共用。
@@ -14,7 +15,8 @@ export function AccountGuides({ width, height }: { width: number; height: number
   const editing = useStore((s) => s.layoutEditing);
   const [moving, setMoving] = useState<{ id: string; pos: number } | null>(null);
   const box = useRef<HTMLDivElement>(null);
-  if (!layout || !show) return null;
+  // 账号版式按竖屏定，横屏工程里比例对不上，不显示
+  if (!layout || !show || isLandscape(width, height)) return null;
 
   const posOf = (g: LayoutGuide) => (moving?.id === g.id ? moving.pos : g.pos);
   const fromPointer = (g: LayoutGuide, e: React.PointerEvent) => {

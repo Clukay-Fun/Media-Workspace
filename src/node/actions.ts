@@ -3,6 +3,7 @@ import { mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
+import { type AspectName, planAspect, scaleGuides } from "../core/aspect";
 import { compile, type ResolvedTimeline } from "../core/compile";
 import { coverView } from "../core/cover";
 import { croppedSize } from "../core/crop";
@@ -10,7 +11,7 @@ import { MwError } from "../core/errors";
 import { type FramePlan, planFrame, typicalFace } from "../core/frame";
 import { guidesInPx, type LayoutFace } from "../core/layout";
 import { lintProject } from "../core/lint";
-import { Op } from "../core/ops";
+import { applyOps, Op } from "../core/ops";
 import { BUILTIN_STYLES } from "../core/presets";
 import { SAFE_AREAS, type SafeAreaName, safeAreaFor } from "../core/safe-area";
 import { type Caption, isMainClip, type MainClip } from "../core/schema";
@@ -37,6 +38,7 @@ import {
   loadReview,
   readHistory,
   type Source,
+  saveEditor,
 } from "./store";
 
 export type { CompareProjectOptions } from "./compare";
@@ -104,14 +106,19 @@ export function protectCaptionSpeechRanges(
 
 /** 导入素材：probe、必要时转标准化文件和代理，然后提交 asset.add */
 /** 新建工程：默认复制内置样式，字幕轨用内置字幕样式，开箱就是样片的效果 */
-export async function createProject(name: string, o: Actor & { styles?: boolean }) {
+export async function createProject(
+  name: string,
+  o: Actor & { styles?: boolean; aspect?: AspectName },
+) {
   const dir = resolveProjectDir(name);
-  const p = emptyProject();
+  let p = emptyProject();
   if (o.styles !== false) {
     p.styles = { ...BUILTIN_STYLES };
     const cap = p.tracks.find((t) => t.kind === "caption");
     if (cap && cap.kind === "caption") cap.style = "caption-word-yellow";
   }
+  // 横屏工程：和切换画幅同一套换算，样式按横屏摆好再写进去
+  if (o.aspect) p = { ...applyOps(p, planAspect(p, o.aspect).ops).project, revision: 0 };
   await initProject(dir, p, { source: o.source, actor: o.actor });
   return { ok: true as const, project: dir, revision: 0 };
 }
@@ -541,6 +548,37 @@ export async function frameProject(
     ...templateOpts,
   });
   return { ...r, target, plans, skipped };
+}
+
+/**
+ * 切换画幅 9:16 ⇄ 16:9（docs/decisions/0030）：画布、样式、元素位置、关键帧、主轨裁切一次提交，撤销也是一次。
+ * 编辑器里的参考线跟着按比例挪（editor.json 不经过 revision，撤销时不会挪回去）
+ */
+export async function aspectProject(
+  dir: string,
+  target: AspectName,
+  o: Actor & { baseRevision?: number; dryRun?: boolean },
+) {
+  const p = await loadProject(dir);
+  const plan = planAspect(p, target);
+  if (plan.ops.length === 0) {
+    return { ok: true as const, revision: p.revision, size: plan.size, skipped: [], changed: [] };
+  }
+  const r = await applyToProject(dir, {
+    ops: plan.ops,
+    baseRevision: o.baseRevision ?? p.revision,
+    source: o.source,
+    actor: o.actor,
+    dryRun: Boolean(o.dryRun),
+    ...templateOpts,
+  });
+  if (!o.dryRun) {
+    const editor = await loadEditor(dir);
+    const from = { width: p.canvas.width, height: p.canvas.height };
+    editor.guides.items = scaleGuides(editor.guides.items, from, plan.size);
+    await saveEditor(dir, editor);
+  }
+  return { ...r, size: plan.size, skipped: plan.skipped };
 }
 
 /**

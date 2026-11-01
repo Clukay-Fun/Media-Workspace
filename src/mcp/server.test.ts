@@ -52,6 +52,7 @@ describe("MCP", () => {
       [
         "align",
         "apply",
+        "aspect",
         "comments",
         "compare",
         "cover",

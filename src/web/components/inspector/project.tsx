@@ -1,5 +1,7 @@
+import { ASPECTS, type AspectName, aspectOf, planAspect, scaleGuides } from "../../../core/aspect";
 import { timecode } from "../../lib/timeline";
 import { useStore } from "../../store";
+import { Field } from "./common";
 import { CoverPanel } from "./cover";
 
 /**
@@ -40,8 +42,53 @@ export function ProjectOverview() {
           {dir ?? "（示例工程）"}
         </dd>
       </dl>
+      <AspectField />
       <CoverPanel />
     </section>
+  );
+}
+
+const ASPECT_LABEL: Record<AspectName, string> = { "9:16": "竖屏 9:16", "16:9": "横屏 16:9" };
+
+/** 切换画幅：样式、元素位置、主轨裁切一起换算（core/aspect），一次提交，可以撤销 */
+function AspectField() {
+  const project = useStore((s) => s.project);
+  const locked = useStore((s) => s.cropEditing !== null);
+  if (!project) return null;
+  const current = aspectOf(project.canvas);
+  const switchTo = async (a: AspectName) => {
+    const s = useStore.getState();
+    if (!s.project) return;
+    const from = { width: s.project.canvas.width, height: s.project.canvas.height };
+    const plan = planAspect(s.project, a);
+    const skipped = plan.skipped.length ? `，锁定轨道上 ${plan.skipped.length} 个元素没动` : "";
+    const ok = await s.submit(plan.ops, `已换成${ASPECT_LABEL[a]}${skipped}，可以撤销`);
+    // 这个工程自己的参考线（editor.json）按比例挪过去
+    const editor = useStore.getState().editor;
+    if (ok && editor?.guides.items.length) {
+      s.updateEditor({
+        guides: { ...editor.guides, items: scaleGuides(editor.guides.items, from, plan.size) },
+      });
+    }
+  };
+  return (
+    <Field label="画幅" note="字幕、标题、画中画跟着换位置">
+      <div className="segmented" role="radiogroup" aria-label="画幅">
+        {ASPECTS.map((a) => (
+          <button
+            key={a}
+            type="button"
+            role="radio"
+            aria-checked={current === a}
+            className={current === a ? "on" : undefined}
+            disabled={locked}
+            onClick={() => current !== a && void switchTo(a)}
+          >
+            {ASPECT_LABEL[a]}
+          </button>
+        ))}
+      </div>
+    </Field>
   );
 }
 

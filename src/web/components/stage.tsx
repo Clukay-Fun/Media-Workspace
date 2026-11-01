@@ -7,6 +7,7 @@ import type { EditorState } from "../../core/api";
 import { compile } from "../../core/compile";
 import { planTransform } from "../../core/edit";
 import { applyOps, type Op } from "../../core/ops";
+import { isLandscape } from "../../core/safe-area";
 import type { Project } from "../../core/schema";
 import { type HitBox, hitBoxes, pick } from "../lib/geometry";
 import { type Corner, resizeFromCorner } from "../lib/pip";
@@ -340,7 +341,7 @@ export function Stage() {
     <main className="stage panel" aria-label={name || "预览"}>
       <div className="stage-area" ref={area}>
         <PreviewSettings width={W} height={H} />
-        {layoutEditing && <LayoutEditorCard />}
+        {layoutEditing && !isLandscape(W, H) && <LayoutEditorCard />}
         {inputProps && scale > 0 ? (
           <div className="canvas" style={{ width: W * scale, height: H * scale }}>
             <Player
@@ -638,6 +639,7 @@ function PreviewSettings({ width, height }: { width: number; height: number }) {
   const guides = editor?.guides;
   const count = guides?.items.length ?? 0;
   const mode = safeAreaMode(editor);
+  const landscape = isLandscape(width, height);
   const setGuides = (patch: Partial<EditorState["guides"]>) =>
     guides && updateEditor({ guides: { ...guides, ...patch } });
 
@@ -714,14 +716,24 @@ function PreviewSettings({ width, height }: { width: number; height: number }) {
         ))}
 
         <strong>账号版式</strong>
-        <p className="layout-hint">所有工程共用：人物位置、口播倍速、字幕字数，AI 出片按它来</p>
+        <p className="layout-hint">
+          {landscape
+            ? "账号版式按竖屏定，横屏工程里不显示、不能编辑"
+            : "所有工程共用：人物位置、口播倍速、字幕字数，AI 出片按它来"}
+        </p>
         <label className="preview-setting">
-          <input type="checkbox" checked={accountGuides} onChange={toggleAccountGuides} />
+          <input
+            type="checkbox"
+            disabled={landscape}
+            checked={accountGuides && !landscape}
+            onChange={toggleAccountGuides}
+          />
           <span>显示账号参考线</span>
         </label>
         <button
           type="button"
           className="preview-link"
+          disabled={landscape}
           onClick={() => {
             if (box.current) box.current.open = false;
             setLayoutEditing(true);
