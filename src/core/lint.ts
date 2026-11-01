@@ -10,7 +10,7 @@ import {
 } from "./compile";
 import { typicalFace } from "./frame";
 import type { Layout } from "./layout";
-import { safeAreaFor } from "./safe-area";
+import { SAFE_AREA_LABEL, safeAreaFor } from "./safe-area";
 import type { Project } from "./schema";
 import type { TextStyle } from "./text-style";
 import { frameToMs } from "./time";
@@ -272,8 +272,8 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
         id: p.id,
         atMs: ms(p.from),
         message: opts.layout
-          ? `文字超出了通用「${project.canvas.safeArea.preset}」安全区（${out.join("、")}）；位置按账号版式，只作参考，不用改`
-          : `文字超出了「${project.canvas.safeArea.preset}」安全区（${out.join("、")}），可能被平台的按钮或标题挡住`,
+          ? `文字超出了${SAFE_AREA_LABEL[project.canvas.safeArea.preset]}安全区（${out.join("、")}）；位置按账号版式，只作参考，不用改`
+          : `文字超出了${SAFE_AREA_LABEL[project.canvas.safeArea.preset]}安全区（${out.join("、")}），可能被平台的按钮或标题挡住`,
         // 有账号版式时位置以版式为准，通用安全区只作参考（0025）
         ...(opts.layout ? { level: "hint" as const } : {}),
       });

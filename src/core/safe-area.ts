@@ -12,6 +12,14 @@ export const SAFE_AREAS = {
 
 export type SafeAreaName = keyof typeof SAFE_AREAS;
 
+/** 给人看的名字（lint 提示里用） */
+export const SAFE_AREA_LABEL: Record<SafeAreaName, string> = {
+  all: "三平台",
+  douyin: "抖音",
+  channels: "视频号",
+  xiaohongshu: "小红书",
+};
+
 export function safeAreaFor(name: SafeAreaName, width: number, height: number): Insets {
   const base = SAFE_AREAS[name];
   const sx = width / 1080;
