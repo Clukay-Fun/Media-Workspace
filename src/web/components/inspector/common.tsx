@@ -57,7 +57,8 @@ export function InspectorHead({ project, id, ref_, fps }: InspectorProps) {
         <button
           type="button"
           className="icon-btn ghost close"
-          aria-label="关闭"
+          aria-label="取消选中"
+          title="取消选中"
           onClick={() => useStore.getState().select(null)}
         >
           <Icon name="close" size={12} />
