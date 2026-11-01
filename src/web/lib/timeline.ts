@@ -37,6 +37,42 @@ const KIND_LABEL: Record<Track["kind"], string> = {
   audio: "音频",
 };
 
+export type TrackRowBox = { id: string; top: number; height: number; index: number };
+
+/**
+ * 拖轨道时指针落在哪条缝。index 是拿走被拖轨道之后的插入下标。
+ * 从上往下看，中线在指针上方的轨道会把插入位置压到它自己的下标。
+ */
+export function trackInsertIndex(
+  rows: TrackRowBox[],
+  dragId: string,
+  pointerY: number,
+  minIndex: number,
+): { index: number; line: number } | null {
+  const drag = rows.find((row) => row.id === dragId);
+  if (!drag) return null;
+  const visual = rows.slice().sort((a, b) => a.top - b.top || b.index - a.index);
+  const without = rows.filter((row) => row.id !== dragId).sort((a, b) => a.index - b.index);
+  const withoutIndex = new Map(without.map((row, index) => [row.id, index]));
+  let insertAt = without.length;
+  const first = visual.find((row) => row.id !== dragId);
+  let line = first ? first.top : drag.top;
+  for (const row of visual) {
+    if (row.id === dragId) continue;
+    if (row.top + row.height / 2 < pointerY) {
+      insertAt = withoutIndex.get(row.id) ?? insertAt;
+      line = row.top + row.height;
+    }
+  }
+  const floor = Math.max(0, Math.min(minIndex, without.length));
+  if (insertAt < floor) {
+    insertAt = floor;
+    const below = without[floor - 1];
+    if (below) line = below.top;
+  }
+  return { index: insertAt, line };
+}
+
 /** 上层的轨道排在上面，主轨在最下面（和剪映一致） */
 export function timelineRows(project: Project, tl: ResolvedTimeline): Row[] {
   const fileName = (asset: string) => project.assets[asset]?.path.split("/").at(-1) ?? asset;
@@ -107,8 +143,8 @@ export function timelineRows(project: Project, tl: ResolvedTimeline): Row[] {
     }
     return {
       track,
-      // 按用途命名（主视频、字幕、标题…），轨道自己的名字放在提示里
-      label: main ? "主视频" : KIND_LABEL[track.kind],
+      // 主视频固定这个名字。其他轨道用自己的名字，新加的「图片」才不会显示成画中画
+      label: main ? "主视频" : (track.name ?? KIND_LABEL[track.kind]),
       kind: main ? "main" : track.kind,
       blocks: blocks.toSorted((a, b) => a.from - b.from),
     };
@@ -127,6 +163,24 @@ export function timecode(frame: number, fps: number): string {
 
 export const frameOfMs = (ms: number, fps: number) => msToFrame(ms, fps);
 export const msOfFrame = (frame: number, fps: number) => Math.round(frameToMs(frame, fps));
+
+/**
+ * 胶片格按素材自己的宽高比排，不拉成 16:9。
+ * 格子总宽超过画面带时少画几格，由界面裁掉末尾或留白。
+ */
+export function filmstripTiles(
+  bandWidth: number,
+  bandHeight: number,
+  aspect: number,
+  frames: number,
+): { count: number; tileWidth: number; tileHeight: number } {
+  const safeAspect = aspect > 0 && Number.isFinite(aspect) ? aspect : 16 / 9;
+  const tileHeight = Math.max(1, Math.round(bandHeight));
+  const tileWidth = Math.max(1, Math.round(tileHeight * safeAspect));
+  const fit = Math.floor(Math.max(0, bandWidth) / tileWidth);
+  const count = Math.max(1, Math.min(Math.max(1, Math.floor(frames)), 24, fit || 1));
+  return { count, tileWidth, tileHeight };
+}
 
 /** 刻度间隔（秒）：让相邻两个刻度至少隔 minPx 像素 */
 export function tickStep(pxPerSecond: number, minPx = 64): number {

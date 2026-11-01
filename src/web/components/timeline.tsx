@@ -1,7 +1,14 @@
 import type React from "react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { EditorState } from "../../core/api";
-import { type DragMode, planDrag } from "../../core/edit";
+import {
+  type DragMode,
+  nudgeDeltaMs,
+  planDrag,
+  planTrackMove,
+  trackInsertFloor,
+} from "../../core/edit";
 import type { Op } from "../../core/ops";
 import type { Project, Track } from "../../core/schema";
 import { frameToMs, sourceFrameAt } from "../../core/time";
@@ -11,13 +18,16 @@ import { findItem, type ItemRef, kindLabel } from "../lib/project";
 import { seekFrameOnSelect } from "../lib/seek";
 import {
   type Block,
+  filmstripTiles,
   frameOfMs,
   itemFrames,
   msOfFrame,
   type Row,
+  type TrackRowBox,
   tickStep,
   timecode,
   timelineRows,
+  trackInsertIndex,
   waveform,
 } from "../lib/timeline";
 import { type TransitionCut, transitionCutMarkers, transitionPairFor } from "../lib/transitions";
@@ -54,6 +64,7 @@ export function Timeline() {
   const [menu, setMenu] = useState<BlockMenu | null>(null);
   const [zoomPps, setZoomPps] = useState<number | null>(null);
   const [openTransitionId, setOpenTransitionId] = useState<string | null>(null);
+  const [trackDrop, setTrackDrop] = useState<{ id: string; top: number } | null>(null);
   const history = useStore((s) => s.history);
   const reviewedRev = useStore((s) => s.reviewedRev);
   const dragSession = useRef<DragSession | null>(null);
@@ -78,6 +89,50 @@ export function Timeline() {
     const onWheel = (event: WheelEvent) => zoomWheelAction.current(event);
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+  // 捕获阶段先于页面的播放头快捷键。没选中时不拦截，方向键仍然移动播放头。
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        target.closest("input, textarea, select, [contenteditable='true']")
+      )
+        return;
+      const { project, selected, preview, submit, toast } = useStore.getState();
+      if (!project || !selected || !preview) return;
+      const found = project.tracks.find((track) =>
+        track.items.some((item) => item.id === selected),
+      );
+      if (!found) return;
+      const item = found.items.find((it) => it.id === selected);
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (found.kind === "video" && found.main && item && "type" in item && item.type === "clip") {
+        toast("主视频片段的位置跟着上一段");
+        return;
+      }
+      const fps = preview.timeline.fps;
+      const direction = event.key === "ArrowLeft" ? -1 : 1;
+      try {
+        const plan = planDrag(project, {
+          id: selected,
+          mode: "move",
+          deltaMs: nudgeDeltaMs(fps, event.shiftKey, direction),
+          snap: false,
+        });
+        const range = itemFrames(preview.timeline, selected);
+        const current = range ? msOfFrame(range.from, fps) : plan.preview.startMs;
+        if (plan.ops.length === 0 || Math.abs(plan.preview.startMs - current) < 0.5) return;
+        void submit(plan.ops, "微调了出现时间");
+      } catch (err) {
+        toast(err instanceof Error ? err.message : String(err), "error");
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, []);
   useEffect(
     () => () => {
@@ -459,6 +514,7 @@ export function Timeline() {
           </>
         )}
 
+        {trackDrop && <div className="tl-drop" style={{ top: trackDrop.top }} />}
         {rows.map((row) => (
           <RowView
             key={row.track.id}
@@ -475,11 +531,14 @@ export function Timeline() {
             ghost={ghost}
             onDragStart={startDrag}
             onContextMenu={openBlockMenu}
+            trackDragging={trackDrop?.id === row.track.id}
+            onTrackPlace={setTrackDrop}
             transitionCuts={row.kind === "main" ? transitionCuts : []}
             openTransitionId={openTransitionId}
             setOpenTransitionId={setOpenTransitionId}
           />
         ))}
+        <AddTrack />
       </div>
       {viewportWidth > 0 && (
         <>
@@ -513,6 +572,98 @@ export function Timeline() {
   );
 }
 
+const ADD_TRACKS: { label: string; kind: Track["kind"]; name: string }[] = [
+  { label: "画中画", kind: "video", name: "画中画" },
+  { label: "图片", kind: "video", name: "图片" },
+  { label: "标题", kind: "overlay", name: "标题" },
+  { label: "字幕", kind: "caption", name: "字幕" },
+  { label: "音频", kind: "audio", name: "音频" },
+];
+
+/** 先选类型，再在最上层加一条空轨道 */
+function AddTrack() {
+  const root = useRef<HTMLDivElement>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const close = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && root.current?.contains(target)) return;
+      setMenu(null);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenu(null);
+    };
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [menu]);
+
+  return (
+    <>
+      <div className="tl-head tl-add" ref={root}>
+        <button
+          type="button"
+          className="tl-add-btn"
+          aria-label="新增轨道"
+          aria-expanded={menu !== null}
+          title="新增一条空轨道"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect();
+            setMenu((cur) => (cur ? null : { x: rect.left, y: rect.top }));
+          }}
+        >
+          ＋
+        </button>
+      </div>
+      <div className="tl-lane tl-add-lane" />
+      {menu &&
+        createPortal(
+          <div
+            className="tl-add-menu"
+            role="menu"
+            style={{ left: menu.x, top: menu.y }}
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            {ADD_TRACKS.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenu(null);
+                  void useStore
+                    .getState()
+                    .submit(
+                      [{ op: "track.add", track: { kind: item.kind, name: item.name, items: [] } }],
+                      `新增了${item.label}轨道`,
+                    );
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
+    </>
+  );
+}
+
+function measureTrackRows(tracks: { id: string }[]): TrackRowBox[] {
+  return [...document.querySelectorAll<HTMLElement>(".tl-head[data-track]")].flatMap((el) => {
+    const id = el.dataset.track ?? "";
+    const index = tracks.findIndex((item) => item.id === id);
+    if (index < 0) return [];
+    const rect = el.getBoundingClientRect();
+    return [{ id, top: rect.top, height: rect.height, index }];
+  });
+}
+
 function RowView({
   row,
   project,
@@ -527,6 +678,8 @@ function RowView({
   ghost,
   onDragStart,
   onContextMenu,
+  trackDragging,
+  onTrackPlace,
   transitionCuts,
   openTransitionId,
   setOpenTransitionId,
@@ -544,20 +697,87 @@ function RowView({
   ghost: Ghost | null;
   onDragStart: (e: React.PointerEvent, b: Block, mode: DragMode) => void;
   onContextMenu: (e: React.MouseEvent, b: Block) => void;
+  trackDragging: boolean;
+  onTrackPlace: (drop: { id: string; top: number } | null) => void;
   transitionCuts: TransitionCut[];
   openTransitionId: string | null;
   setOpenTransitionId: (id: string | null) => void;
 }) {
   const { track } = row;
+  const hasVideo = row.blocks.some((b) => b.kind === "clip" && b.mediaKind === "video");
   const { submit, select, seek } = useStore.getState();
   const toggle = (key: "locked" | "hidden" | "muted", label: string) =>
     void submit([{ op: "track.update", id: track.id, set: { [key]: !track[key] } }], label);
   const audible = track.kind === "video" || track.kind === "audio";
+  const canDrag = row.kind !== "main" && !track.locked;
+  const headTitle =
+    row.kind === "main"
+      ? "主视频固定在最下面"
+      : track.locked
+        ? "轨道已锁定"
+        : `${track.name ?? row.label}，拖动调整层级`;
+
+  const startTrackDrag = (event: React.PointerEvent<HTMLElement>) => {
+    if (event.button !== 0 || !canDrag) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const handle = event.currentTarget;
+    const place = (clientY: number) => {
+      const hit = trackInsertIndex(
+        measureTrackRows(project.tracks),
+        track.id,
+        clientY,
+        trackInsertFloor(project, track.id),
+      );
+      if (!hit) {
+        onTrackPlace(null);
+        return null;
+      }
+      const grid = handle.closest(".tl-grid");
+      const top = grid ? hit.line - grid.getBoundingClientRect().top : 0;
+      onTrackPlace({ id: track.id, top });
+      return hit;
+    };
+    const move = (ev: PointerEvent) => {
+      place(ev.clientY);
+    };
+    const finish = (ev: PointerEvent) => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", finish);
+      handle.removeEventListener("pointercancel", finish);
+      if (ev.type === "pointercancel") {
+        onTrackPlace(null);
+        return;
+      }
+      const hit = place(ev.clientY);
+      onTrackPlace(null);
+      if (!hit) return;
+      try {
+        const plan = planTrackMove(project, { id: track.id, index: hit.index });
+        if (plan.ops.length > 0) void submit(plan.ops, "调整了轨道层级");
+      } catch (err) {
+        useStore.getState().toast(err instanceof Error ? err.message : String(err), "error");
+      }
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", finish);
+    handle.addEventListener("pointercancel", finish);
+    handle.setPointerCapture(event.pointerId);
+  };
 
   return (
     <>
-      <div className={`tl-head ${track.hidden ? "is-hidden" : ""}`}>
-        <span className={`row-label row-${row.kind}`} title={track.name ?? track.id}>
+      <div
+        className={["tl-head", track.hidden ? "is-hidden" : "", trackDragging ? "is-dragging" : ""]
+          .filter(Boolean)
+          .join(" ")}
+        data-track={track.id}
+      >
+        <span
+          className={`row-label row-${row.kind}${canDrag ? " can-drag" : ""}`}
+          title={headTitle}
+          onPointerDown={canDrag ? startTrackDrag : undefined}
+        >
           <Icon name={ROW_ICON[row.kind]} size={13} />
           {row.label}
         </span>
@@ -590,6 +810,7 @@ function RowView({
         className={[
           "tl-lane",
           row.kind,
+          hasVideo ? "media-video" : "",
           track.locked ? "locked" : "",
           track.hidden ? "is-hidden" : "",
         ].join(" ")}
@@ -614,7 +835,6 @@ function RowView({
                 flash={flashIds.includes(b.id) ? flashAt : 0}
                 peaks={b.asset ? (peaks[b.asset] ?? null) : null}
                 videoSrc={b.mediaKind === "video" && b.asset ? videoSrcs[b.asset] : undefined}
-                thumbnailHeight={row.kind === "main" ? 36 : 26}
                 onSelect={() => {
                   if (b.kind === "outro") return;
                   select(b.id);
@@ -704,7 +924,6 @@ function BlockView({
   flash,
   peaks,
   videoSrc,
-  thumbnailHeight,
   onSelect,
   dragging,
   editable,
@@ -719,7 +938,6 @@ function BlockView({
   flash: number;
   peaks: { msPerPeak: number; peaks: number[] } | null;
   videoSrc?: string;
-  thumbnailHeight: number;
   onSelect: () => void;
   track: Track;
   dragging: boolean;
@@ -728,22 +946,15 @@ function BlockView({
   onContextMenu: (e: React.MouseEvent) => void;
 }) {
   const columns = Math.floor(width / 3);
+  const videoClip = block.kind === "clip" && block.mediaKind === "video";
   const wave = useMemo(
     () =>
-      peaks && block.kind === "clip" && block.mediaKind === "audio"
+      peaks && block.kind === "clip" && (block.mediaKind === "audio" || block.mediaKind === "video")
         ? waveform(block, peaks, fps, columns)
         : null,
     [peaks, block, fps, columns],
   );
-  const thumbnailCount =
-    block.kind === "clip" && block.mediaKind === "video"
-      ? Math.max(
-          1,
-          Math.min(block.to - block.from, 24, Math.ceil(width / (thumbnailHeight * (16 / 9)))),
-        )
-      : 0;
-  const speedText =
-    block.kind === "clip" && block.mediaKind === "video" ? formatSpeed(block.speed) : null;
+  const speedText = videoClip ? formatSpeed(block.speed) : null;
   return (
     <button
       type="button"
@@ -784,48 +995,74 @@ function BlockView({
           {block.cut}
         </span>
       )}
-      {videoSrc && thumbnailCount > 0 && (
-        <VideoFilmstrip
-          src={videoSrc}
-          block={block}
-          fps={fps}
-          count={thumbnailCount}
-          tileHeight={thumbnailHeight}
-        />
+      {videoClip ? (
+        <>
+          <span className="block-namebar">
+            <span className="block-name">{block.label}</span>
+            {speedText ? <span className="block-speed">{speedText}</span> : null}
+          </span>
+          <span className="block-picture">
+            {videoSrc && (
+              <VideoFilmstrip
+                src={videoSrc}
+                block={block}
+                fps={fps}
+                bandWidth={Math.max(1, width)}
+              />
+            )}
+          </span>
+          <span className="block-waveband">
+            {wave && (
+              <svg
+                className="wave"
+                viewBox={`0 0 ${Math.max(columns, 1) * 3} 100`}
+                preserveAspectRatio="none"
+                aria-hidden="true"
+              >
+                {wave.map((v, i) => (
+                  <rect key={i} x={i * 3} width={2} y={50 - v * 46} height={Math.max(1, v * 92)} />
+                ))}
+              </svg>
+            )}
+          </span>
+        </>
+      ) : (
+        <>
+          {wave && (
+            <svg
+              className="wave"
+              viewBox={`0 0 ${columns * 3} 100`}
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              {wave.map((v, i) => (
+                <rect key={i} x={i * 3} width={2} y={50 - v * 46} height={Math.max(1, v * 92)} />
+              ))}
+            </svg>
+          )}
+          <span className="block-label">
+            <span className="block-name">{block.label}</span>
+          </span>
+        </>
       )}
-      {wave && (
-        <svg
-          className="wave"
-          viewBox={`0 0 ${columns * 3} 100`}
-          preserveAspectRatio="none"
-          aria-hidden="true"
-        >
-          {wave.map((v, i) => (
-            <rect key={i} x={i * 3} width={2} y={50 - v * 46} height={Math.max(1, v * 92)} />
-          ))}
-        </svg>
-      )}
-      <span className="block-label">
-        <span className="block-name">{block.label}</span>
-        {speedText ? <span className="block-speed">{speedText}</span> : null}
-      </span>
       {flash > 0 && <span key={flash} className="block-flash" aria-hidden="true" />}
     </button>
   );
 }
 
+/** 画面带取样高度。显示时按格子比例缩放，不另拉宽高。 */
+const PICTURE_BAND = 40;
+
 function VideoFilmstrip({
   src,
   block,
   fps,
-  count,
-  tileHeight,
+  bandWidth,
 }: {
   src: string;
   block: Block;
   fps: number;
-  count: number;
-  tileHeight: number;
+  bandWidth: number;
 }) {
   const [strip, setStrip] = useState<string | null>(null);
 
@@ -837,9 +1074,6 @@ function VideoFilmstrip({
     video.muted = true;
     video.playsInline = true;
     const canvas = document.createElement("canvas");
-    const tileWidth = Math.round((tileHeight * 16) / 9);
-    canvas.width = tileWidth * count;
-    canvas.height = tileHeight;
     const context = canvas.getContext("2d");
     if (!context) return;
     context.imageSmoothingQuality = "medium";
@@ -847,20 +1081,33 @@ function VideoFilmstrip({
     const frames = Math.max(1, block.to - block.from);
     const trim = block.trimBeforeFrames ?? 0;
     const speed = block.speed ?? 1;
-    const sampleTimes = Array.from({ length: count }, (_, index) => {
-      const offset = Math.min(frames - 1, Math.floor(((index + 0.5) / count) * frames));
-      return frameToMs(sourceFrameAt(trim, speed, offset), fps) / 1000;
-    });
+    let tiles = filmstripTiles(bandWidth, PICTURE_BAND, 16 / 9, frames);
+    let sampleTimes: number[] = [];
+    const layout = () => {
+      const aspect =
+        video.videoWidth > 0 && video.videoHeight > 0
+          ? video.videoWidth / video.videoHeight
+          : 16 / 9;
+      tiles = filmstripTiles(bandWidth, PICTURE_BAND, aspect, frames);
+      canvas.width = tiles.tileWidth * tiles.count;
+      canvas.height = tiles.tileHeight;
+      sampleTimes = Array.from({ length: tiles.count }, (_, index) => {
+        const offset = Math.min(frames - 1, Math.floor(((index + 0.5) / tiles.count) * frames));
+        return frameToMs(sourceFrameAt(trim, speed, offset), fps) / 1000;
+      });
+    };
     let stopped = false;
     let index = 0;
     let pendingSeek: (() => void) | null = null;
 
     const drawFrame = () => {
       if (stopped) return;
+      const { tileWidth, tileHeight, count } = tiles;
       const sourceWidth = video.videoWidth;
       const sourceHeight = video.videoHeight;
       if (sourceWidth > 0 && sourceHeight > 0) {
-        const scale = Math.max(tileWidth / sourceWidth, tileHeight / sourceHeight);
+        // 整帧放进格子，比例不对时留白，不裁掉人物
+        const scale = Math.min(tileWidth / sourceWidth, tileHeight / sourceHeight);
         const drawWidth = sourceWidth * scale;
         const drawHeight = sourceHeight * scale;
         const x = index * tileWidth;
@@ -913,6 +1160,7 @@ function VideoFilmstrip({
     };
     const onLoadedData = () => seekFrame();
     const onLoadedMetadata = () => {
+      layout();
       if ((sampleTimes[0] ?? 0) <= 0.015 && video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
         video.addEventListener("loadeddata", onLoadedData, { once: true });
         return;
@@ -935,7 +1183,7 @@ function VideoFilmstrip({
       video.removeAttribute("src");
       video.load();
     };
-  }, [src, block.from, block.to, block.trimBeforeFrames, block.speed, fps, count, tileHeight]);
+  }, [src, block.from, block.to, block.trimBeforeFrames, block.speed, fps, bandWidth]);
 
   return strip ? <img className="filmstrip" src={strip} alt="" draggable={false} /> : null;
 }
@@ -999,6 +1247,7 @@ function Toolbar({
           onClick={() => st.setAnnotating(!annotating)}
         />
         <DeleteButton />
+        <span className="tl-nudge-hint">选中后 ←→ 1 帧，Shift 1 秒</span>
       </div>
       <div className="tl-zoom-controls" aria-label="时间线缩放">
         <button

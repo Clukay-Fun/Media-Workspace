@@ -1717,6 +1717,7 @@ textarea:focus-visible {
 }
 
 .tl-grid {
+  position: relative;
   display: grid;
   grid-auto-rows: auto;
   padding-right: 8px;
@@ -1737,8 +1738,8 @@ textarea:focus-visible {
   z-index: 3;
   display: flex;
   align-items: center;
-  height: 34px;
-  padding: 0 6px 0 4px;
+  height: 26px;
+  padding: 0 4px;
   border-bottom: 1px solid var(--line);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   background: var(--panel);
@@ -1751,12 +1752,24 @@ textarea:focus-visible {
   min-width: 0;
 }
 
+.tl-toolbar .icon-btn {
+  width: 22px;
+  height: 22px;
+}
+
 .tl-delete {
-  height: 30px;
-  padding: 0 8px;
+  height: 22px;
+  padding: 0 6px;
   border-radius: var(--radius);
   color: var(--text-2);
   font-size: 12px;
+}
+
+.tl-nudge-hint {
+  margin-left: 6px;
+  color: var(--text-3);
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .tl-delete:hover:not(:disabled) {
@@ -1813,10 +1826,10 @@ textarea:focus-visible {
   padding-left: 6px;
 }
 
-.tl-zoom-step {
-  width: 24px;
-  height: 24px;
-  font-size: 17px;
+.tl-toolbar .tl-zoom-step {
+  width: 20px;
+  height: 20px;
+  font-size: 15px;
   line-height: 1;
 }
 
@@ -1829,7 +1842,7 @@ textarea:focus-visible {
 }
 
 .tl-zoom-fit {
-  height: 24px;
+  height: 20px;
   padding: 0 7px;
   border-radius: 6px;
   color: var(--text-2);
@@ -1844,7 +1857,7 @@ textarea:focus-visible {
 
 .snap-line {
   position: absolute;
-  top: 34px;
+  top: 26px;
   bottom: 0;
   width: 1px;
   margin-left: -0.5px;
@@ -1902,7 +1915,6 @@ textarea:focus-visible {
   gap: 4px;
   min-height: 34px;
   padding: 0 4px 0 10px;
-  border-bottom: 1px solid var(--line);
   font-size: 12px;
   color: var(--text-2);
   background: var(--panel);
@@ -1918,6 +1930,74 @@ textarea:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.row-label.can-drag {
+  flex: 1;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.tl-head.is-dragging .row-label.can-drag {
+  cursor: grabbing;
+}
+
+.tl-drop {
+  position: absolute;
+  z-index: 6;
+  right: 8px;
+  left: 0;
+  height: 2px;
+  margin-top: -1px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.tl-head.tl-add,
+.tl-lane.tl-add-lane {
+  min-height: 28px;
+}
+
+.tl-add-btn {
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--radius);
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.tl-add-btn:hover {
+  color: var(--text);
+  background: var(--raised-2);
+}
+
+.tl-add-menu {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 120px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 12px 32px rgb(28 27 24 / 0.16);
+  transform: translateY(calc(-100% - 4px));
+}
+
+.tl-add-menu button {
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  text-align: left;
+}
+
+.tl-add-menu button:hover {
+  background: var(--raised);
 }
 
 .row-tools {
@@ -1956,11 +2036,15 @@ textarea:focus-visible {
 .tl-lane {
   position: relative;
   min-height: 34px;
-  border-bottom: 1px solid var(--line);
 }
 
 .tl-lane.main {
   min-height: 44px;
+}
+
+/* 有视频画面的轨道加高，容纳文件名、画面、波形三层。纯图片轨保持原高。 */
+.tl-lane.media-video {
+  min-height: 78px;
 }
 
 .tl-lane.markers {
@@ -2387,6 +2471,56 @@ textarea:focus-visible {
   background: rgb(20 22 26 / 0.78);
 }
 
+/* 视频块：文件名单独一行，不再压在缩略图上。主视频和画中画同一套。 */
+.block.clip.video {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
+  padding: 0;
+}
+
+.block.clip.video .block-namebar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  height: 16px;
+  min-width: 0;
+  padding: 0 6px;
+  overflow: hidden;
+  background: var(--clip);
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.block.clip.video:has(.cut-tag) .block-namebar {
+  padding-left: calc(2em + 14px);
+}
+
+.block.clip.video .block-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.block.clip.video .block-picture {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  background: #282b31;
+}
+
+.block.clip.video .block-waveband {
+  position: relative;
+  flex: none;
+  height: 16px;
+  background: rgb(0 0 0 / 0.28);
+}
+
 .block.clip.audio .block-label {
   padding: 1px 4px;
   border-radius: 3px;
@@ -2401,6 +2535,16 @@ textarea:focus-visible {
   width: 100%;
   height: 100%;
   pointer-events: none;
+}
+
+/* 按格子原始比例显示：更高时加宽，不把竖屏拉满整块 */
+.block.clip.video .filmstrip {
+  inset: auto;
+  top: 0;
+  left: 0;
+  width: auto;
+  height: 100%;
+  max-width: none;
 }
 
 .wave {
@@ -2421,6 +2565,12 @@ textarea:focus-visible {
 .block.clip.audio .wave {
   fill: #3f83be;
   opacity: 0.9;
+}
+
+.block.clip.video .block-waveband .wave {
+  inset: 1px 0;
+  width: auto;
+  height: calc(100% - 2px);
 }
 
 .block-flash {
@@ -2478,7 +2628,7 @@ textarea:focus-visible {
 
 .playhead {
   position: absolute;
-  top: 36px;
+  top: 28px;
   bottom: 0;
   z-index: 4;
   width: 14px;
@@ -2499,7 +2649,7 @@ textarea:focus-visible {
 
 .playhead-grip {
   position: absolute;
-  top: 36px;
+  top: 28px;
   z-index: 4;
   width: 14px;
   height: 12px;
@@ -3042,6 +3192,22 @@ button.change-target:hover .change-name {
 
 .tl-lane.locked {
   box-shadow: inset 2px 0 0 var(--ok);
+}
+
+/* 锁定轨道的块盖上封条：还能认出内容，看起来不能改 */
+.tl-lane.locked .block::after {
+  content: "";
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    -45deg,
+    rgb(255 255 255 / 0.28) 0 1px,
+    rgb(28 27 24 / 0.22) 1px 3px,
+    transparent 3px 11px
+  );
+  box-shadow: inset 0 3px 0 var(--ok);
 }
 
 /* ---- 按容器宽度适配 ---- */

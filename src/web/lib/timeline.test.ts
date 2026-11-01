@@ -2,7 +2,14 @@ import { describe, expect, it } from "vitest";
 import { compile } from "../../core/compile";
 import { Project } from "../../core/schema";
 import { PROJECT_FORMAT_VERSION } from "../../core/version";
-import { tickStep, timecode, timelineRows, waveform } from "./timeline";
+import {
+  filmstripTiles,
+  tickStep,
+  timecode,
+  timelineRows,
+  trackInsertIndex,
+  waveform,
+} from "./timeline";
 
 const project = Project.parse({
   version: PROJECT_FORMAT_VERSION,
@@ -57,6 +64,18 @@ describe("时间线概览", () => {
     expect(rows[0]?.blocks[0]).toMatchObject({ id: "s1", from: 15, label: "一句" });
   });
 
+  it("轨道有名字时显示名字，主视频仍叫主视频", () => {
+    const named = Project.parse({
+      ...project,
+      tracks: [...project.tracks, { id: "still", kind: "video", name: "图片", items: [] }],
+    });
+    expect(timelineRows(named, compile(named)).map((row) => row.label)).toEqual([
+      "图片",
+      "字幕",
+      "主视频",
+    ]);
+  });
+
   it("图片块也带出关键帧位置", () => {
     const withImage = Project.parse({
       ...project,
@@ -92,6 +111,38 @@ describe("时间线概览", () => {
     const peaks = Array.from({ length: 1000 }, (_, i) => (i >= 200 && i < 600 ? 1 : 0));
     const w = waveform(block, { msPerPeak: 10, peaks }, 30, 4);
     expect(w).toEqual([1, 1, 1, 1]);
+  });
+
+  it("胶片格按素材比例排，不拉成 16:9", () => {
+    const portrait = filmstripTiles(200, 40, 9 / 16, 100);
+    expect(portrait.tileHeight).toBe(40);
+    expect(portrait.tileWidth).toBe(23);
+    expect(portrait.count).toBe(8);
+    const wide = filmstripTiles(100, 40, 16 / 9, 100);
+    expect(wide.tileWidth).toBe(71);
+    expect(wide.count).toBe(1);
+  });
+
+  it("胶片格不超过帧数和 24 格，比例无效时退回 16:9", () => {
+    expect(filmstripTiles(10_000, 40, 1, 3).count).toBe(3);
+    expect(filmstripTiles(10_000, 40, 1, 100).count).toBe(24);
+    const fallback = filmstripTiles(10, 40, 0, 10);
+    expect(fallback.tileWidth).toBe(71);
+    expect(fallback.count).toBe(1);
+  });
+
+  it("拖轨道时主视频下面插不进去", () => {
+    const rows = [
+      { id: "main", top: 300, height: 40, index: 0 },
+      { id: "a", top: 200, height: 40, index: 1 },
+      { id: "b", top: 100, height: 40, index: 2 },
+      { id: "c", top: 40, height: 40, index: 3 },
+    ];
+    expect(trackInsertIndex(rows, "b", 20, 1)).toEqual({ index: 3, line: 40 });
+    expect(trackInsertIndex(rows, "b", 80, 1)).toEqual({ index: 2, line: 80 });
+    expect(trackInsertIndex(rows, "b", 250, 1)).toEqual({ index: 1, line: 240 });
+    expect(trackInsertIndex(rows, "b", 400, 1)).toEqual({ index: 1, line: 300 });
+    expect(trackInsertIndex(rows, "missing", 20, 1)).toBeNull();
   });
 
   it("时间码和刻度", () => {

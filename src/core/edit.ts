@@ -36,6 +36,12 @@ export type DragPlan = {
 /** 最短保留一帧多一点，避免拖成 0 长度 */
 const MIN_MS = 40;
 
+/** 选中后方向键的步长：一帧，按住 Shift 是一秒 */
+export function nudgeDeltaMs(fps: number, shift: boolean, direction: -1 | 1): number {
+  const step = shift ? 1000 : 1000 / Math.max(1, fps);
+  return direction * step;
+}
+
 type Found = { track: Track; index: number; item: Track["items"][number] };
 
 function findItem(project: Project, id: string): Found {
@@ -444,6 +450,31 @@ export function planTransform(project: Project, req: TransformRequest): Transfor
     preview: next,
     guides: hits,
   };
+}
+
+/** 主视频之下不能再插入。返回的是拿走被拖轨道之后的最小下标。 */
+export function trackInsertFloor(project: Project, id: string): number {
+  const from = project.tracks.findIndex((t) => t.id === id);
+  const mainAt = project.tracks.findIndex((t) => isMainTrack(t));
+  if (from < 0 || mainAt < 0) return 0;
+  const mainInWithout = mainAt > from ? mainAt - 1 : mainAt;
+  return mainInWithout + 1;
+}
+
+/**
+ * 拖左侧轨道头改层级。index 是把这条轨道拿出来之后的插入位置，和 track.move 一致。
+ * 主视频固定在最下面；顺序没变时不产生操作。
+ */
+export function planTrackMove(project: Project, req: { id: string; index: number }): { ops: Op[] } {
+  const from = project.tracks.findIndex((t) => t.id === req.id);
+  const track = project.tracks[from];
+  if (!track) throw new MwError("NOT_FOUND", `轨道「${req.id}」不存在`);
+  assertUnlocked(track);
+  if (isMainTrack(track)) throw new MwError("INVALID_OP", "主视频轨道固定在最下面");
+  const floor = trackInsertFloor(project, req.id);
+  const index = Math.max(floor, Math.min(Math.round(req.index), project.tracks.length - 1));
+  if (index === from) return { ops: [] };
+  return { ops: [{ op: "track.move", id: req.id, index }] };
 }
 
 function stripUndefined<T extends object>(o: T): Partial<T> {

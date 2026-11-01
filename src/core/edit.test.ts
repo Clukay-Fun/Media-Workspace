@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { compile } from "./compile";
-import { planDrag, planSplit, planTransform } from "./edit";
+import { nudgeDeltaMs, planDrag, planSplit, planTrackMove, planTransform } from "./edit";
 import { MwError } from "./errors";
 import { applyOps } from "./ops";
 import { type ImageItem, Project } from "./schema";
@@ -332,5 +332,64 @@ describe("planTransform", () => {
   it("没有关键帧时即使传了 atMs 也照旧写 transform", () => {
     const r = planTransform(project(), { id: "i1", transform: { x: 545 }, snap: false, atMs: 0 });
     expect(r.ops[0]).toMatchObject({ op: "item.update" });
+  });
+});
+
+describe("方向键步长", () => {
+  it("一帧，按住 Shift 是一秒", () => {
+    expect(nudgeDeltaMs(30, false, 1)).toBeCloseTo(1000 / 30);
+    expect(nudgeDeltaMs(30, false, -1)).toBeCloseTo(-1000 / 30);
+    expect(nudgeDeltaMs(30, true, 1)).toBe(1000);
+    expect(nudgeDeltaMs(30, true, -1)).toBe(-1000);
+  });
+});
+
+describe("轨道层级", () => {
+  const layers = () =>
+    Project.parse({
+      version: PROJECT_FORMAT_VERSION,
+      revision: 0,
+      canvas: {},
+      assets: { a1: { kind: "video", path: "/raw.mov", probe: { durationMs: 4000 } } },
+      tracks: [
+        { id: "main", kind: "video", main: true, items: [] },
+        { id: "pip", kind: "video", name: "画中画", items: [] },
+        { id: "cap", kind: "caption", items: [] },
+        { id: "title", kind: "overlay", items: [] },
+      ],
+    });
+
+  it("松开时用 track.move 改顺序，主视频留在最下面", () => {
+    const up = planTrackMove(layers(), { id: "pip", index: 3 });
+    expect(up.ops).toEqual([{ op: "track.move", id: "pip", index: 3 }]);
+    expect(applyOps(layers(), up.ops).project.tracks.map((t) => t.id)).toEqual([
+      "main",
+      "cap",
+      "title",
+      "pip",
+    ]);
+    const down = planTrackMove(layers(), { id: "title", index: 1 });
+    expect(applyOps(layers(), down.ops).project.tracks.map((t) => t.id)).toEqual([
+      "main",
+      "title",
+      "pip",
+      "cap",
+    ]);
+  });
+
+  it("拖到主视频下面会被挡回去；位置没变就不提交", () => {
+    expect(planTrackMove(layers(), { id: "pip", index: 0 }).ops).toEqual([]);
+    expect(planTrackMove(layers(), { id: "title", index: 3 }).ops).toEqual([]);
+    expect(() => planTrackMove(layers(), { id: "main", index: 2 })).toThrow(MwError);
+    expect(() => planTrackMove(layers(), { id: "main", index: 2 })).toThrow(/主视频/);
+  });
+
+  it("锁定的轨道不能拖，不存在的轨道会说明", () => {
+    const locked = layers();
+    const cap = locked.tracks[2];
+    if (!cap || cap.kind !== "caption") throw new Error("字幕轨不在预期位置");
+    cap.locked = true;
+    expect(() => planTrackMove(locked, { id: "cap", index: 1 })).toThrow(/锁定/);
+    expect(() => planTrackMove(layers(), { id: "missing", index: 1 })).toThrow(/不存在/);
   });
 });
