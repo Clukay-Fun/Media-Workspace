@@ -31,6 +31,7 @@ export type LintIssue = {
     | "CAPTION_OVERFLOW"
     | "OVERLAP"
     | "FACE_COVERED"
+    | "PERSON_COVERED"
     | "TOO_MANY_CARDS"
     | "FACE_OFF_LAYOUT"
     | "STYLE_NOT_LAYOUT"
@@ -409,6 +410,25 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
               atMs: ms(f),
               message: `「${p.id}」挡住了人脸（约 ${Math.round((covered / area(face)) * 100)}%）`,
             });
+          }
+          if (p.half && area(face) > 0) {
+            const faceWidth = face.x1 - face.x0;
+            const faceHeight = face.y1 - face.y0;
+            const upperBody: Box = {
+              x0: Math.max(0, face.x0 - faceWidth * 0.5),
+              x1: Math.min(width, face.x1 + faceWidth * 0.5),
+              y0: face.y1,
+              y1: Math.min(height, face.y1 + faceHeight * 1.5),
+            };
+            const bodyCovered = boxes.reduce((n, b) => n + area(intersect(upperBody, b)), 0);
+            if (area(upperBody) > 0 && bodyCovered / area(upperBody) > 0.2) {
+              add({
+                code: "PERSON_COVERED",
+                id: p.id,
+                atMs: ms(f),
+                message: `半屏卡「${p.id}」遮住了人物上半身，建议改用小卡或调整构图`,
+              });
+            }
           }
         }
       }

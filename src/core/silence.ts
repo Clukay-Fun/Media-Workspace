@@ -112,14 +112,22 @@ export function edgeCutRanges(
     .filter((r) => r.endMs > r.startMs);
 }
 
-/** 静音两端各保留 keepMs 后，得到实际从源素材剪掉的区间。 */
-export function silenceCutRanges(spans: SilenceSpan[], keepMs: number): SilenceRange[] {
+/** 句中静音两端保留 keepMs；贴着素材头尾的静音剪到边界，避免孤立的空白片段。 */
+export function silenceCutRanges(
+  spans: SilenceSpan[],
+  keepMs: number,
+  totalMs?: number,
+): SilenceRange[] {
   if (!Number.isFinite(keepMs) || keepMs < 0) return [];
   return spans
-    .map(({ startMs, endMs }) => ({
-      startMs: Math.ceil(startMs + keepMs),
-      endMs: Math.floor(endMs - keepMs),
-    }))
+    .map(({ startMs, endMs }) => {
+      const head = startMs <= 40;
+      const tail = totalMs !== undefined && endMs >= totalMs - 40;
+      return {
+        startMs: head ? 0 : Math.ceil(startMs + (tail ? 0 : keepMs)),
+        endMs: tail ? Math.floor(totalMs) : Math.floor(endMs - (head ? 0 : keepMs)),
+      };
+    })
     .filter((range) => range.endMs > range.startMs);
 }
 
