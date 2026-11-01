@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { applyOps } from "./ops";
 import { Project } from "./schema";
 import { changedIds, type UndoLogEntry, undoState } from "./undo";
+import { PROJECT_FORMAT_VERSION } from "./version";
 
 const log = (...kinds: UndoLogEntry["kind"][]): UndoLogEntry[] =>
   kinds.map((kind, i) => ({ revision: i, kind }));
@@ -39,7 +40,7 @@ describe("undoState", () => {
 describe("changedIds", () => {
   it("列出新增、删除、修改的条目和轨道", () => {
     const p = Project.parse({
-      version: 7,
+      version: PROJECT_FORMAT_VERSION,
       revision: 0,
       canvas: {},
       tracks: [

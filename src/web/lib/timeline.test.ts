@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { compile } from "../../core/compile";
 import { Project } from "../../core/schema";
+import { PROJECT_FORMAT_VERSION } from "../../core/version";
 import { tickStep, timecode, timelineRows, waveform } from "./timeline";
 
 const project = Project.parse({
-  version: 7,
+  version: PROJECT_FORMAT_VERSION,
   revision: 0,
   canvas: {},
   assets: {

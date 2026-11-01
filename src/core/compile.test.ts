@@ -3,9 +3,10 @@ import { compile, layoutMainTrack, mainShiftAt, mapTimelineMs } from "./compile"
 import { coverView } from "./cover";
 import { Project } from "./schema";
 import { sourceFrameAt } from "./time";
+import { PROJECT_FORMAT_VERSION } from "./version";
 
 const base = {
-  version: 7,
+  version: PROJECT_FORMAT_VERSION,
   revision: 0,
   canvas: {},
   assets: {

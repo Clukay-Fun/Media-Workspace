@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { Project } from "../src/core/schema";
 import { alignScript, segmentLines } from "../src/core/transcribe";
+import { PROJECT_FORMAT_VERSION } from "../src/core/version";
 import { alignCaptions, asrModelDir, hasAsrModel, transcribeFile } from "../src/node/asr";
 
 // 需要识音模型（mw models --fetch）；没有模型时跳过。音频用模型自带的普通话示例
@@ -13,7 +14,7 @@ describe.skipIf(!ready)("识音对齐", () => {
   it("给字幕写入单调递增、落在句子范围内的逐字时间", async () => {
     const text = "开放时间早上九点至下午五点。";
     const project = Project.parse({
-      version: 7,
+      version: PROJECT_FORMAT_VERSION,
       revision: 0,
       canvas: {},
       assets: { a: { kind: "audio", path: wav, probe: { durationMs: 5600 } } },

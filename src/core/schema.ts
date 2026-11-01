@@ -269,10 +269,7 @@ export const Chapter = z.strictObject({
 });
 
 export const Project = z.strictObject({
-  // v7 → v8 只新增可选 crop，省略时就是完整素材；兼容直接构造 Project 的旧消费者。
-  version: z
-    .union([z.literal(PROJECT_FORMAT_VERSION), z.literal(PROJECT_FORMAT_VERSION - 1)])
-    .transform(() => PROJECT_FORMAT_VERSION),
+  version: z.literal(PROJECT_FORMAT_VERSION),
   revision: z.number().int().nonnegative(),
   canvas: Canvas,
   theme: Theme.default({ accent: "#FFD400", font: "alibaba-puhuiti-3" }),

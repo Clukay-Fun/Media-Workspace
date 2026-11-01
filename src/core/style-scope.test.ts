@@ -3,10 +3,11 @@ import { applyOps } from "./ops";
 import { BUILTIN_STYLES } from "./presets";
 import { Project } from "./schema";
 import { styleEditOps } from "./style-scope";
+import { PROJECT_FORMAT_VERSION } from "./version";
 
 const project = () =>
   Project.parse({
-    version: 7,
+    version: PROJECT_FORMAT_VERSION,
     revision: 1,
     canvas: {},
     assets: { a1: { kind: "video", path: "/raw.mov", probe: { durationMs: 20_000 } } },

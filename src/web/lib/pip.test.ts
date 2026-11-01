@@ -2,13 +2,14 @@ import { describe, expect, it } from "vitest";
 import { MwError } from "../../core/errors";
 import { applyOps } from "../../core/ops";
 import { Project } from "../../core/schema";
+import { PROJECT_FORMAT_VERSION } from "../../core/version";
 import { containBox, cornerPlacement, placeAsset, resizeFromCorner } from "./pip";
 
-const canvas = Project.parse({ version: 7, revision: 0, canvas: {} }).canvas;
+const canvas = Project.parse({ version: PROJECT_FORMAT_VERSION, revision: 0, canvas: {} }).canvas;
 
 const videoProject = () =>
   Project.parse({
-    version: 7,
+    version: PROJECT_FORMAT_VERSION,
     revision: 0,
     canvas: {},
     assets: {
@@ -183,7 +184,7 @@ describe("素材放到画面上", () => {
     const project = videoProject();
     project.tracks.push(
       ...Project.parse({
-        version: 7,
+        version: PROJECT_FORMAT_VERSION,
         revision: 0,
         canvas: {},
         tracks: [

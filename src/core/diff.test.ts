@@ -149,6 +149,7 @@ describe("diffProjects", () => {
     Object.assign(clip, {
       transitionIn: { type: "push", durationMs: 300 },
       animIn: { preset: "fade", durationMs: 300 },
+      crop: { x: 0.1, y: 0, width: 0.8, height: 1 },
     });
     b.chapters = [{ title: "开场", at: { caption: "s1", offsetMs: 0 } }];
     b.cover = { atMs: 0, title: { template: "title-bar", props: { lines: ["周末去哪"] } } };
@@ -163,6 +164,7 @@ describe("diffProjects", () => {
     expect(byId.get("c1")).toEqual([
       { field: "transitionIn", label: "转场", before: "无", after: "推开" },
       { field: "animIn", label: "入场动画", before: "无", after: "淡入" },
+      { field: "crop", label: "裁切", before: "无", after: "左 10% 上 0% · 保留 80% × 100%" },
     ]);
   });
 });

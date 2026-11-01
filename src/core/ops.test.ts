@@ -4,10 +4,11 @@ import { MwError } from "./errors";
 import { applyOps } from "./ops";
 import { BUILTIN_STYLES } from "./presets";
 import { type MainClip, Project } from "./schema";
+import { PROJECT_FORMAT_VERSION } from "./version";
 
 const project = (locked = false) =>
   Project.parse({
-    version: 7,
+    version: PROJECT_FORMAT_VERSION,
     revision: 3,
     canvas: {},
     assets: { a1: { kind: "video", path: "/raw.mov", probe: { durationMs: 20_000 } } },

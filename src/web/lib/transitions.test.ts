@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ResolvedVideo } from "../../core/compile";
 import { Project } from "../../core/schema";
+import { PROJECT_FORMAT_VERSION } from "../../core/version";
 import {
   defaultTransition,
   maxTransitionDurationMs,
@@ -40,7 +41,7 @@ const video = (
 
 const projectWithMainClips = () =>
   Project.parse({
-    version: 7,
+    version: PROJECT_FORMAT_VERSION,
     revision: 0,
     canvas: {},
     assets: {

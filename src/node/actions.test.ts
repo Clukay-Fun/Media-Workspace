@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type Caption, type MainClip, Project } from "../core/schema";
+import { PROJECT_FORMAT_VERSION } from "../core/version";
 import { facesProject, protectCaptionSpeechRanges, restoreCut } from "./actions";
 import { applyToProject, initProject, loadProject } from "./store";
 
@@ -10,7 +11,7 @@ let root: string;
 let dir: string;
 
 const start = Project.parse({
-  version: 7,
+  version: PROJECT_FORMAT_VERSION,
   revision: 0,
   canvas: {},
   assets: { a1: { kind: "video", path: "/raw.mov", probe: { durationMs: 20_000 } } },

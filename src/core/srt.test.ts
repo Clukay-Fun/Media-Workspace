@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Project } from "./schema";
 import { cuesToCaptions, formatSrt, parseSrt, SrtError } from "./srt";
+import { PROJECT_FORMAT_VERSION } from "./version";
 
 describe("parseSrt", () => {
   it("容忍 BOM、CRLF、缺序号、多余空行和时间轴后的位置参数", () => {
@@ -33,7 +34,7 @@ describe("parseSrt", () => {
 
 describe("cuesToCaptions", () => {
   const project = Project.parse({
-    version: 7,
+    version: PROJECT_FORMAT_VERSION,
     revision: 0,
     canvas: {},
     assets: { a1: { kind: "video", path: "/raw.mov" } },

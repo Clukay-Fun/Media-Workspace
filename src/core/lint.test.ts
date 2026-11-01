@@ -3,6 +3,7 @@ import { estimateLines, type FaceTrack, lintProject, type OverlayBounds } from "
 import { BUILTIN_STYLES } from "./presets";
 import { Project, Track } from "./schema";
 import { TextStyle } from "./text-style";
+import { PROJECT_FORMAT_VERSION } from "./version";
 
 const caption = BUILTIN_STYLES["caption-word-yellow"];
 const styles: Record<string, TextStyle> = {
@@ -13,7 +14,7 @@ const styles: Record<string, TextStyle> = {
 
 function make(captions: object[], overlays: object[] = []) {
   return Project.parse({
-    version: 7,
+    version: PROJECT_FORMAT_VERSION,
     revision: 0,
     canvas: {},
     assets: {

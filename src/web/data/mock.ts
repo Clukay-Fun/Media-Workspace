@@ -15,6 +15,7 @@ import { addComment, Review, setCommentStatus } from "../../core/review";
 import { Project } from "../../core/schema";
 import { msToFrame } from "../../core/time";
 import { changedIds, undoState } from "../../core/undo";
+import { PROJECT_FORMAT_VERSION } from "../../core/version";
 import { overlayBounds, TEMPLATES } from "../../templates";
 import { type Api, ApiFailure, type LiveEvent } from "./client";
 
@@ -46,7 +47,7 @@ function demoProject(): Project {
   });
   const at = (i: number) => captions[i] ?? { startMs: 0, endMs: 0 };
   return Project.parse({
-    version: 7,
+    version: PROJECT_FORMAT_VERSION,
     revision: 0,
     canvas: { background: "#1a1b1f" },
     assets: {

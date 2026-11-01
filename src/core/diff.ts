@@ -58,6 +58,7 @@ const LABEL: Record<string, string> = {
   accent: "主题色",
   font: "字体",
   chapters: "章节",
+  crop: "裁切",
 };
 
 /** 卡片的哪个字段最能代表它，按顺序取第一个有值的 */
@@ -298,6 +299,7 @@ function fmt(ctx: Ctx, key: string, v: unknown): string {
   }
   if (isObj(v)) {
     if (key === "transform") return transform(v);
+    if (key === "crop") return crop(v);
     if (key === "at") return anchor(ctx, v);
     if (key === "safeArea" && typeof v.preset === "string") return v.preset;
     if (typeof v.preset === "string") return PRESET_LABEL[v.preset] ?? v.preset;
@@ -326,6 +328,12 @@ function transform(t: Record<string, unknown>): string {
     parts.push(`不透明 ${Math.round(t.opacity * 100)}%`);
   if (typeof t.radius === "number" && t.radius) parts.push(`圆角 ${Math.round(t.radius)}`);
   return parts.join(" · ") || "默认";
+}
+
+/** 裁切按素材的百分比说：从哪里开始、保留多少 */
+function crop(c: Record<string, unknown>): string {
+  const pct = (v: unknown) => (typeof v === "number" ? `${Math.round(v * 100)}%` : "?");
+  return `左 ${pct(c.x)} 上 ${pct(c.y)} · 保留 ${pct(c.width)} × ${pct(c.height)}`;
 }
 
 function anchor(ctx: Ctx, a: Record<string, unknown>): string {
