@@ -2,12 +2,15 @@ import { useState } from "react";
 import type { FloatClip, ImageItem, MainClip } from "../../../core/schema";
 import type { Anim } from "../../../core/text-style";
 import { useStore } from "../../store";
-import { Field } from "./common";
+import { Field, Tabs } from "./common";
 import { useNumberDraft } from "./number-draft";
 
 // 图片和画中画共用的动画设置：入场、出场、循环（循环只有呼吸，v6，docs/decisions/0018）
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+/** 选项卡上标点：这一类设了动画（preset 是 none 等于没设） */
+const on = (a: Anim | undefined) => Boolean(a && a.preset !== "none");
 
 const LOOPS: { value: Anim["preset"]; label: string }[] = [
   { value: "none", label: "无" },
@@ -40,35 +43,16 @@ export function VisualAnims({
 
   return (
     <Field label="动画">
-      <div className="segmented anim-tabs" role="tablist" aria-label="动画分类">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "in"}
-          className={tab === "in" ? "on" : undefined}
-          onClick={() => setTab("in")}
-        >
-          入场
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "out"}
-          className={tab === "out" ? "on" : undefined}
-          onClick={() => setTab("out")}
-        >
-          出场
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "loop"}
-          className={tab === "loop" ? "on" : undefined}
-          onClick={() => setTab("loop")}
-        >
-          循环
-        </button>
-      </div>
+      <Tabs
+        label="动画类别"
+        value={tab}
+        onChange={setTab}
+        items={[
+          { id: "in", label: "入场", dot: on(item.animIn) },
+          { id: "out", label: "出场", dot: on(item.animOut) },
+          { id: "loop", label: "循环", dot: on(item.animLoop) },
+        ]}
+      />
       <div className="anim-tab-panel">
         {tab === "in" && (
           <AnimControls

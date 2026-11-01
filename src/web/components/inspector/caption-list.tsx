@@ -25,60 +25,53 @@ export function CaptionList() {
   // 中间被剪开的字幕会分成几段显示，列表里只列一次
   const captions = tl.captions.filter((c) => c.part === 0).toSorted((a, b) => a.from - b.from);
   return (
-    <>
-      <header className="selection-head">
-        <span className="kind-badge">字幕 {captions.length} 句</span>
-      </header>
-      <div className="caption-list">
-        {captions.map((c) => {
-          const ref_ = findItem(project, c.id);
-          const cap = ref_?.item as Caption | undefined;
-          const text = cap?.text ?? c.text;
-          const highlights = cap?.highlights ?? [];
-          const playing = frame >= c.from && frame < c.from + c.durationInFrames;
-          const open = editing === c.id;
-          return (
-            <div
-              key={c.id}
-              ref={c.id === selected ? current : undefined}
-              className={[
-                "caption-row",
-                c.id === selected ? "current" : "",
-                playing ? "playing" : "",
-              ].join(" ")}
+    <div className="caption-list">
+      {captions.map((c) => {
+        const ref_ = findItem(project, c.id);
+        const cap = ref_?.item as Caption | undefined;
+        const text = cap?.text ?? c.text;
+        const highlights = cap?.highlights ?? [];
+        const playing = frame >= c.from && frame < c.from + c.durationInFrames;
+        const open = editing === c.id;
+        return (
+          <div
+            key={c.id}
+            ref={c.id === selected ? current : undefined}
+            className={[
+              "caption-row",
+              c.id === selected ? "current" : "",
+              playing ? "playing" : "",
+            ].join(" ")}
+          >
+            <button
+              type="button"
+              className="caption-row-main"
+              onClick={() => {
+                const { select, seek, frame: now } = useStore.getState();
+                select(c.id, { reveal: false });
+                const to = c.from + c.durationInFrames;
+                const target = seekFrameOnSelect(now, c.from, to, "caption");
+                if (target !== null) seek(target);
+              }}
             >
-              <button
-                type="button"
-                className="caption-row-main"
-                onClick={() => {
-                  const { select, seek, frame: now } = useStore.getState();
-                  select(c.id, { reveal: false });
-                  const to = c.from + c.durationInFrames;
-                  const target = seekFrameOnSelect(now, c.from, to, "caption");
-                  if (target !== null) seek(target);
-                }}
-              >
-                <span className="mono">{timecode(c.from, tl.fps)}</span>
-                <MarkedText text={text} highlights={highlights} />
-              </button>
-              <button
-                type="button"
-                className={open ? "icon-btn ghost on" : "icon-btn ghost"}
-                aria-label={open ? "收起高亮" : "标高亮"}
-                aria-expanded={open}
-                title={open ? "收起" : "标高亮：在文字里选中要强调的词"}
-                onClick={() => setEditing(open ? null : c.id)}
-              >
-                <Icon name="marker" size={12} />
-              </button>
-              {open && cap && (
-                <HighlightEditor caption={cap} locked={ref_?.track.locked ?? false} />
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </>
+              <span className="mono">{timecode(c.from, tl.fps)}</span>
+              <MarkedText text={text} highlights={highlights} />
+            </button>
+            <button
+              type="button"
+              className={open ? "icon-btn ghost on" : "icon-btn ghost"}
+              aria-label={open ? "收起高亮" : "标高亮"}
+              aria-expanded={open}
+              title={open ? "收起" : "标高亮：在文字里选中要强调的词"}
+              onClick={() => setEditing(open ? null : c.id)}
+            >
+              <Icon name="marker" size={12} />
+            </button>
+            {open && cap && <HighlightEditor caption={cap} locked={ref_?.track.locked ?? false} />}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

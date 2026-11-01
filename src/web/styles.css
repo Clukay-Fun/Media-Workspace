@@ -1466,17 +1466,52 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 12px;
+  min-width: 0;
 }
 
+/* 名字可能是一整句字幕，单行省略，完整内容和 ID 在 title 里 */
 .selection-head h2 {
+  flex: 1;
+  min-width: 0;
   margin: 0;
-  font-family: var(--mono);
+  overflow: hidden;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.selection-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+
+.selection-meta > div {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.selection-meta > .wide {
+  flex-basis: 100%;
+}
+
+.selection-meta dt {
+  flex: none;
+  color: var(--text-3);
+}
+
+.selection-meta dd {
+  margin: 0;
+  color: var(--text-2);
 }
 
 .kind-badge {
+  flex: none;
+  white-space: nowrap;
   padding: 2px 8px;
   border-radius: 4px;
   font-size: 11px;
@@ -1526,12 +1561,6 @@ textarea:focus-visible {
 .section .muted {
   margin: 0;
   font-size: 12px;
-}
-
-.anchor {
-  margin: 0;
-  color: var(--text-2);
-  line-height: 1.6;
 }
 
 .select,
@@ -2693,14 +2722,6 @@ textarea:focus-visible {
   }
 }
 
-.selection-head .mini-btn {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: auto;
-}
-
 .handoff {
   display: flex;
   align-items: center;
@@ -2993,30 +3014,6 @@ button.change-target:hover .change-name {
   margin-left: auto;
 }
 
-.selection-time {
-  font-size: 11px;
-  color: var(--text-3);
-}
-
-.selection-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-
-.selection-actions .select {
-  width: auto;
-  flex: 1;
-  min-width: 120px;
-}
-
-.selection-actions .mini-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
 /* ---- 时间线：AI 改动行、锁定 ---- */
 
 .ai-head {
@@ -3192,19 +3189,40 @@ button.change-target:hover .change-name {
   color: var(--text-3);
 }
 
-.keyframe-details > summary {
+.insp-row > .field-note {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* 关键帧整节可折叠：标题行就是开关，前面的小三角表示能展开 */
+.keyframe-field > summary {
+  list-style: none;
   cursor: pointer;
-  font-size: 12px;
-  color: var(--text-2);
   user-select: none;
-  padding: 2px 0;
 }
 
-.keyframe-details > summary:hover {
-  color: var(--text);
+.keyframe-field > summary::-webkit-details-marker {
+  display: none;
 }
 
-.keyframe-details[open] > summary {
+.keyframe-field > summary h3 {
+  align-items: center;
+  margin: 0;
+}
+
+.keyframe-field > summary h3::before {
+  content: "";
+  border-left: 4px solid var(--text-3);
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transition: transform 160ms var(--ease-out);
+}
+
+.keyframe-field[open] > summary h3::before {
+  transform: rotate(90deg);
+}
+
+.keyframe-field[open] > summary {
   margin-bottom: 8px;
 }
 
@@ -3215,7 +3233,6 @@ button.change-target:hover .change-name {
 
 .keyframes-hint,
 .keyframes-range-note,
-.keyframes-empty,
 .keyframe-no-change {
   margin: 0;
   font-size: 11px;
@@ -3404,6 +3421,51 @@ button.change-target:hover .change-name {
   margin-top: 8px;
 }
 
+/* 右栏里的二级选项卡：比顶部「属性 / 批注 / AI 改动」轻，也和变速那种按钮组区分开 */
+.sub-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--raised);
+}
+
+.sub-tabs button {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 26px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+  white-space: nowrap;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.sub-tabs button.on {
+  color: var(--text);
+  font-weight: 600;
+  background: var(--panel);
+  box-shadow: 0 1px 2px rgb(28 27 24 / 0.08);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .sub-tabs button:not(.on):hover {
+    color: var(--text);
+  }
+}
+
+.tab-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
 .segmented button {
   flex: 1;
   height: 28px;
@@ -3419,10 +3481,6 @@ button.change-target:hover .change-name {
 .segmented button.on {
   color: #fff;
   background: var(--text);
-}
-
-.caption-tabs {
-  margin-bottom: 8px;
 }
 
 .style-chip:active:not(:disabled),

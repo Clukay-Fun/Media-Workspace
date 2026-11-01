@@ -4,7 +4,7 @@ import { transitionPairFor } from "../../lib/transitions";
 import { useStore } from "../../store";
 import { TransitionEditor } from "../transition-editor";
 import { VisualAnims } from "./anims";
-import { Field, InspectorActions, InspectorHead, type InspectorProps } from "./common";
+import { Field, InspectorHead, type InspectorProps } from "./common";
 import { KeyframesInspector } from "./keyframes";
 import { useNumberDraft } from "./number-draft";
 import { PipInspector } from "./pip";
@@ -61,7 +61,6 @@ export function ClipInspector(props: InspectorProps) {
           keyframes={clip.keyframes}
         />
       )}
-      <InspectorActions />
     </div>
   );
 }

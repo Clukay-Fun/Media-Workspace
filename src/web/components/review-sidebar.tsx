@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Comment } from "../../core/review";
 import { aiChanges } from "../lib/changes";
+import { findItem } from "../lib/project";
 import { frameOfMs, itemFrames, timecode } from "../lib/timeline";
 import { type SideTab, useStore } from "../store";
 import { AiChanges } from "./ai-changes";
@@ -11,7 +12,7 @@ import { ProjectOverview } from "./inspector/project";
 
 /**
  * 右栏：属性 / 批注 / AI 改动。属性页给选中元素能直接点的选项，点不出来的在底部输入框告诉 AI。
- * 没选中时属性页是章节和质检问题。
+ * 没选中时属性页是工程概览和章节；质检在顶栏 ⚠ 里看。
  */
 export function ReviewSidebar() {
   const tab = useStore((s) => s.sideTab);
@@ -23,6 +24,16 @@ export function ReviewSidebar() {
   const reviewedRev = useStore((s) => s.reviewedRev);
   const pending = aiChanges(history, reviewedRev).pending.length;
   const { setSideTab, setSideOpen } = useStore.getState();
+  const selected = useStore((s) => s.selected);
+  const scroller = useRef<HTMLDivElement>(null);
+  // 换了选中的元素或换页时回到顶部，不然新元素的标题和选项卡还停在上一个的滚动位置外面。
+  // 在「全部字幕」里一句句点时例外：列表自己会把选中的那句滚到可见
+  useEffect(() => {
+    const { project, captionTab } = useStore.getState();
+    const ref = project && selected ? findItem(project, selected) : null;
+    if (captionTab === "list" && ref?.track.kind === "caption") return;
+    scroller.current?.scrollTo({ top: 0 });
+  }, [selected, tab]);
 
   const tabs: { id: SideTab; label: string; count: number; tone: string }[] = [
     // 质检数量只在顶栏 ⚠ 上显示（问题 8）
@@ -56,7 +67,7 @@ export function ReviewSidebar() {
           <Icon name="close" size={12} />
         </button>
       </div>
-      <div className="panel-scroll">
+      <div className="panel-scroll" ref={scroller}>
         {tab === "props" && <Properties />}
         {tab === "changes" && <AiChanges />}
         {tab === "comments" && <Comments />}

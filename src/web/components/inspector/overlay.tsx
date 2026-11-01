@@ -1,12 +1,6 @@
 import type { Overlay } from "../../../core/schema";
 import { TEMPLATES } from "../../../templates";
-import {
-  InspectorActions,
-  InspectorHead,
-  type InspectorProps,
-  SlotPicker,
-  StylePicker,
-} from "./common";
+import { InspectorHead, type InspectorProps, SlotPicker, StylePicker } from "./common";
 import { TextStyleEditor } from "./text-style-editor";
 
 /** 选中标题 / 卡片：样式、位置、出现时间 */
@@ -26,7 +20,6 @@ export function OverlayInspector(props: InspectorProps) {
         elementLabel="标题 / 卡片"
       />
       <SlotPicker id={id} ref_={ref_} />
-      <InspectorActions />
     </div>
   );
 }

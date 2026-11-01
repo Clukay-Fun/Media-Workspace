@@ -12,8 +12,9 @@ import { msOfFrame } from "./lib/timeline";
 // 界面状态。工程数据只从服务端读，修改一律提交 ops（AGENTS.md 规则 1）；
 // 本地只有选中、播放头、拖动中的草稿这些不影响渲染的东西。
 
-/** 右栏三页：属性（选中元素能点的选项；没选中时是章节和质检）、批注、AI 改动 */
+/** 右栏三页：属性（选中元素能点的选项；没选中时是工程概览和章节）、批注、AI 改动 */
 export type SideTab = "props" | "comments" | "changes";
+export type CaptionTab = "edit" | "style" | "list";
 
 /** 左栏两页：素材、样式库 */
 export type LeftTab = "assets" | "styles";
@@ -92,6 +93,8 @@ type State = {
   layoutEditing: boolean;
   /** 时间线拖动时吸附到字幕边界、播放头 */
   snap: boolean;
+  /** 选中字幕时右栏看哪一页；换一句字幕时保持不变 */
+  captionTab: CaptionTab;
   /** 正在等待用户在预览画面中点选批注目标 */
   annotating: boolean;
   /** 点选画面目标时钉下的位置（画布像素），写批注时一起提交 */
@@ -125,6 +128,7 @@ type State = {
   /** 整份保存账号版式；界面先改本地，失败时提示并重新读取 */
   saveLayout(next: LayoutInput): Promise<void>;
   toggleSnap(): void;
+  setCaptionTab(tab: CaptionTab): void;
   setAnnotating(on: boolean): void;
   setPin(pin: State["pin"]): void;
   dismissAiChange(): void;
@@ -228,6 +232,7 @@ export const useStore = create<State>((set, get) => {
     accountGuides: true,
     layoutEditing: false,
     snap: true,
+    captionTab: "edit",
     annotating: false,
     pin: null,
     revealNonce: 0,
@@ -424,6 +429,7 @@ export const useStore = create<State>((set, get) => {
       }
     },
     toggleSnap: () => set((s) => ({ snap: !s.snap })),
+    setCaptionTab: (captionTab) => set({ captionTab }),
     setAnnotating: (annotating) =>
       set((s) => ({
         annotating,

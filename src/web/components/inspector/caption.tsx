@@ -2,56 +2,28 @@ import { useEffect, useState } from "react";
 import type { Caption } from "../../../core/schema";
 import { useStore } from "../../store";
 import { CaptionList } from "./caption-list";
-import { InspectorHead, type InspectorProps, isImeComposing, StylePicker } from "./common";
+import { InspectorHead, type InspectorProps, isImeComposing, StylePicker, Tabs } from "./common";
 import { TextStyleEditor } from "./text-style-editor";
 
-type CaptionTab = "props" | "style" | "list";
-
-let activeCaptionTab: CaptionTab = "props";
-
-/** 选中一句字幕：文字、样式 */
+/** 选中一句字幕：这一句的文字和样式、整套换样式、全部字幕三页（问题 12） */
 export function CaptionInspector(props: InspectorProps) {
   const { project, id, ref_ } = props;
-  const [tab, setTabState] = useState<CaptionTab>(activeCaptionTab);
-
-  const setTab = (next: CaptionTab) => {
-    activeCaptionTab = next;
-    setTabState(next);
-  };
-
+  const tab = useStore((s) => s.captionTab);
+  const count = useStore((s) => s.preview?.timeline.captions.filter((c) => c.part === 0).length);
   return (
     <div className="selection">
       <InspectorHead {...props} />
-      <div className="segmented caption-tabs" role="tablist" aria-label="字幕属性类别">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "props"}
-          className={tab === "props" ? "on" : undefined}
-          onClick={() => setTab("props")}
-        >
-          属性
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "style"}
-          className={tab === "style" ? "on" : undefined}
-          onClick={() => setTab("style")}
-        >
-          样式
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "list"}
-          className={tab === "list" ? "on" : undefined}
-          onClick={() => setTab("list")}
-        >
-          全部字幕
-        </button>
-      </div>
-      {tab === "props" && (
+      <Tabs
+        label="字幕属性"
+        value={tab}
+        onChange={useStore.getState().setCaptionTab}
+        items={[
+          { id: "edit", label: "这句字幕" },
+          { id: "style", label: "套用样式" },
+          { id: "list", label: count ? `全部字幕 ${count}` : "全部字幕" },
+        ]}
+      />
+      {tab === "edit" && (
         <>
           <CaptionEditor caption={ref_.item as Caption} locked={ref_.track.locked} />
           <TextStyleEditor

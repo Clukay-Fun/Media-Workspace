@@ -3,14 +3,14 @@ import { useState } from "react";
 import type { Op } from "../../../core/ops";
 import type { Anchor, Caption, Project, Slot, Transform } from "../../../core/schema";
 import { type StyleScope, styleEditOps } from "../../../core/style-scope";
-import { findItem, type ItemRef, kindLabel } from "../../lib/project";
-import { msOfFrame, timecode } from "../../lib/timeline";
+import { displayName, findItem, type ItemRef, kindLabel } from "../../lib/project";
+import { itemFrames, msOfFrame, timecode } from "../../lib/timeline";
 import { useStore } from "../../store";
 import { Icon } from "../icons";
 import { swatch } from "../left-panel";
 
 // 右栏属性的公共部分（docs/decisions/0015）。每类元素一个文件，只放它自己的控件；
-// 几类都要用的控件（标题栏、样式、位置、出现时间、锁定）放这里。
+// 几类都要用的控件（标题栏、选项卡、样式、位置）放这里。锁定只在时间线轨道头上（问题 10）。
 // 所有修改都转成 ops 用 submit 提交（AGENTS.md 3.1），控件只在松手 / 确认时提交一次。
 
 export type InspectorProps = { project: Project; id: string; ref_: ItemRef; fps: number };
@@ -35,25 +35,19 @@ export function Field({
   );
 }
 
-/** 标题栏：类型、ID、出现时间和时长、关闭；有锚点时下面写清楚跟着谁出现 */
+/**
+ * 标题栏：类型、名字、取消选中；下面一行写开始时间、时长，有锚点时写清楚跟着谁出现（问题 2）。
+ * 取消选中只清掉选中，右栏保持打开（问题 25）
+ */
 export function InspectorHead({ project, id, ref_, fps }: InspectorProps) {
   const tl = useStore((s) => s.preview?.timeline);
-  const resolved = tl
-    ? [...tl.videos, ...tl.images, ...tl.captions, ...tl.overlays].filter((x) => x.id === id)
-    : [];
-  const from = resolved.length ? Math.min(...resolved.map((r) => r.from)) : null;
-  const to = resolved.length ? Math.max(...resolved.map((r) => r.from + r.durationInFrames)) : null;
+  const range = tl ? itemFrames(tl, id) : null;
   const anchor = "at" in ref_.item ? (ref_.item.at as Anchor) : null;
   return (
-    <>
+    <div className="selection-intro">
       <header className="selection-head">
         <span className="kind-badge">{kindLabel(ref_)}</span>
-        <h2>{id}</h2>
-        {from !== null && to !== null && (
-          <span className="selection-time mono">
-            开始 {timecode(from, fps)} · 时长 {(msOfFrame(to - from, fps) / 1000).toFixed(1)}s
-          </span>
-        )}
+        <h2 title={`ID：${id}`}>{displayName(project, ref_)}</h2>
         <button
           type="button"
           className="icon-btn ghost close"
@@ -64,15 +58,59 @@ export function InspectorHead({ project, id, ref_, fps }: InspectorProps) {
           <Icon name="close" size={12} />
         </button>
       </header>
-      {anchor && <p className="anchor">{describeAnchor(project, anchor)}</p>}
-    </>
+      <dl className="selection-meta">
+        {range && (
+          <>
+            <div>
+              <dt>开始</dt>
+              <dd className="mono">{timecode(range.from, fps)}</dd>
+            </div>
+            <div>
+              <dt>时长</dt>
+              <dd>{(msOfFrame(range.to - range.from, fps) / 1000).toFixed(1)} 秒</dd>
+            </div>
+          </>
+        )}
+        {anchor && (
+          <div className="wide">
+            <dt>出现</dt>
+            <dd>{describeAnchor(project, anchor)}</dd>
+          </div>
+        )}
+      </dl>
+    </div>
   );
 }
 
-/** 底部操作：各类元素自己的操作按钮 */
-export function InspectorActions({ children }: { children?: React.ReactNode }) {
-  if (!children) return null;
-  return <div className="selection-actions">{children}</div>;
+/** 小选项卡：字幕的文字 / 样式 / 全部字幕，动画的入场 / 出场 / 循环。dot 标出这一页已经设了东西 */
+export function Tabs<T extends string>({
+  label,
+  value,
+  items,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  items: { id: T; label: string; dot?: boolean }[];
+  onChange: (id: T) => void;
+}) {
+  return (
+    <div className="sub-tabs" role="tablist" aria-label={label}>
+      {items.map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          role="tab"
+          aria-selected={value === t.id}
+          className={value === t.id ? "on" : undefined}
+          onClick={() => onChange(t.id)}
+        >
+          {t.label}
+          {t.dot && <span className="tab-dot" aria-label="已设置" />}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 /**
@@ -233,17 +271,17 @@ const SLOT_Y: Record<Slot, number> = {
 };
 
 function describeAnchor(project: Project, at: Anchor): string {
-  if ("ms" in at) return `固定在时间线 ${(at.ms / 1000).toFixed(1)} 秒出现（不跟随片段或字幕）`;
+  if ("ms" in at) return `固定在第 ${(at.ms / 1000).toFixed(1)} 秒，不跟着片段或字幕走`;
   const off = at.offsetMs
     ? `，${at.offsetMs > 0 ? "延后" : "提前"} ${Math.abs(at.offsetMs / 1000)} 秒`
     : "";
-  if ("clip" in at) return `跟随片段 ${at.clip} 开始${off}`;
+  if ("clip" in at) return `跟着片段 ${at.clip} 开始${off}`;
   const cap = findItem(project, at.caption)?.item as Caption | undefined;
   if (at.char !== undefined && cap) {
     const ch = [...cap.text][at.char] ?? "";
     return `念到「${cap.text}」第 ${at.char + 1} 个字「${ch}」时${off}`;
   }
-  return cap ? `跟随字幕「${cap.text}」开始${off}` : `跟随字幕 ${at.caption}${off}`;
+  return cap ? `跟着字幕「${cap.text}」开始${off}` : `跟着字幕 ${at.caption}${off}`;
 }
 
 /** 中文输入法选字时按回车是确认候选词，不能当成提交（229 是部分浏览器组字时的 keyCode） */

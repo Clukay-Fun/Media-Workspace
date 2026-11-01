@@ -4,7 +4,7 @@ import type { ImageItem, Transform } from "../../../core/schema";
 import { msOfFrame } from "../../lib/timeline";
 import { useStore } from "../../store";
 import { VisualAnims } from "./anims";
-import { Field, InspectorActions, InspectorHead, type InspectorProps, SlotPicker } from "./common";
+import { Field, InspectorHead, type InspectorProps, SlotPicker } from "./common";
 import { KeyframesInspector } from "./keyframes";
 import { useNumberDraft } from "./number-draft";
 
@@ -86,9 +86,8 @@ export function ImageInspector(props: InspectorProps) {
           />
         </div>
       </Field>
-      <KeyframesInspector id={id} fps={props.fps} locked={locked} keyframes={image.keyframes} />
       <VisualAnims id={id} item={image} locked={locked} />
-      <InspectorActions />
+      <KeyframesInspector id={id} fps={props.fps} locked={locked} keyframes={image.keyframes} />
     </div>
   );
 }
