@@ -1,34 +1,23 @@
 import type React from "react";
-import { frameOfMs } from "../lib/timeline";
 import { useStore } from "../store";
 import { Icon } from "./icons";
+import { IssuesMenu } from "./issues-menu";
 
 export function TopBar() {
   const project = useStore((s) => s.project);
   const name = useStore((s) => s.name);
   const history = useStore((s) => s.history);
-  const lint = useStore((s) => s.lint);
   const review = useStore((s) => s.review);
   const aiChange = useStore((s) => s.aiChange);
   const exportJob = useStore((s) => s.exportJob);
   const sideOpen = useStore((s) => s.sideOpen);
   const leftOpen = useStore((s) => s.leftOpen);
-  const { startExport, setSideTab, setSideOpen, setLeftOpen, select, seek, undo, dismissAiChange } =
+  const { startExport, setSideTab, setSideOpen, setLeftOpen, select, undo, dismissAiChange } =
     useStore.getState();
 
   const open = review?.comments.filter((c) => c.status === "open").length ?? 0;
-  // 只算警告；提示（有账号版式时的通用安全区等）只作参考，不计数
-  const issues = (lint?.issues ?? []).filter((i) => i.level !== "hint");
   const exporting = exportJob !== null && !exportJob.done;
   const canUndoAi = aiChange && aiChange.revision === project?.revision && history?.undo;
-
-  const jumpToIssue = () => {
-    const first = issues[0];
-    setSideTab("props");
-    if (!first || !project) return;
-    select(first.id, { reveal: false });
-    seek(frameOfMs(first.atMs, project.canvas.fps));
-  };
 
   return (
     <header className="topbar">
@@ -82,16 +71,7 @@ export function TopBar() {
       </div>
 
       <div className="topbar-actions">
-        <button
-          type="button"
-          className={issues.length ? "chip warn" : "chip"}
-          aria-label={`质检 ${issues.length}`}
-          onClick={jumpToIssue}
-          title={issues[0]?.message ?? "质检没有发现问题"}
-        >
-          <Icon name="warn" size={14} />
-          {issues.length}
-        </button>
+        <IssuesMenu />
         <button
           type="button"
           className={open ? "chip accent" : "chip"}
