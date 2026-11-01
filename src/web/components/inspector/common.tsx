@@ -52,7 +52,7 @@ export function InspectorHead({ project, id, ref_, fps }: InspectorProps) {
         <h2>{id}</h2>
         {from !== null && to !== null && (
           <span className="selection-time mono">
-            {timecode(from, fps)} · {(msOfFrame(to - from, fps) / 1000).toFixed(1)}s
+            开始 {timecode(from, fps)} · 时长 {(msOfFrame(to - from, fps) / 1000).toFixed(1)}s
           </span>
         )}
         <button
@@ -301,7 +301,7 @@ function NudgeBtn({
 }
 
 function describeAnchor(project: Project, at: Anchor): string {
-  if ("ms" in at) return `固定在 ${(at.ms / 1000).toFixed(1)} 秒`;
+  if ("ms" in at) return `固定在时间线 ${(at.ms / 1000).toFixed(1)} 秒出现（不跟随片段或字幕）`;
   const off = at.offsetMs
     ? `，${at.offsetMs > 0 ? "延后" : "提前"} ${Math.abs(at.offsetMs / 1000)} 秒`
     : "";
