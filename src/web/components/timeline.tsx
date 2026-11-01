@@ -2,10 +2,12 @@ import type React from "react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { EditorState } from "../../core/api";
 import { type DragMode, planDrag } from "../../core/edit";
+import type { Op } from "../../core/ops";
 import type { Project, Track } from "../../core/schema";
 import { frameToMs, sourceFrameAt } from "../../core/time";
 import { aiChanges } from "../lib/changes";
 import { keyframeMarkerPositions } from "../lib/keyframes";
+import { findItem, type ItemRef, kindLabel } from "../lib/project";
 import {
   type Block,
   frameOfMs,
@@ -48,6 +50,7 @@ export function Timeline() {
   const peaks = useStore((s) => s.peaks);
   const { seek, select } = useStore.getState();
   const [ghost, setGhost] = useState<Ghost | null>(null);
+  const [menu, setMenu] = useState<BlockMenu | null>(null);
   const [zoomPps, setZoomPps] = useState<number | null>(null);
   const [openTransitionId, setOpenTransitionId] = useState<string | null>(null);
   const history = useStore((s) => s.history);
@@ -256,6 +259,7 @@ export function Timeline() {
   };
 
   const onTimelineScroll = () => {
+    setMenu(null);
     const current = root.current;
     const existing = editorRef.current;
     if (!current || !existing || pps <= 0) return;
@@ -325,14 +329,18 @@ export function Timeline() {
           snap: s.snap && !ev.metaKey,
           playheadMs: msOfFrame(s.frame, fps),
         });
+        const from = frameOfMs(plan.preview.startMs, fps);
+        // 移动时宽度锁住抓起来的那一块，避免取整或相邻字幕把块挤窄
+        const to = mode === "move" ? from + (b.to - b.from) : frameOfMs(plan.preview.endMs, fps);
         setGhost({
           id: b.id,
-          from: frameOfMs(plan.preview.startMs, fps),
-          to: frameOfMs(plan.preview.endMs, fps),
+          key: b.key,
+          from,
+          to,
           snapAt: plan.snappedTo ? frameOfMs(plan.snappedTo.at, fps) : null,
         });
       } catch {
-        plan = null;
+        // 再往前会离开素材：停在上一个合法位置，松手时提交它
       }
     };
     const finish = (commit: boolean) => {
@@ -365,6 +373,18 @@ export function Timeline() {
     target.addEventListener("lostpointercapture", onLostPointerCapture, {
       once: true,
       signal: controller.signal,
+    });
+  };
+
+  const openBlockMenu = (e: React.MouseEvent, b: Block) => {
+    if (b.kind !== "outro") select(b.id);
+    const width = 220;
+    const height = 112;
+    const pad = 8;
+    setMenu({
+      id: b.id,
+      x: Math.max(pad, Math.min(e.clientX, window.innerWidth - width - pad)),
+      y: Math.max(pad, Math.min(e.clientY, window.innerHeight - height - pad)),
     });
   };
 
@@ -471,6 +491,7 @@ export function Timeline() {
             onScrub={scrub}
             ghost={ghost}
             onDragStart={startDrag}
+            onContextMenu={openBlockMenu}
             transitionCuts={row.kind === "main" ? transitionCuts : []}
             openTransitionId={openTransitionId}
             setOpenTransitionId={setOpenTransitionId}
@@ -504,6 +525,7 @@ export function Timeline() {
       {ghost?.snapAt != null && (
         <div className="snap-line" style={{ left: HEAD + px(ghost.snapAt) }} />
       )}
+      {menu && <BlockMenuView menu={menu} onClose={() => setMenu(null)} />}
     </section>
   );
 }
@@ -521,6 +543,7 @@ function RowView({
   onScrub,
   ghost,
   onDragStart,
+  onContextMenu,
   transitionCuts,
   openTransitionId,
   setOpenTransitionId,
@@ -537,6 +560,7 @@ function RowView({
   onScrub: (e: React.PointerEvent<HTMLDivElement>) => void;
   ghost: Ghost | null;
   onDragStart: (e: React.PointerEvent, b: Block, mode: DragMode) => void;
+  onContextMenu: (e: React.MouseEvent, b: Block) => void;
   transitionCuts: TransitionCut[];
   openTransitionId: string | null;
   setOpenTransitionId: (id: string | null) => void;
@@ -589,7 +613,7 @@ function RowView({
         onPointerDown={onScrub}
       >
         {row.blocks.map((b) => {
-          const g = ghost?.id === b.id ? ghost : null;
+          const g = ghost?.key === b.key ? ghost : null;
           const from = g ? g.from : b.from;
           const to = g ? g.to : b.to;
           return (
@@ -601,6 +625,7 @@ function RowView({
                 dragging={g !== null}
                 editable={!track.locked && b.kind !== "outro"}
                 onDragStart={(e, mode) => onDragStart(e, b, mode)}
+                onContextMenu={(e) => onContextMenu(e, b)}
                 fps={fps}
                 selected={selected === b.id}
                 flash={flashIds.includes(b.id) ? flashAt : 0}
@@ -704,6 +729,7 @@ function BlockView({
   dragging,
   editable,
   onDragStart,
+  onContextMenu,
 }: {
   block: Block;
   left: number;
@@ -719,6 +745,7 @@ function BlockView({
   dragging: boolean;
   editable: boolean;
   onDragStart: (e: React.PointerEvent, mode: DragMode) => void;
+  onContextMenu: (e: React.MouseEvent) => void;
 }) {
   const columns = Math.floor(width / 3);
   const wave = useMemo(
@@ -735,6 +762,8 @@ function BlockView({
           Math.min(block.to - block.from, 24, Math.ceil(width / (thumbnailHeight * (16 / 9)))),
         )
       : 0;
+  const speedText =
+    block.kind === "clip" && block.mediaKind === "video" ? formatSpeed(block.speed) : null;
   return (
     <button
       type="button"
@@ -756,6 +785,11 @@ function BlockView({
         const x = e.clientX - r.left;
         const edge = Math.min(6, r.width / 4);
         onDragStart(e, x < edge ? "trimStart" : x > r.width - edge ? "trimEnd" : "move");
+      }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onContextMenu(e);
       }}
       onClick={onSelect}
     >
@@ -791,7 +825,10 @@ function BlockView({
           ))}
         </svg>
       )}
-      <span className="block-label">{block.label}</span>
+      <span className="block-label">
+        <span className="block-name">{block.label}</span>
+        {speedText ? <span className="block-speed">{speedText}</span> : null}
+      </span>
       {flash > 0 && <span key={flash} className="block-flash" aria-hidden="true" />}
     </button>
   );
@@ -923,7 +960,8 @@ function VideoFilmstrip({
   return strip ? <img className="filmstrip" src={strip} alt="" draggable={false} /> : null;
 }
 
-type Ghost = { id: string; from: number; to: number; snapAt: number | null };
+type Ghost = { id: string; key: string; from: number; to: number; snapAt: number | null };
+type BlockMenu = { id: string; x: number; y: number };
 type DragSession = { target: HTMLElement; pointerId: number; controller: AbortController };
 
 /** 时间线首行：撤销 / 重做、分割、吸附和批注 */
@@ -980,6 +1018,7 @@ function Toolbar({
           on={annotating}
           onClick={() => st.setAnnotating(!annotating)}
         />
+        <DeleteButton />
       </div>
       <div className="tl-zoom-controls" aria-label="时间线缩放">
         <button
@@ -1039,4 +1078,140 @@ function ToolBtn({
       <Icon name={icon} />
     </button>
   );
+}
+
+function DeleteButton() {
+  const project = useStore((s) => s.project);
+  const selected = useStore((s) => s.selected);
+  const info = deleteInfo(project, selected);
+  const title = info.ok ? "删除" : info.reason;
+  return (
+    <button
+      type="button"
+      className="tl-delete"
+      disabled={!info.ok}
+      title={title}
+      aria-label={title}
+      onClick={() => {
+        if (selected) removeItem(selected);
+      }}
+    >
+      删除
+    </button>
+  );
+}
+
+function BlockMenuView({ menu, onClose }: { menu: BlockMenu; onClose: () => void }) {
+  const project = useStore((s) => s.project);
+  const info = deleteInfo(project, menu.id);
+  useEffect(() => {
+    const close = () => onClose();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+  return (
+    <div
+      className="tl-menu"
+      role="menu"
+      aria-label="时间线条目"
+      style={{ left: menu.x, top: menu.y }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      <div className="tl-menu-name" title={info.name}>
+        {info.name}
+      </div>
+      {info.track ? <div className="tl-menu-track">{info.track}</div> : null}
+      <button
+        type="button"
+        role="menuitem"
+        className="tl-menu-delete"
+        disabled={!info.ok}
+        title={info.ok ? "删除" : info.reason}
+        onClick={() => {
+          removeItem(menu.id);
+          onClose();
+        }}
+      >
+        删除
+      </button>
+    </div>
+  );
+}
+
+type DeleteInfo = {
+  ok: boolean;
+  reason: string;
+  name: string;
+  track: string;
+  kind: string;
+};
+
+function deleteInfo(project: Project | null, id: string | null): DeleteInfo {
+  if (!project || !id) {
+    return { ok: false, reason: "先选中要删除的条目", name: "", track: "", kind: "" };
+  }
+  if (id === "outro") {
+    return { ok: false, reason: "片尾不能删除", name: "片尾", track: "主视频", kind: "片尾" };
+  }
+  const ref = findItem(project, id);
+  if (!ref) return { ok: false, reason: "先选中要删除的条目", name: id, track: "", kind: "" };
+  const name = itemName(project, ref);
+  const track = trackTitle(ref.track);
+  const kind = kindLabel(ref);
+  if (ref.track.locked) return { ok: false, reason: "轨道已锁定", name, track, kind };
+  return { ok: true, reason: "删除", name, track, kind };
+}
+
+function removeItem(id: string) {
+  const s = useStore.getState();
+  const info = deleteInfo(s.project, id);
+  if (!info.ok || !s.project) return;
+  const ref = findItem(s.project, id);
+  if (!ref) return;
+  const ops: Op[] =
+    ref.track.kind === "caption"
+      ? [{ op: "caption.remove", ids: [id] }]
+      : [{ op: "item.remove", id }];
+  const quoted = info.name ? `「${info.name}」` : "";
+  void s.submit(ops, `删除了${info.kind}${quoted}`).then((ok) => {
+    if (ok && useStore.getState().selected === id) useStore.getState().select(null);
+  });
+}
+
+function itemName(project: Project, ref: ItemRef): string {
+  const { item } = ref;
+  if ("text" in item && item.text) return item.text;
+  if ("props" in item) {
+    const lines = item.props.lines;
+    if (Array.isArray(lines)) {
+      const text = lines.filter((x): x is string => typeof x === "string").join(" / ");
+      if (text) return text;
+    }
+  }
+  if ("asset" in item) {
+    return project.assets[item.asset]?.path.split("/").at(-1) ?? item.asset;
+  }
+  return item.id;
+}
+
+function trackTitle(track: Track): string {
+  if (track.kind === "video" && track.main) return "主视频";
+  if (track.kind === "video") return "画中画";
+  if (track.kind === "caption") return "字幕";
+  if (track.kind === "overlay") return "标题";
+  return "音频";
+}
+
+/** 1 倍不显示。和属性面板一样，保留两位小数里用得到的部分 */
+function formatSpeed(speed: number | undefined): string | null {
+  if (speed === undefined || Math.abs(speed - 1) < 0.005) return null;
+  return `${String(Math.round(speed * 100) / 100)}×`;
 }

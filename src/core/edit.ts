@@ -78,6 +78,69 @@ function msTargets(tl: ResolvedTimeline, id: string, playheadMs?: number): SnapT
   return out;
 }
 
+type TrackSpan = { id: string; startMs: number; endMs: number };
+
+/** 同一条轨道上、用户看得到的范围。一句字幕被剪成几段时合成一段 */
+function trackSpans(tl: ResolvedTimeline, trackId: string): TrackSpan[] {
+  const pieces = [
+    ...tl.videos.filter((x) => x.trackId === trackId),
+    ...tl.images.filter((x) => x.trackId === trackId),
+    ...tl.captions.filter((x) => x.trackId === trackId),
+    ...tl.overlays.filter((x) => x.trackId === trackId),
+  ];
+  const byId = new Map<string, TrackSpan>();
+  for (const x of pieces) {
+    const startMs = frameToMs(x.from, tl.fps);
+    const endMs = frameToMs(x.from + x.durationInFrames, tl.fps);
+    const prev = byId.get(x.id);
+    if (!prev) byId.set(x.id, { id: x.id, startMs, endMs });
+    else {
+      prev.startMs = Math.min(prev.startMs, startMs);
+      prev.endMs = Math.max(prev.endMs, endMs);
+    }
+  }
+  return [...byId.values()].sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs);
+}
+
+/**
+ * 非主轨上，拖动不能盖住同一条轨道的相邻条目。
+ * 移动时时长不变，贴到邻居就停；左右都没有空隙时留在原地。
+ * 裁剪时停在邻居边上，宽度可以变，直到碰到。
+ */
+function limitToNeighbors(
+  tl: ResolvedTimeline,
+  trackId: string,
+  id: string,
+  cur: { startMs: number; endMs: number },
+  startMs: number,
+  endMs: number,
+  mode: DragMode,
+): { startMs: number; endMs: number } {
+  const spans = trackSpans(tl, trackId);
+  const index = spans.findIndex((s) => s.id === id);
+  if (index < 0) return { startMs, endMs };
+  const prev = spans[index - 1];
+  const next = spans[index + 1];
+  const len = cur.endMs - cur.startMs;
+  if (mode === "move") {
+    const lo = Math.max(0, prev ? prev.endMs : 0);
+    const hi = next ? next.startMs - len : Number.POSITIVE_INFINITY;
+    if (hi < lo - 0.5) return { startMs: cur.startMs, endMs: cur.endMs };
+    const start = Math.min(hi, Math.max(lo, startMs));
+    return { startMs: start, endMs: start + len };
+  }
+  if (mode === "trimStart") {
+    let start = startMs;
+    if (prev && prev.endMs <= endMs - MIN_MS) start = Math.max(start, prev.endMs);
+    start = Math.min(Math.max(0, start), endMs - MIN_MS);
+    return { startMs: start, endMs };
+  }
+  let end = endMs;
+  if (next && next.startMs >= startMs + MIN_MS) end = Math.min(end, next.startMs);
+  end = Math.max(end, startMs + MIN_MS);
+  return { startMs, endMs: end };
+}
+
 /** 时间线拖动：整体移动时长不变；拖开头时结尾不动；拖结尾时开头不动 */
 export function planDrag(project: Project, req: DragRequest): DragPlan {
   const { track, index, item } = findItem(project, req.id);
@@ -103,6 +166,13 @@ export function planDrag(project: Project, req: DragRequest): DragPlan {
     const r = snapValue(cur.endMs + req.deltaMs, targets, threshold);
     end = Math.max(r.value, cur.startMs + MIN_MS);
     hit = r.target;
+  }
+  // 主轨磁吸靠换顺序，不在这里挡。其余轨道（字幕、标题、卡片、画中画、音频）都不能盖住邻居
+  if (!isMainTrack(track)) {
+    const limited = limitToNeighbors(tl, track.id, req.id, cur, start, end, req.mode);
+    start = limited.startMs;
+    end = limited.endMs;
+    if (hit && Math.abs(hit.at - start) > 0.5 && Math.abs(hit.at - end) > 0.5) hit = null;
   }
   const snappedTo = hit ? { at: hit.at, kind: hit.kind, ...(hit.id ? { id: hit.id } : {}) } : null;
   const dStart = start - cur.startMs;

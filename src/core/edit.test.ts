@@ -134,6 +134,114 @@ describe("planDrag", () => {
       planDrag(project({ locked: true }), { id: "i1", mode: "move", deltaMs: 10, snap: false }),
     ).toThrow(expect.objectContaining({ code: "TRACK_LOCKED" }));
   });
+
+  it("字幕拖到相邻字幕时停住，时长不变，提交后也不会被裁成一帧", () => {
+    const p = project();
+    const cap = p.tracks.find((t) => t.kind === "caption");
+    if (!cap || cap.kind !== "caption") throw new Error("fixture");
+    cap.items.push({
+      id: "s2",
+      asset: "a1",
+      startMs: 5200,
+      endMs: 5800,
+      text: "今天天气真好",
+      highlights: [],
+    });
+    // s1 在时间线 2200–3000，s2 在 3200–3800。往右拖 1500 会盖住 s2，应停在 2400–3200
+    const r = planDrag(p, { id: "s1", mode: "move", deltaMs: 1500, snap: false });
+    expect(r.preview.endMs - r.preview.startMs).toBeCloseTo(800, 0);
+    expect(r.preview.startMs).toBeCloseTo(2400, 0);
+    expect(r.preview.endMs).toBeCloseTo(3200, 0);
+    const op = r.ops[0] as unknown as { set: { startMs: number; endMs: number } };
+    expect(op.set.endMs - op.set.startMs).toBe(800);
+    const tl = compile(apply(p, r.ops));
+    const a = tl.captions.find((c) => c.id === "s1");
+    const b = tl.captions.find((c) => c.id === "s2");
+    expect(a?.durationInFrames).toBe(24);
+    expect(b?.durationInFrames).toBe(18);
+    expect((a?.from ?? 0) + (a?.durationInFrames ?? 0)).toBeLessThanOrEqual(b?.from ?? 0);
+
+    // 空隙还够时照常移动
+    const small = planDrag(p, { id: "s1", mode: "move", deltaMs: 50, snap: false });
+    expect(small.preview.startMs).toBeCloseTo(2250, 0);
+    expect(small.preview.endMs - small.preview.startMs).toBeCloseTo(800, 0);
+
+    // 后一句往左拖，停在前一句的结尾
+    const back = planDrag(p, { id: "s2", mode: "move", deltaMs: -2000, snap: false });
+    expect(back.preview.startMs).toBeCloseTo(3000, 0);
+    expect(back.preview.endMs - back.preview.startMs).toBeCloseTo(600, 0);
+
+    // 拖结尾时停在下一句的开头，开头不动
+    const trim = planDrag(p, { id: "s1", mode: "trimEnd", deltaMs: 900, snap: false });
+    expect(trim.preview).toEqual({ startMs: 2200, endMs: 3200 });
+  });
+
+  it("吸附不能把字幕吸进下一句里面", () => {
+    const p = project();
+    const cap = p.tracks.find((t) => t.kind === "caption");
+    if (!cap || cap.kind !== "caption") throw new Error("fixture");
+    cap.items.push({
+      id: "s2",
+      asset: "a1",
+      startMs: 5200,
+      endMs: 5800,
+      text: "今天天气真好",
+      highlights: [],
+    });
+    // 播放头在两句中间偏右，吸附会把开头吸过去，约束再把它拉回邻居边上
+    const r = planDrag(p, {
+      id: "s1",
+      mode: "move",
+      deltaMs: 850,
+      snap: true,
+      playheadMs: 3100,
+    });
+    expect(r.preview.endMs - r.preview.startMs).toBeCloseTo(800, 0);
+    expect(r.preview.endMs).toBeLessThanOrEqual(3200);
+    expect(r.snappedTo).toBeNull();
+  });
+
+  it("标题和卡片也不能盖住同一条轨道上的邻居", () => {
+    const p = project();
+    p.tracks.push({
+      id: "titles",
+      kind: "overlay",
+      locked: false,
+      hidden: false,
+      muted: false,
+      items: [
+        {
+          id: "t1",
+          template: "title",
+          at: { ms: 0 },
+          durationMs: 1000,
+          props: { lines: ["今天天气真好"] },
+        },
+        {
+          id: "k1",
+          template: "card",
+          size: "small",
+          at: { ms: 1500 },
+          durationMs: 800,
+          props: { lines: ["今天天气真好"] },
+        },
+      ],
+    });
+    const move = planDrag(p, { id: "t1", mode: "move", deltaMs: 1200, snap: false });
+    expect(move.preview).toEqual({ startMs: 500, endMs: 1500 });
+    expect(move.ops).toEqual([{ op: "item.update", id: "t1", set: { at: { ms: 500 } } }]);
+    const back = planDrag(p, { id: "k1", mode: "move", deltaMs: -800, snap: false });
+    expect(back.preview).toEqual({ startMs: 1000, endMs: 1800 });
+    const trim = planDrag(p, { id: "t1", mode: "trimEnd", deltaMs: 700, snap: false });
+    expect(trim.preview).toEqual({ startMs: 0, endMs: 1500 });
+    const tl = compile(apply(p, move.ops));
+    const title = tl.overlays.find((o) => o.id === "t1");
+    const card = tl.overlays.find((o) => o.id === "k1");
+    expect(title?.durationInFrames).toBe(30);
+    expect((title?.from ?? 0) + (title?.durationInFrames ?? 0)).toBeLessThanOrEqual(
+      card?.from ?? 0,
+    );
+  });
 });
 
 describe("planSplit", () => {
