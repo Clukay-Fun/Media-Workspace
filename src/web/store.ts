@@ -92,8 +92,6 @@ type State = {
   layoutEditing: boolean;
   /** 时间线拖动时吸附到字幕边界、播放头 */
   snap: boolean;
-  /** 选中字幕时显示全部字幕列表 */
-  captionList: boolean;
   /** 正在等待用户在预览画面中点选批注目标 */
   annotating: boolean;
   /** 点选画面目标时钉下的位置（画布像素），写批注时一起提交 */
@@ -126,7 +124,6 @@ type State = {
   setLayoutEditing(on: boolean): void;
   /** 整份保存账号版式；界面先改本地，失败时提示并重新读取 */
   saveLayout(next: LayoutInput): Promise<void>;
-  setCaptionList(on: boolean): void;
   toggleSnap(): void;
   setAnnotating(on: boolean): void;
   setPin(pin: State["pin"]): void;
@@ -230,7 +227,6 @@ export const useStore = create<State>((set, get) => {
     layout: null,
     accountGuides: true,
     layoutEditing: false,
-    captionList: false,
     snap: true,
     annotating: false,
     pin: null,
@@ -427,7 +423,6 @@ export const useStore = create<State>((set, get) => {
         get().toast(e instanceof Error ? e.message : String(e), "error");
       }
     },
-    setCaptionList: (captionList) => set({ captionList }),
     toggleSnap: () => set((s) => ({ snap: !s.snap })),
     setAnnotating: (annotating) =>
       set((s) => ({

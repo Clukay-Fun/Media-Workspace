@@ -61,7 +61,7 @@ export function ClipInspector(props: InspectorProps) {
           keyframes={clip.keyframes}
         />
       )}
-      <InspectorActions ref_={ref_} />
+      <InspectorActions />
     </div>
   );
 }

@@ -70,7 +70,7 @@ export function InspectorHead({ project, id, ref_, fps }: InspectorProps) {
 }
 
 /** 底部操作：各类元素自己的操作按钮 */
-export function InspectorActions({ children }: { ref_?: ItemRef; children?: React.ReactNode }) {
+export function InspectorActions({ children }: { children?: React.ReactNode }) {
   if (!children) return null;
   return <div className="selection-actions">{children}</div>;
 }

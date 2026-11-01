@@ -88,7 +88,7 @@ export function ImageInspector(props: InspectorProps) {
       </Field>
       <KeyframesInspector id={id} fps={props.fps} locked={locked} keyframes={image.keyframes} />
       <VisualAnims id={id} item={image} locked={locked} />
-      <InspectorActions ref_={ref_} />
+      <InspectorActions />
     </div>
   );
 }

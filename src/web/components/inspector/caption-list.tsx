@@ -7,21 +7,6 @@ import { timecode } from "../../lib/timeline";
 import { useStore } from "../../store";
 import { Icon } from "../icons";
 
-export function ListToggle() {
-  const listing = useStore((s) => s.captionList);
-  return (
-    <button
-      type="button"
-      className={listing ? "mini-btn on" : "mini-btn"}
-      onClick={() => useStore.getState().setCaptionList(!listing)}
-      title={listing ? "回到这句字幕" : "显示全部字幕"}
-    >
-      <Icon name="list" size={12} />
-      全部字幕
-    </button>
-  );
-}
-
 /**
  * 全部字幕，点一句跳到文字已显示的地方（和时间线点选同一规则）；当前选中的那句滚到可见。
  * 每句右边的笔展开这一句的高亮编辑（docs/decisions/0015），只改这一句，不跳转。

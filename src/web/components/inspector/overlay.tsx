@@ -26,7 +26,7 @@ export function OverlayInspector(props: InspectorProps) {
         elementLabel="标题 / 卡片"
       />
       <SlotPicker id={id} ref_={ref_} />
-      <InspectorActions ref_={ref_} />
+      <InspectorActions />
     </div>
   );
 }

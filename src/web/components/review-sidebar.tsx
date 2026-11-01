@@ -25,6 +25,7 @@ export function ReviewSidebar() {
   const { setSideTab, setSideOpen } = useStore.getState();
 
   const tabs: { id: SideTab; label: string; count: number; tone: string }[] = [
+    // 质检数量只在顶栏 ⚠ 上显示（问题 8）
     { id: "props", label: "属性", count: 0, tone: "warn" },
     { id: "comments", label: "批注", count: comments, tone: "comment" },
     { id: "changes", label: "AI 改动", count: pending, tone: "ai" },
