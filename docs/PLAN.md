@@ -366,7 +366,7 @@ AI 应用（Codex、Claude Code 等）通过 CLI 或本地 MCP 提交操作；
 | `mw preview <proj> --at <ms\|id> [--sheet] [--safe-area]` | 截图；`--sheet` 生成多帧网格图 |
 | `mw export <proj> [--out <file>]` | 导出 MP4 |
 | `mw cover <proj>` | 导出封面 |
-| `mw history <proj>` / `mw revert <proj> --to <rev>` | 查看历史 / 回退 |
+| `mw history <proj> [--rev <n>]` / `mw revert <proj> --to <rev>` | 查看历史（`--rev` 看某一版改了什么）/ 回退 |
 | `mw align <proj> [--captions s1,s2] [--dry-run]` | 识音，给字幕写入逐字时间（作为一次 `caption.update` 提交）；对得不好的句子列在 `check` 里 |
 | `mw undo <proj> --base <rev>` / `mw redo <proj> --base <rev>` | 撤销 / 重做（作为一次回退写入，人和 AI 的修改在同一个撤销栈里） |
 | `mw serve <proj> [--port 5170]` | 启动本地工作台（REST + SSE + 网页，只监听 127.0.0.1），接口约定在 `src/core/api.ts` |

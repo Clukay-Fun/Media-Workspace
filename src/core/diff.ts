@@ -81,6 +81,33 @@ const PROP_LABEL: Record<string, string> = {
   align: "对齐",
 };
 
+/** 动画、转场的中文名，和属性栏里的叫法一致 */
+const PRESET_LABEL: Record<string, string> = {
+  none: "无",
+  fade: "淡入",
+  "fade-up": "上浮淡入",
+  slide: "滑入",
+  pop: "弹出",
+  "scale-punch": "放大强调",
+  bounce: "弹跳",
+  slam: "砸入",
+  wave: "波浪",
+  typewriter: "打字机",
+  "blur-in": "模糊淡入",
+  "zoom-in": "放大",
+  "color-sweep": "颜色扫过",
+  pulse: "脉冲",
+  glow: "发光",
+  "color-shift": "变色",
+  shake: "抖动",
+  "underline-sweep": "下划线扫过",
+  "zoom-out": "缩小",
+  "scale-out": "缩小淡出",
+  breathe: "呼吸",
+};
+
+const TRANSITION_LABEL: Record<string, string> = { fade: "叠化", slide: "滑入", push: "推开" };
+
 const MS_FIELDS = new Set(["startMs", "endMs", "inMs", "outMs", "durationMs", "atMs"]);
 
 /** 比较两个版本，返回有变化的元素；顺序：工程设置、轨道、素材、样式，再按新版本里的轨道顺序列元素 */
@@ -89,7 +116,15 @@ export function diffProjects(before: Project, after: Project): EntityChange[] {
   const b = entities(after);
   const out: EntityChange[] = [];
   // 「跟随字幕」写字幕文字比写 id 好认；删掉的字幕从旧版本里找
-  const ctx: Ctx = { captions: new Map([...captionTexts(before), ...captionTexts(after)]) };
+  const ctx: Ctx = {
+    captions: new Map([...captionTexts(before), ...captionTexts(after)]),
+    assets: new Map(
+      [...Object.entries(before.assets), ...Object.entries(after.assets)].map(([id, a]) => [
+        id,
+        fileName(a.path),
+      ]),
+    ),
+  };
   const ids = [...new Set([...b.keys(), ...a.keys()])];
   for (const key of ids) {
     const x = a.get(key);
@@ -106,7 +141,7 @@ export function diffProjects(before: Project, after: Project): EntityChange[] {
   return out.sort((p, q) => rank[p.entity] - rank[q.entity]);
 }
 
-type Ctx = { captions: Map<string, string> };
+type Ctx = { captions: Map<string, string>; assets: Map<string, string> };
 
 function captionTexts(p: Project): [string, string][] {
   return p.tracks.flatMap((t) =>
@@ -174,15 +209,21 @@ function itemKind(t: Track, item: Track["items"][number]): string {
 
 function itemName(p: Project, item: Track["items"][number]): string {
   if ("text" in item) return short(item.text, 16);
-  if ("props" in item) {
-    for (const k of NAME_PROPS) {
-      const v = item.props[k];
-      if (typeof v === "string") return short(v, 16);
-      if (Array.isArray(v) && v.length) return short(v.map(fmtLoose).join(" "), 16);
-    }
-    return item.template;
+  if ("props" in item) return propsText(item.props) ?? item.template;
+  const file = fileName(p.assets[item.asset]?.path ?? item.asset);
+  // 主轨剪成很多段后文件名都一样，带上素材里的时间段才分得清
+  if (item.type === "clip")
+    return `${file} ${round(item.inMs / 1000)}–${round(item.outMs / 1000)} 秒`;
+  return file;
+}
+
+function propsText(props: Record<string, unknown>): string | null {
+  for (const k of NAME_PROPS) {
+    const v = props[k];
+    if (typeof v === "string") return short(v, 16);
+    if (Array.isArray(v) && v.length) return short(v.map(fmtLoose).join(" "), 16);
   }
-  return fileName(p.assets[item.asset]?.path ?? item.asset);
+  return null;
 }
 
 const fileName = (path: string) => path.split("/").at(-1) ?? path;
@@ -241,8 +282,14 @@ function fmt(ctx: Ctx, key: string, v: unknown): string {
     if (key === "gainDb") return `${round(v)} dB`;
     return String(round(v));
   }
-  if (typeof v === "string") return short(v, 30);
+  if (typeof v === "string") {
+    if (key === "asset") return ctx.assets.get(v) ?? v;
+    // 路径太长时留后半截，文件名比前面的目录要紧
+    if (key === "path") return shortTail(v, 30);
+    return short(v, 30);
+  }
   if (Array.isArray(v)) {
+    if (v.length === 0) return "无";
     if (key === "lines" || key === "items" || key === "chapters")
       return short(v.map((x) => fmtLoose(x)).join(" / "), 30);
     if (key === "highlights")
@@ -253,8 +300,11 @@ function fmt(ctx: Ctx, key: string, v: unknown): string {
     if (key === "transform") return transform(v);
     if (key === "at") return anchor(ctx, v);
     if (key === "safeArea" && typeof v.preset === "string") return v.preset;
-    if (typeof v.preset === "string") return v.preset === "none" ? "无" : v.preset;
-    if (typeof v.type === "string") return v.type;
+    if (typeof v.preset === "string") return PRESET_LABEL[v.preset] ?? v.preset;
+    if (key === "transitionIn" && typeof v.type === "string")
+      return TRANSITION_LABEL[v.type] ?? v.type;
+    // 封面标题：{ template, props }，显示文字
+    if (typeof v.template === "string" && isObj(v.props)) return propsText(v.props) ?? v.template;
     return short(JSON.stringify(v), 40);
   }
   return short(String(v), 30);
@@ -300,6 +350,11 @@ const round = (v: number) => Math.round(v * 100) / 100;
 function short(s: string, n: number): string {
   const chars = [...s];
   return chars.length > n ? `${chars.slice(0, n).join("")}…` : s;
+}
+
+function shortTail(s: string, n: number): string {
+  const chars = [...s];
+  return chars.length > n ? `…${chars.slice(-n).join("")}` : s;
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> =>

@@ -107,7 +107,7 @@ describe("diffProjects", () => {
       { op: "item.update", id: "c1", set: { speed: 1.1, transform: { scale: 1.2, y: -40 } } },
     ]).project;
     const [c] = diffProjects(a, b);
-    expect(c).toMatchObject({ id: "c1", kind: "主轨片段", name: "原片.mov" });
+    expect(c).toMatchObject({ id: "c1", kind: "主轨片段", name: "原片.mov 0–10 秒" });
     expect(c?.fields).toEqual([
       { field: "speed", label: "倍速", before: "1×", after: "1.1×" },
       { field: "transform", label: "位置 / 缩放", before: "无", after: "y -40 · 缩放 1.2" },
@@ -138,5 +138,31 @@ describe("diffProjects", () => {
       { field: "atMs", label: "时间点", before: "无", after: "1.5 秒" },
     ]);
     expect(out[1]?.fields).toEqual([{ field: "locked", label: "锁定", before: "否", after: "是" }]);
+  });
+
+  it("转场、动画用中文名；封面标题显示文字；素材显示文件名", () => {
+    const a = project();
+    // 直接改数据：这里只看显示，不管操作合不合法（第一段本来不能有转场）
+    const b = structuredClone(a);
+    const clip = b.tracks[0]?.items[0];
+    if (!clip || !("inMs" in clip)) throw new Error("fixture");
+    Object.assign(clip, {
+      transitionIn: { type: "push", durationMs: 300 },
+      animIn: { preset: "fade", durationMs: 300 },
+    });
+    b.chapters = [{ title: "开场", at: { caption: "s1", offsetMs: 0 } }];
+    b.cover = { atMs: 0, title: { template: "title-bar", props: { lines: ["周末去哪"] } } };
+    b.outro = { asset: "a1", gainDb: 0 };
+    const out = diffProjects(a, b);
+    const byId = new Map(out.map((c) => [c.id, c.fields]));
+    expect(byId.get("chapters")).toEqual([
+      { field: "chapters", label: "章节", before: "无", after: "开场" },
+    ]);
+    expect(byId.get("cover")?.find((f) => f.field === "title")?.after).toBe("周末去哪");
+    expect(byId.get("outro")?.[0]).toMatchObject({ label: "素材", after: "原片.mov" });
+    expect(byId.get("c1")).toEqual([
+      { field: "transitionIn", label: "转场", before: "无", after: "推开" },
+      { field: "animIn", label: "入场动画", before: "无", after: "淡入" },
+    ]);
   });
 });
