@@ -3,18 +3,19 @@ import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Main } from "../../composition/Main";
 import { transformAt } from "../../core/animate";
+import type { EditorState } from "../../core/api";
 import { compile } from "../../core/compile";
 import { planTransform } from "../../core/edit";
 import { applyOps, type Op } from "../../core/ops";
-import { safeAreaFor } from "../../core/safe-area";
 import type { Project } from "../../core/schema";
 import { type HitBox, hitBoxes, pick } from "../lib/geometry";
 import { type Corner, resizeFromCorner } from "../lib/pip";
 import { findItem } from "../lib/project";
 import { frameOfMs, msOfFrame, timecode } from "../lib/timeline";
 import { useStore } from "../store";
+import { addGuide, CanvasGuides, SafeAreaOverlay, safeAreaMode } from "./canvas-guides";
 import { Icon } from "./icons";
-import { AccountGuides, LayoutPanel } from "./layout-editor";
+import { AccountGuides, LayoutEditorCard } from "./layout-editor";
 
 const KIND: Record<HitBox["kind"], string> = {
   caption: "字幕",
@@ -56,8 +57,7 @@ export function Stage() {
   const playing = useStore((s) => s.playing);
   const annotating = useStore((s) => s.annotating);
   const selected = useStore((s) => s.selected);
-  const safeArea = useStore((s) => s.safeArea);
-  const referenceGuides = useStore((s) => s.referenceGuides);
+  const layoutEditing = useStore((s) => s.layoutEditing);
   const flash = useStore((s) => s.flash);
   const review = useStore((s) => s.review);
   const lint = useStore((s) => s.lint);
@@ -281,6 +281,7 @@ export function Stage() {
         id: d.id,
         transform: { x: d.bx + p.x - d.x0, y: d.by + p.y - d.y0 },
         snap: !e.metaKey,
+        guides: visibleGuides(useStore.getState().editor),
         atMs: d.atMs,
       });
       d.ops = plan.ops;
@@ -322,7 +323,6 @@ export function Stage() {
     (c) =>
       c.status === "open" && c.point && c.atMs !== undefined && Math.abs(c.atMs - nowMs) < 1500,
   );
-  const safe = project ? safeAreaFor(project.canvas.safeArea.preset, W, H) : null;
   const flashing = flash && Date.now() - flash.at < 2400 ? flash : null;
   const selectedHasIssue = selBox && (lint?.issues ?? []).some((issue) => issue.id === selBox.id);
   const hoverBox = hover && hover !== selected ? boxes.find((b) => b.id === hover) : undefined;
@@ -337,7 +337,8 @@ export function Stage() {
   return (
     <main className="stage panel" aria-label={name || "预览"}>
       <div className="stage-area" ref={area}>
-        <PreviewSettings />
+        <PreviewSettings width={W} height={H} />
+        {layoutEditing && <LayoutEditorCard />}
         {inputProps && scale > 0 ? (
           <div className="canvas" style={{ width: W * scale, height: H * scale }}>
             <Player
@@ -368,24 +369,9 @@ export function Stage() {
               onPointerUp={() => void onPointerUp()}
               onPointerLeave={() => setHover(null)}
             >
-              {referenceGuides.horizontal && <div className="center-guide horizontal" />}
-              {referenceGuides.vertical && <div className="center-guide vertical" />}
               <AccountGuides width={W} height={H} />
-              {safeArea && safe && (
-                <div
-                  className="safe-area"
-                  style={{
-                    left: safe.left * scale,
-                    top: safe.top * scale,
-                    right: safe.right * scale,
-                    bottom: safe.bottom * scale,
-                  }}
-                >
-                  <span>
-                    {project?.canvas.safeArea.preset === "all" ? "三平台安全区" : "安全区"}
-                  </span>
-                </div>
-              )}
+              <SafeAreaOverlay width={W} height={H} scale={scale} />
+              <CanvasGuides width={W} height={H} scale={scale} />
               {draft?.guides.map((g) => (
                 <div
                   key={`${g.axis}-${g.pos}`}
@@ -619,10 +605,16 @@ function boxName(project: Project | null, id: string): string {
   return id;
 }
 
-function PreviewSettings() {
-  const safeArea = useStore((s) => s.safeArea);
-  const referenceGuides = useStore((s) => s.referenceGuides);
-  const { toggleSafeArea, toggleReferenceGuide } = useStore.getState();
+/** 显示着的构图参考线，拖动元素时吸附到它们 */
+function visibleGuides(editor: EditorState | null) {
+  return editor && !editor.guides.hidden ? editor.guides.items : [];
+}
+
+/** 预览设置：构图参考线和标尺、安全区、账号版式三组分开（账号版式是所有工程共用的设置） */
+function PreviewSettings({ width, height }: { width: number; height: number }) {
+  const editor = useStore((s) => s.editor);
+  const accountGuides = useStore((s) => s.accountGuides);
+  const { updateEditor, toggleAccountGuides, setLayoutEditing } = useStore.getState();
   const box = useRef<HTMLDetailsElement>(null);
   // 点菜单外面或按 Esc 收起（details 本身不会自己关）
   useEffect(() => {
@@ -639,41 +631,100 @@ function PreviewSettings() {
       window.removeEventListener("keydown", close);
     };
   }, []);
+  const guides = editor?.guides;
+  const count = guides?.items.length ?? 0;
+  const mode = safeAreaMode(editor);
+  const setGuides = (patch: Partial<EditorState["guides"]>) =>
+    guides && updateEditor({ guides: { ...guides, ...patch } });
+
   return (
     <details className="preview-settings" ref={box}>
       <summary className="icon-btn preview-settings-trigger" aria-label="预览设置" title="预览设置">
         <Icon name="menu" />
       </summary>
       <div className="preview-settings-panel">
-        <strong>参考线</strong>
+        <strong>参考线与标尺</strong>
+        <p className="layout-hint">只在这个工程里辅助构图，不进成片；从标尺往画面里拖也能加线</p>
+        <div className="preview-actions">
+          <button type="button" disabled={!editor} onClick={() => addGuide("h", width, height)}>
+            加水平线
+          </button>
+          <button type="button" disabled={!editor} onClick={() => addGuide("v", width, height)}>
+            加垂直线
+          </button>
+        </div>
         <label className="preview-setting">
           <input
             type="checkbox"
-            aria-label="平台安全区"
-            checked={safeArea}
-            onChange={toggleSafeArea}
+            disabled={!guides}
+            checked={!!guides && !guides.hidden}
+            onChange={() => setGuides({ hidden: !guides?.hidden })}
           />
-          <span>平台安全区</span>
+          <span>显示参考线</span>
         </label>
         <label className="preview-setting">
           <input
             type="checkbox"
-            aria-label="水平参考线"
-            checked={referenceGuides.horizontal}
-            onChange={() => toggleReferenceGuide("horizontal")}
+            disabled={!guides}
+            checked={!!guides?.locked}
+            onChange={() => setGuides({ locked: !guides?.locked })}
           />
-          <span>水平参考线</span>
+          <span>锁定参考线</span>
         </label>
         <label className="preview-setting">
           <input
             type="checkbox"
-            aria-label="垂直参考线"
-            checked={referenceGuides.vertical}
-            onChange={() => toggleReferenceGuide("vertical")}
+            disabled={!editor}
+            checked={!!editor?.rulers}
+            onChange={() => updateEditor({ rulers: !editor?.rulers })}
           />
-          <span>垂直参考线</span>
+          <span>显示标尺</span>
         </label>
-        <LayoutPanel />
+        <button
+          type="button"
+          className="preview-link"
+          disabled={count === 0}
+          onClick={() => setGuides({ items: [] })}
+        >
+          清除参考线{count ? `（${count}）` : ""}
+        </button>
+
+        <strong>安全区</strong>
+        {(
+          [
+            ["off", "不显示"],
+            ["title", "字幕 / 操作安全区"],
+            ["channels", "视频号安全区"],
+          ] as const
+        ).map(([v, label]) => (
+          <label key={v} className="preview-setting">
+            <input
+              type="radio"
+              name="safe-area"
+              disabled={!editor}
+              checked={mode === v}
+              onChange={() => updateEditor({ showSafeArea: v })}
+            />
+            <span>{label}</span>
+          </label>
+        ))}
+
+        <strong>账号版式</strong>
+        <p className="layout-hint">所有工程共用：人物位置、口播倍速、字幕字数，AI 出片按它来</p>
+        <label className="preview-setting">
+          <input type="checkbox" checked={accountGuides} onChange={toggleAccountGuides} />
+          <span>显示账号参考线</span>
+        </label>
+        <button
+          type="button"
+          className="preview-link"
+          onClick={() => {
+            if (box.current) box.current.open = false;
+            setLayoutEditing(true);
+          }}
+        >
+          编辑账号版式…
+        </button>
       </div>
     </details>
   );

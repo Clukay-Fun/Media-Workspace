@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { HistoryResponse, LintResponse, PreviewProps } from "../core/api";
+import type { EditorState, HistoryResponse, LintResponse, PreviewProps } from "../core/api";
 import type { ResolvedTimeline } from "../core/compile";
 import { planSplit } from "../core/edit";
 import { Layout, type LayoutInput } from "../core/layout";
@@ -79,8 +79,11 @@ type State = {
   sideOpen: boolean;
   /** 人已经看过、确认过的版本；之后 AI 的改动算「待确认」 */
   reviewedRev: number | null;
-  safeArea: boolean;
-  referenceGuides: { horizontal: boolean; vertical: boolean };
+  /**
+   * 编辑器设置（editor.json）：构图参考线、标尺、安全区显示、时间线缩放。
+   * 只影响界面，不进导出；载入前为 null
+   */
+  editor: EditorState | null;
   /** 账号版式（所有工程共用，docs/decisions/0027）；没设置过为 null */
   layout: Layout | null;
   /** 画面上显示账号版式的参考线 */
@@ -117,8 +120,8 @@ type State = {
   setLeftTab(tab: LeftTab): void;
   setLeftOpen(open: boolean): void;
   confirmAiChanges(): void;
-  toggleSafeArea(): void;
-  toggleReferenceGuide(axis: "horizontal" | "vertical"): void;
+  /** 改编辑器设置：本地立即生效，稍后合并进服务端最新的 editor.json（时间线也在写它） */
+  updateEditor(patch: Partial<EditorState>): void;
   toggleAccountGuides(): void;
   setLayoutEditing(on: boolean): void;
   /** 整份保存账号版式；界面先改本地，失败时提示并重新读取 */
@@ -132,6 +135,8 @@ type State = {
 };
 
 let toastId = 0;
+let editorPatch: Partial<EditorState> = {};
+let editorTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const useStore = create<State>((set, get) => {
   const fail = (e: unknown) => {
@@ -221,8 +226,7 @@ export const useStore = create<State>((set, get) => {
     leftOpen: false,
     sideOpen: false,
     reviewedRev: null,
-    safeArea: false,
-    referenceGuides: { horizontal: false, vertical: false },
+    editor: null,
     layout: null,
     accountGuides: true,
     layoutEditing: false,
@@ -237,6 +241,10 @@ export const useStore = create<State>((set, get) => {
       void get()
         .api.layout()
         .then((r) => set({ layout: r.layout }))
+        .catch(() => {});
+      void get()
+        .api.editor()
+        .then((r) => set({ editor: r.editor }))
         .catch(() => {});
       return get().api.subscribe(onEvent, (live) => set({ live }));
     },
@@ -382,11 +390,22 @@ export const useStore = create<State>((set, get) => {
       set({ reviewedRev: project.revision, aiChange: null });
       saveReviewed(name, project.revision);
     },
-    toggleSafeArea: () => set((s) => ({ safeArea: !s.safeArea })),
-    toggleReferenceGuide: (axis) =>
-      set((s) => ({
-        referenceGuides: { ...s.referenceGuides, [axis]: !s.referenceGuides[axis] },
-      })),
+    updateEditor(patch) {
+      set((s) => ({ editor: s.editor ? { ...s.editor, ...patch } : s.editor }));
+      editorPatch = { ...editorPatch, ...patch };
+      if (editorTimer) clearTimeout(editorTimer);
+      // 连续拖动只存最后一次；存之前重读一遍，只覆盖改过的字段
+      editorTimer = setTimeout(() => {
+        const p = editorPatch;
+        editorPatch = {};
+        editorTimer = null;
+        const { api } = get();
+        void api
+          .editor()
+          .then(({ editor }) => api.saveEditor({ ...editor, ...p }))
+          .catch(() => get().toast("预览设置保存失败", "error"));
+      }, 240);
+    },
     toggleAccountGuides: () => set((s) => ({ accountGuides: !s.accountGuides })),
     setLayoutEditing: (layoutEditing) =>
       set((s) => ({ layoutEditing, accountGuides: layoutEditing || s.accountGuides })),

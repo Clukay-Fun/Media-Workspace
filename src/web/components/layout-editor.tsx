@@ -78,12 +78,10 @@ function saveGuides(layout: Layout, f: (gs: LayoutGuide[]) => LayoutGuide[]) {
   return useStore.getState().saveLayout({ ...layout, guides: f(layout.guides) });
 }
 
-/** 预览设置里的账号版式面板 */
-export function LayoutPanel() {
+/** 编辑账号版式：浮在预览区右上角的卡片，打开时画面上的账号参考线可以拖 */
+export function LayoutEditorCard() {
   const layout = useStore((s) => s.layout);
-  const show = useStore((s) => s.accountGuides);
-  const editing = useStore((s) => s.layoutEditing);
-  const { toggleAccountGuides, setLayoutEditing, saveLayout } = useStore.getState();
+  const { setLayoutEditing, saveLayout } = useStore.getState();
   const base: Layout = layout ?? {
     version: 1,
     guides: [],
@@ -108,142 +106,130 @@ export function LayoutPanel() {
   };
 
   return (
-    <div className="layout-panel">
-      <label className="preview-setting">
-        <input
-          type="checkbox"
-          aria-label="账号参考线"
-          checked={show}
-          onChange={toggleAccountGuides}
-        />
-        <span>账号参考线</span>
-      </label>
-      <label className="preview-setting">
-        <input
-          type="checkbox"
-          aria-label="编辑账号版式"
-          checked={editing}
-          onChange={() => setLayoutEditing(!editing)}
-        />
-        <span>编辑账号版式</span>
-      </label>
-      {editing ? (
-        <div className="layout-fields">
-          <p className="layout-hint">
-            所有工程共用；拖画面上的线，或改下面的数值（占画面的百分比）
-          </p>
-          {base.guides.map((g) => (
-            <div key={g.id} className="layout-row">
-              <span className="layout-axis">{g.axis === "h" ? "横" : "竖"}</span>
-              <input
-                aria-label={`${g.id} 名字`}
-                defaultValue={g.label}
-                placeholder="名字"
-                maxLength={20}
-                onBlur={(e) => {
-                  const label = e.currentTarget.value.trim();
-                  if (label !== g.label)
-                    void saveGuides(base, (gs) =>
-                      gs.map((x) => (x.id === g.id ? { ...x, label } : x)),
-                    );
-                }}
-              />
-              <PctInput
-                label={`${g.id} 位置`}
-                value={g.pos}
-                onChange={(pos) =>
-                  void saveGuides(base, (gs) => gs.map((x) => (x.id === g.id ? { ...x, pos } : x)))
-                }
-              />
-              <button
-                type="button"
-                className="icon-btn"
-                aria-label={`删除 ${g.label || g.id}`}
-                onClick={() => void saveGuides(base, (gs) => gs.filter((x) => x.id !== g.id))}
-              >
-                ×
-              </button>
-            </div>
-          ))}
-          <div className="layout-actions">
-            <button type="button" onClick={() => add("h")}>
-              加横线
-            </button>
-            <button type="button" onClick={() => add("v")}>
-              加竖线
-            </button>
-          </div>
-          <strong>口播倍速</strong>
-          <p className="layout-hint">AI 出片时主轨默认用这个倍速（整体加速，不剪句中停顿）</p>
-          <div className="layout-row">
-            <span className="layout-axis">倍速</span>
-            <span className="pct-input">
-              <input
-                key={base.speed}
-                aria-label="口播倍速"
-                type="number"
-                min={0.5}
-                max={2}
-                step={0.05}
-                defaultValue={base.speed}
-                onBlur={(e) => {
-                  const v = Number(e.currentTarget.value);
-                  if (Number.isFinite(v) && v >= 0.5 && v <= 2 && v !== base.speed)
-                    void saveLayout({ ...base, speed: v });
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") e.currentTarget.blur();
-                }}
-              />
+    <section className="layout-card" aria-label="账号版式">
+      <header className="layout-card-head">
+        <strong>账号版式</strong>
+        <button type="button" className="layout-done" onClick={() => setLayoutEditing(false)}>
+          完成
+        </button>
+      </header>
+      <div className="layout-fields">
+        <p className="layout-hint">
+          所有工程共用，AI
+          出片按它摆人物、定倍速和字幕字数。拖画面上的线，或改下面的数值（占画面的百分比）
+        </p>
+        <strong>账号参考线</strong>
+        {base.guides.map((g) => (
+          <div key={g.id} className="layout-row">
+            <span className="layout-axis">{g.axis === "h" ? "横" : "竖"}</span>
+            <input
+              aria-label={`${g.id} 名字`}
+              defaultValue={g.label}
+              placeholder="名字"
+              maxLength={20}
+              onBlur={(e) => {
+                const label = e.currentTarget.value.trim();
+                if (label !== g.label)
+                  void saveGuides(base, (gs) =>
+                    gs.map((x) => (x.id === g.id ? { ...x, label } : x)),
+                  );
+              }}
+            />
+            <PctInput
+              label={`${g.id} 位置`}
+              value={g.pos}
+              onChange={(pos) =>
+                void saveGuides(base, (gs) => gs.map((x) => (x.id === g.id ? { ...x, pos } : x)))
+              }
+            />
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label={`删除 ${g.label || g.id}`}
+              onClick={() => void saveGuides(base, (gs) => gs.filter((x) => x.id !== g.id))}
+            >
               ×
-            </span>
+            </button>
           </div>
-          <strong>字幕字数</strong>
-          <p className="layout-hint">
-            AI 识音出字幕时一条最多几个字，比一行长时折成两行；空着 = 按字幕样式每条一行
-          </p>
-          <div className="layout-row">
-            <span className="layout-axis">每条</span>
-            <span className="pct-input">
-              <input
-                key={base.captionMaxChars ?? "auto"}
-                aria-label="一条字幕最多几个字"
-                type="number"
-                min={4}
-                max={40}
-                step={1}
-                placeholder="自动"
-                defaultValue={base.captionMaxChars ?? ""}
-                onBlur={(e) => {
-                  const raw = e.currentTarget.value.trim();
-                  const v = raw === "" ? null : Math.round(Number(raw));
-                  if (v !== null && !(v >= 4 && v <= 40)) return;
-                  if (v !== base.captionMaxChars) void saveLayout({ ...base, captionMaxChars: v });
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") e.currentTarget.blur();
-                }}
-              />
-              字
-            </span>
-          </div>
-          <strong>人脸位置</strong>
-          <p className="layout-hint">mw frame 按它摆人物：人脸框（不含头发）的中心、上沿、下沿</p>
-          {(["cx", "top", "bottom"] as const).map((k) => (
-            <div key={k} className="layout-row">
-              <span className="layout-axis">
-                {k === "cx" ? "中心" : k === "top" ? "上沿" : "下沿"}
-              </span>
-              <PctInput
-                label={`人脸${k}`}
-                value={base.face?.[k] ?? { cx: 0.5, top: 0.36, bottom: 0.5 }[k]}
-                onChange={(v) => setFace(k, v)}
-              />
-            </div>
-          ))}
+        ))}
+        <div className="layout-actions">
+          <button type="button" onClick={() => add("h")}>
+            加横线
+          </button>
+          <button type="button" onClick={() => add("v")}>
+            加竖线
+          </button>
         </div>
-      ) : null}
-    </div>
+        <strong>口播倍速</strong>
+        <p className="layout-hint">AI 出片时主轨默认用这个倍速（整体加速，不剪句中停顿）</p>
+        <div className="layout-row">
+          <span className="layout-axis">倍速</span>
+          <span className="pct-input">
+            <input
+              key={base.speed}
+              aria-label="口播倍速"
+              type="number"
+              min={0.5}
+              max={2}
+              step={0.05}
+              defaultValue={base.speed}
+              onBlur={(e) => {
+                const v = Number(e.currentTarget.value);
+                if (Number.isFinite(v) && v >= 0.5 && v <= 2 && v !== base.speed)
+                  void saveLayout({ ...base, speed: v });
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+              }}
+            />
+            ×
+          </span>
+        </div>
+        <strong>字幕字数</strong>
+        <p className="layout-hint">
+          AI 识音出字幕时一条最多几个字，比一行长时折成两行；空着 = 按字幕样式每条一行
+        </p>
+        <div className="layout-row">
+          <span className="layout-axis">每条</span>
+          <span className="pct-input">
+            <input
+              key={base.captionMaxChars ?? "auto"}
+              aria-label="一条字幕最多几个字"
+              type="number"
+              min={4}
+              max={40}
+              step={1}
+              placeholder="自动"
+              defaultValue={base.captionMaxChars ?? ""}
+              onBlur={(e) => {
+                const raw = e.currentTarget.value.trim();
+                const v = raw === "" ? null : Math.round(Number(raw));
+                if (v !== null && !(v >= 4 && v <= 40)) return;
+                if (v !== base.captionMaxChars) void saveLayout({ ...base, captionMaxChars: v });
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+              }}
+            />
+            字
+          </span>
+        </div>
+        <strong>人脸位置</strong>
+        <p className="layout-hint">mw frame 按它摆人物：人脸框（不含头发）的中心、上沿、下沿</p>
+        {(["cx", "top", "bottom"] as const).map((k) => (
+          <div key={k} className="layout-row">
+            <span className="layout-axis">
+              {k === "cx" ? "中心" : k === "top" ? "上沿" : "下沿"}
+            </span>
+            <PctInput
+              label={`人脸${k}`}
+              value={base.face?.[k] ?? { cx: 0.5, top: 0.36, bottom: 0.5 }[k]}
+              onChange={(v) => setFace(k, v)}
+            />
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 

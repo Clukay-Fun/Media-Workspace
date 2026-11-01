@@ -54,7 +54,6 @@ export function Timeline() {
   const reviewedRev = useStore((s) => s.reviewedRev);
   const dragSession = useRef<DragSession | null>(null);
   const editorRef = useRef<EditorState | null>(null);
-  const saveEditorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const zoomTouched = useRef(false);
   const zoomPpsRef = useRef<number | null>(null);
   const zoomWheelAction = useRef<(event: WheelEvent) => void>(() => {});
@@ -129,9 +128,7 @@ export function Timeline() {
             timeline: { ...editor.timeline, pxPerSecond: zoomPpsRef.current },
           };
           editorRef.current = next;
-          void api
-            .saveEditor(next)
-            .catch(() => useStore.getState().toast("时间线设置保存失败", "error"));
+          useStore.getState().updateEditor({ timeline: next.timeline });
         }
       })
       .catch(() => {});
@@ -139,17 +136,6 @@ export function Timeline() {
       cancelled = true;
     };
   }, [api, name]);
-
-  useEffect(
-    () => () => {
-      if (saveEditorTimer.current) {
-        clearTimeout(saveEditorTimer.current);
-        const latest = editorRef.current;
-        if (latest) void api.saveEditor(latest).catch(() => {});
-      }
-    },
-    [api],
-  );
 
   if (!project || !tl) return <section className="timeline panel" ref={root} />;
   const aiBands = aiChanges(history, reviewedRev)
@@ -178,14 +164,10 @@ export function Timeline() {
     });
   }
 
+  // 只存时间线这一段，参考线等其他设置由预览区写（同一个 editor.json）
   const scheduleEditorSave = (next: EditorState) => {
     editorRef.current = next;
-    if (saveEditorTimer.current) clearTimeout(saveEditorTimer.current);
-    saveEditorTimer.current = setTimeout(() => {
-      void api
-        .saveEditor(next)
-        .catch(() => useStore.getState().toast("时间线设置保存失败", "error"));
-    }, 240);
+    useStore.getState().updateEditor({ timeline: next.timeline });
   };
 
   const frameAt = (clientX: number) => {
