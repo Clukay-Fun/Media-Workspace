@@ -68,36 +68,10 @@ export function InspectorHead({ project, id, ref_, fps }: InspectorProps) {
   );
 }
 
-/** 底部操作：各类元素自己的按钮放在 children，最后是锁定 */
-export function InspectorActions({
-  ref_,
-  children,
-}: {
-  ref_: ItemRef;
-  children?: React.ReactNode;
-}) {
-  const { track } = ref_;
-  const lock = () =>
-    void useStore
-      .getState()
-      .submit(
-        [{ op: "track.update", id: track.id, set: { locked: !track.locked } }],
-        track.locked ? "已解锁轨道" : "已锁定轨道，AI 也不能改动它",
-      );
-  return (
-    <div className="selection-actions">
-      {children}
-      <button
-        type="button"
-        className={track.locked ? "mini-btn locked" : "mini-btn"}
-        title={track.locked ? "解锁这条轨道" : "锁定这条轨道，AI 也不能改"}
-        onClick={lock}
-      >
-        <Icon name={track.locked ? "lock" : "unlock"} size={12} />
-        {track.locked ? "已锁定" : "锁定"}
-      </button>
-    </div>
-  );
+/** 底部操作：各类元素自己的操作按钮 */
+export function InspectorActions({ children }: { ref_?: ItemRef; children?: React.ReactNode }) {
+  if (!children) return null;
+  return <div className="selection-actions">{children}</div>;
 }
 
 /**
