@@ -143,8 +143,8 @@ export function timelineRows(project: Project, tl: ResolvedTimeline): Row[] {
     }
     return {
       track,
-      // 按用途命名（主视频、字幕、标题…），轨道自己的名字放在提示里
-      label: main ? "主视频" : KIND_LABEL[track.kind],
+      // 主视频固定这个名字。其他轨道用自己的名字，新加的「图片」才不会显示成画中画
+      label: main ? "主视频" : (track.name ?? KIND_LABEL[track.kind]),
       kind: main ? "main" : track.kind,
       blocks: blocks.toSorted((a, b) => a.from - b.from),
     };

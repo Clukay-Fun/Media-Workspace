@@ -63,6 +63,18 @@ describe("时间线概览", () => {
     expect(rows[0]?.blocks[0]).toMatchObject({ id: "s1", from: 15, label: "一句" });
   });
 
+  it("轨道有名字时显示名字，主视频仍叫主视频", () => {
+    const named = Project.parse({
+      ...project,
+      tracks: [...project.tracks, { id: "still", kind: "video", name: "图片", items: [] }],
+    });
+    expect(timelineRows(named, compile(named)).map((row) => row.label)).toEqual([
+      "图片",
+      "字幕",
+      "主视频",
+    ]);
+  });
+
   it("图片块也带出关键帧位置", () => {
     const withImage = Project.parse({
       ...project,

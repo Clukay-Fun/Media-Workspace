@@ -1854,6 +1854,52 @@ textarea:focus-visible {
   pointer-events: none;
 }
 
+.tl-head.tl-add,
+.tl-lane.tl-add-lane {
+  min-height: 28px;
+}
+
+.tl-add-btn {
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--radius);
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.tl-add-btn:hover {
+  color: var(--text);
+  background: var(--raised-2);
+}
+
+.tl-add-menu {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 120px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 12px 32px rgb(28 27 24 / 0.16);
+  transform: translateY(calc(-100% - 4px));
+}
+
+.tl-add-menu button {
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  text-align: left;
+}
+
+.tl-add-menu button:hover {
+  background: var(--raised);
+}
+
 .row-tools {
   display: flex;
   flex: none;

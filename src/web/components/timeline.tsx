@@ -1,5 +1,6 @@
 import type React from "react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { EditorState } from "../../core/api";
 import { type DragMode, planDrag, planTrackMove, trackInsertFloor } from "../../core/edit";
 import type { Op } from "../../core/ops";
@@ -487,6 +488,7 @@ export function Timeline() {
             setOpenTransitionId={setOpenTransitionId}
           />
         ))}
+        <AddTrack />
       </div>
       {viewportWidth > 0 && (
         <>
@@ -517,6 +519,88 @@ export function Timeline() {
       )}
       {menu && <BlockMenuView menu={menu} onClose={() => setMenu(null)} />}
     </section>
+  );
+}
+
+const ADD_TRACKS: { label: string; kind: Track["kind"]; name: string }[] = [
+  { label: "画中画", kind: "video", name: "画中画" },
+  { label: "图片", kind: "video", name: "图片" },
+  { label: "标题", kind: "overlay", name: "标题" },
+  { label: "字幕", kind: "caption", name: "字幕" },
+  { label: "音频", kind: "audio", name: "音频" },
+];
+
+/** 先选类型，再在最上层加一条空轨道 */
+function AddTrack() {
+  const root = useRef<HTMLDivElement>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const close = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && root.current?.contains(target)) return;
+      setMenu(null);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenu(null);
+    };
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [menu]);
+
+  return (
+    <>
+      <div className="tl-head tl-add" ref={root}>
+        <button
+          type="button"
+          className="tl-add-btn"
+          aria-label="新增轨道"
+          aria-expanded={menu !== null}
+          title="新增一条空轨道"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect();
+            setMenu((cur) => (cur ? null : { x: rect.left, y: rect.top }));
+          }}
+        >
+          ＋
+        </button>
+      </div>
+      <div className="tl-lane tl-add-lane" />
+      {menu &&
+        createPortal(
+          <div
+            className="tl-add-menu"
+            role="menu"
+            style={{ left: menu.x, top: menu.y }}
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            {ADD_TRACKS.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenu(null);
+                  void useStore
+                    .getState()
+                    .submit(
+                      [{ op: "track.add", track: { kind: item.kind, name: item.name, items: [] } }],
+                      `新增了${item.label}轨道`,
+                    );
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 
