@@ -54,11 +54,13 @@ export function quoteLayout(
   size: CardSize,
 ): QuoteLayout {
   const box = cardBox(size, width, height);
+  // 内边距按短边算（docs/decisions/0030）：横屏、竖屏全屏看时一样宽
+  const short = Math.min(width, height);
   const boxHeight = box.y1 - box.y0;
   const maxLines = size === "small" ? 2 : 4;
   const maxChars = size === "small" ? 18 : 36;
   const sourceSize = props.source ? Math.min(cardPx(28, width, height), boxHeight * 0.12) : 0;
-  const verticalPadding = Math.min(boxHeight * 0.12, cardPadding(width) * 0.5);
+  const verticalPadding = Math.min(boxHeight * 0.12, cardPadding(short) * 0.5);
   const sourceHeight = sourceSize * 1.2;
   const sourceGap = props.source ? Math.min((12 * width) / 1080, boxHeight * 0.06) : 0;
   const textTop = box.y0 + verticalPadding;
@@ -67,7 +69,7 @@ export function quoteLayout(
   const targetFontSize = cardPx(48, width, height);
   const allowedTextLength = [...props.text].length <= maxChars;
   let fontSize = targetFontSize;
-  let quote = place(style, box, width, 0.5, fontSize, maxLines);
+  let quote = place(style, box, short, 0.5, fontSize, maxLines);
   let lineCount = estimateLines(quoteText(props), quote).lines;
 
   // 按宽度缩放字号；如果合法字数在横屏小卡里受高度限制，就等比收紧以免裁切。
@@ -77,13 +79,13 @@ export function quoteLayout(
       const textFitsHeight = lineCount * fontSize * quote.font.lineHeight <= textHeight;
       if (lineCount <= maxLines && textFitsHeight) break;
       fontSize *= 0.92;
-      quote = place(style, box, width, 0.5, fontSize, maxLines);
+      quote = place(style, box, short, 0.5, fontSize, maxLines);
       lineCount = estimateLines(quoteText(props), quote).lines;
     }
   }
 
   const quoteY = textTop + textHeight / 2;
-  quote = place(style, box, width, (quoteY - box.y0) / boxHeight, fontSize, maxLines);
+  quote = place(style, box, short, (quoteY - box.y0) / boxHeight, fontSize, maxLines);
   const quoteBox = textBox(quoteText(props), quote);
   const quoteInside =
     quoteBox.x0 >= box.x0 &&
@@ -105,7 +107,7 @@ export function quoteLayout(
   const sourceBase = place(
     style,
     box,
-    width,
+    short,
     (sourceY - box.y0) / boxHeight,
     sourceSize,
     1,

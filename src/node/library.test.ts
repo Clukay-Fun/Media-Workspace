@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -53,6 +53,28 @@ describe("样式模板库", () => {
     const { styles } = await listStyles();
     expect(styles.every((s) => s.builtin)).toBe(true);
     expect(styles.map((s) => s.name)).toContain("caption-word-yellow");
+  });
+
+  it("竖屏存的样式套用到横屏工程时按画布换算；旧条目没记画布的按 1080×1920 算", async () => {
+    await saveStyle(a, "caption-word-yellow", { as: "my-caption" });
+    const wide = join(root, "wide.mwproj");
+    await initProject(wide, {
+      ...emptyProject(),
+      canvas: { ...emptyProject().canvas, width: 1920, height: 1080 },
+    });
+    await useStyle(wide, "my-caption", who);
+    const cap = (await loadProject(wide)).styles["my-caption"];
+    expect(cap?.layout.x).toBe(960);
+    expect(cap?.layout.y).toBeLessThan(1080);
+    expect(cap?.font.size).toBe(BUILTIN_STYLES["caption-word-yellow"].font.size);
+
+    // 旧条目：文件里没有 canvas
+    const { canvas: _, ...old } = JSON.parse(
+      await readFile(join(textStylesDir(), "my-caption.json"), "utf8"),
+    );
+    await writeFile(join(textStylesDir(), "old.json"), JSON.stringify({ ...old, name: "old" }));
+    await useStyle(wide, "old", who);
+    expect((await loadProject(wide)).styles.old).toEqual(cap);
   });
 
   it("从一个工程存进库，在另一个工程里套用，样式完全一样", async () => {

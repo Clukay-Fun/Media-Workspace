@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
 import { TextBlock } from "../../composition/TextBlock";
 import type { LibraryStyle } from "../../core/api";
+import { fitStyle, STYLE_REFERENCE } from "../../core/aspect";
 import type { Project } from "../../core/schema";
 import type { TextStyle } from "../../core/text-style";
 import { ApiFailure } from "../data/client";
@@ -138,7 +139,13 @@ function Styles() {
   };
   const addToProject = (l: LibraryStyle) =>
     void st.submit(
-      [{ op: "style.add", id: l.name, style: l.style }],
+      [
+        {
+          op: "style.add",
+          id: l.name,
+          style: fitStyle(l.style, l.canvas ?? STYLE_REFERENCE, project.canvas),
+        },
+      ],
       `已把「${l.name}」加入本工程`,
     );
 

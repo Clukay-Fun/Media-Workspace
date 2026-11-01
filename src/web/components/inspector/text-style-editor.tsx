@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { builtinStyles } from "../../../core/aspect";
 import { FONT_FAMILIES } from "../../../core/fonts";
-import { BUILTIN_STYLES } from "../../../core/presets";
 import type { Project } from "../../../core/schema";
 import { effectiveStyleId, type StyleScope } from "../../../core/style-scope";
 import type { Anim, TextStyle } from "../../../core/text-style";
@@ -42,7 +42,7 @@ export function TextStyleEditor({
   elementLabel,
 }: TextStyleEditorProps) {
   const activeStyleId = effectiveStyleId(project, id, fallback);
-  const builtins = BUILTIN_STYLES as Record<string, TextStyle>;
+  const builtins = builtinStyles(project.canvas);
   const style =
     project.styles[activeStyleId] ??
     builtins[activeStyleId] ??

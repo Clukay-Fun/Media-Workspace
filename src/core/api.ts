@@ -166,6 +166,8 @@ export type LibraryStyle = {
   builtin: boolean;
   savedAt: string | null;
   style: TextStyle;
+  /** 存的时候工程的画布；套用到别的尺寸时按它换算（core/aspect 的 fitStyle）。旧条目没有，按 1080×1920 算 */
+  canvas?: { width: number; height: number };
 };
 export type LibraryStylesResponse = { ok: true; styles: LibraryStyle[]; skipped: string[] };
 

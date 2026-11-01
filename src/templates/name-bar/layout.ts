@@ -16,14 +16,16 @@ export function nameBarLayout(
   size: CardSize,
 ): { box: Box; name: TextStyle; title: TextStyle | null } {
   const area = cardBox(size, width, height);
+  // 内边距按短边算（docs/decisions/0030）：横屏、竖屏全屏看时一样宽
+  const short = Math.min(width, height);
   const k = cardScale(width, height);
   const barHeight = Math.min(area.y1 - area.y0, BAR_HEIGHT * k);
   const fontScale = barHeight / BAR_HEIGHT;
   const box: Box = { x0: area.x0, y0: area.y0, x1: area.x1, y1: area.y0 + barHeight };
-  const pad = cardPadding(width);
+  const pad = cardPadding(short);
 
   const at = (y: number, px: number): TextStyle => {
-    const s = inCard(style, box, width, 0.5);
+    const s = inCard(style, box, short, 0.5);
     return {
       ...s,
       font: { ...s.font, size: px * fontScale },

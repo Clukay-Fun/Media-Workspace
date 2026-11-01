@@ -60,6 +60,8 @@ export function bulletListLayout(
   size: CardSize,
 ): BulletListLayout {
   const box = cardBox(size, width, height);
+  // 内边距按短边算（docs/decisions/0030）：横屏、竖屏全屏看时一样宽
+  const short = Math.min(width, height);
   const boxHeight = box.y1 - box.y0;
   const hasTitle = Boolean(props.title);
   const itemSize = cardPx(48, width, height);
@@ -67,11 +69,11 @@ export function bulletListLayout(
   const listEnd = hasTitle ? (props.items.length === 2 ? 0.82 : 0.85) : 0.82;
   const items = props.items.map((item, index) => {
     const y = listStart + ((listEnd - listStart) * index) / Math.max(1, props.items.length - 1);
-    return place(style, box, width, y, itemSize, 1, "left");
+    return place(style, box, short, y, itemSize, 1, "left");
   });
 
   if (!props.title) return { box, title: null, items };
   const titleSize = cardPx(44, width, height);
-  const title = place(style, box, width, 0.12, titleSize, 1);
+  const title = place(style, box, short, 0.12, titleSize, 1);
   return { box, title, items };
 }

@@ -6,10 +6,10 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import { bundle } from "@remotion/bundler";
 import { renderMedia, renderStill, selectComposition } from "@remotion/renderer";
 import type { MainProps } from "../composition/Main";
+import { builtinStyles } from "../core/aspect";
 import { compile, type ResolvedTimeline } from "../core/compile";
 import { MwError } from "../core/errors";
 import { facesFor } from "../core/fonts";
-import { BUILTIN_STYLES } from "../core/presets";
 import type { Project } from "../core/schema";
 import type { TextStyle } from "../core/text-style";
 import { overlayAssets, TEMPLATES } from "../templates";
@@ -109,7 +109,7 @@ export async function buildProps(
   }
 
   // 字体：只加载实际用到的样式（没写样式的字幕 / 叠加层用内置默认样式）
-  const styles: Record<string, TextStyle> = { ...BUILTIN_STYLES, ...project.styles };
+  const styles: Record<string, TextStyle> = { ...builtinStyles(project.canvas), ...project.styles };
   const usedStyles = new Set<string>([
     ...timeline.captions.map((c) => c.style ?? "caption-word-yellow"),
     ...timeline.overlays.map(

@@ -27,6 +27,32 @@ export function aspectSize(target: AspectName, canvas: Size): Size {
   return target === "9:16" ? { width: short, height: long } : { width: long, height: short };
 }
 
+/** 内置样式、旧的模板库样式是按这个画布定的数值 */
+export const STYLE_REFERENCE: Size = { width: 1080, height: 1920 };
+
+type CanvasLike = Size & { safeArea: Project["canvas"]["safeArea"] };
+
+/** 把按 from 画布定的样式换算到 canvas 上（和切换画幅同一套规则）；尺寸相同时原样返回 */
+export function fitStyle(style: TextStyle, from: Size, canvas: CanvasLike): TextStyle {
+  if (from.width === canvas.width && from.height === canvas.height) return style;
+  return mapper(from, canvas, canvas.safeArea.preset).style(style);
+}
+
+const builtinCache = new Map<string, Record<string, TextStyle>>();
+
+/** 按画布换算好的内置样式。工程里没有某个样式时退回的就是它，横屏、720 的工程也对得上 */
+export function builtinStyles(canvas: CanvasLike): Record<string, TextStyle> {
+  const key = `${canvas.width}x${canvas.height}:${canvas.safeArea.preset}`;
+  let out = builtinCache.get(key);
+  if (!out) {
+    out = Object.fromEntries(
+      Object.entries(BUILTIN_STYLES).map(([id, st]) => [id, fitStyle(st, STYLE_REFERENCE, canvas)]),
+    );
+    builtinCache.set(key, out);
+  }
+  return out;
+}
+
 export type AspectPlan = {
   ops: Op[];
   size: Size;
@@ -43,15 +69,13 @@ export function planAspect(project: Project, target: AspectName): AspectPlan {
   const m = mapper(from, size, project.canvas.safeArea.preset);
   const ops: Op[] = [{ op: "canvas.update", set: { width: size.width, height: size.height } }];
 
-  // 内置样式也写进工程：渲染时工程里没有的样式会退回内置的竖屏数值
-  const styles: Record<string, TextStyle> = { ...BUILTIN_STYLES, ...project.styles };
-  for (const [id, style] of Object.entries(styles)) {
-    const next = m.style(style);
-    ops.push(
-      project.styles[id]
-        ? { op: "style.update", id, set: next }
-        : { op: "style.add", id, style: next },
-    );
+  for (const [id, style] of Object.entries(project.styles)) {
+    ops.push({ op: "style.update", id, set: m.style(style) });
+  }
+  // 工程里没有的内置样式按新画布写进去，以后套用时直接是对的数值
+  const builtins = builtinStyles({ ...size, safeArea: project.canvas.safeArea });
+  for (const [id, style] of Object.entries(builtins)) {
+    if (!project.styles[id]) ops.push({ op: "style.add", id, style });
   }
 
   const skipped: AspectPlan["skipped"] = [];

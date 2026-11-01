@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
+import { builtinStyles } from "../../../core/aspect";
 import type { Op } from "../../../core/ops";
-import { BUILTIN_STYLES } from "../../../core/presets";
 import type { Project } from "../../../core/schema";
 import { frameOfMs, msOfFrame, timecode } from "../../lib/timeline";
 import { useStore } from "../../store";
@@ -41,19 +41,16 @@ export function CoverPanel() {
   }, [titleKey]);
 
   if (!project) return null;
-  const styles = { ...BUILTIN_STYLES, ...project.styles };
+  const styles = { ...builtinStyles(project.canvas), ...project.styles };
   const atMs = cover?.atMs ?? 1000;
 
   const commit = (next: Cover, label: string) => {
     const ops: Op[] = [];
     const style = next.title?.style;
     // 内置样式没复制进工程时先复制，否则 validate 会报样式不存在
-    if (style && !project.styles[style] && BUILTIN_STYLES[style as keyof typeof BUILTIN_STYLES]) {
-      ops.push({
-        op: "style.add",
-        id: style,
-        style: BUILTIN_STYLES[style as keyof typeof BUILTIN_STYLES],
-      });
+    const builtin = style ? builtinStyles(project.canvas)[style] : undefined;
+    if (style && !project.styles[style] && builtin) {
+      ops.push({ op: "style.add", id: style, style: builtin });
     }
     ops.push({ op: "cover.update", set: next });
     void useStore.getState().submit(ops, label);

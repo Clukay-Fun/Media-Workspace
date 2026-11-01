@@ -13,7 +13,9 @@ export function screenshotLayout(
   size: CardSize,
 ): { box: Box; imageBox: Box; caption: TextStyle | null; radius: number } {
   const box = cardBox(size, width, height);
-  const pad = cardPadding(width);
+  // 内边距按短边算（docs/decisions/0030）：横屏、竖屏全屏看时一样宽
+  const short = Math.min(width, height);
+  const pad = cardPadding(short);
   const k = cardScale(width, height);
   const radius = size === "full" ? 0 : Math.round(width * 0.03);
   const captionSize = 40 * k;
@@ -30,7 +32,7 @@ export function screenshotLayout(
   };
   let caption: TextStyle | null = null;
   if (props.caption) {
-    const base = inCard(style, box, width, 0.92);
+    const base = inCard(style, box, short, 0.92);
     caption = {
       ...base,
       font: { ...base.font, size: captionSize },

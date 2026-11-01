@@ -15,11 +15,13 @@ export function tipBarLayout(
   size: CardSize,
 ): { box: Box; text: TextStyle } {
   const area = cardBox(size, width, height);
+  // 内边距按短边算（docs/decisions/0030）：横屏、竖屏全屏看时一样宽
+  const short = Math.min(width, height);
   const k = cardScale(width, height);
   const barHeight = Math.min(area.y1 - area.y0, BAR_HEIGHT * k);
   const box: Box = { x0: area.x0, y0: area.y0, x1: area.x1, y1: area.y0 + barHeight };
-  const pad = cardPadding(width);
-  const base = inCard(style, box, width, 0.5);
+  const pad = cardPadding(short);
+  const base = inCard(style, box, short, 0.5);
   return {
     box,
     text: {

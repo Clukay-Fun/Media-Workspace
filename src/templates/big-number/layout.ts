@@ -87,18 +87,20 @@ export function bigNumberLayout(
   size: CardSize,
 ): BigNumberLayout {
   const box = cardBox(size, width, height);
+  // 内边距按短边算（docs/decisions/0030）：横屏、竖屏全屏看时一样宽
+  const short = Math.min(width, height);
   const boxWidth = box.x1 - box.x0;
   const boxHeight = box.y1 - box.y0;
   const widthScale = cardScale(width, height);
   const lineHeight = style.font.lineHeight;
-  const verticalPadding = Math.min(boxHeight * 0.08, cardPadding(width) * 0.35);
+  const verticalPadding = Math.min(boxHeight * 0.08, cardPadding(short) * 0.35);
   const availableHeight = Math.max(1, boxHeight - 2 * verticalPadding);
   const desiredHeight = (NUMBER_SIZE + LABEL_SIZE) * widthScale * lineHeight + 12 * widthScale;
   const heightFit = Math.min(1, availableHeight / desiredHeight);
   const numberSize = NUMBER_SIZE * widthScale * heightFit;
   const unitSize = UNIT_SIZE * widthScale * heightFit;
   const labelSize = LABEL_SIZE * widthScale * heightFit;
-  const padX = Math.min(cardPadding(width), boxWidth * 0.08);
+  const padX = Math.min(cardPadding(short), boxWidth * 0.08);
   const availableWidth = Math.max(1, boxWidth - 2 * padX);
 
   const numberText = bigNumberText(props);

@@ -1,6 +1,6 @@
+import { builtinStyles } from "./aspect";
 import { MwError } from "./errors";
 import type { Op } from "./ops";
-import { BUILTIN_STYLES } from "./presets";
 import type { Project } from "./schema";
 import type { TextStyle } from "./text-style";
 
@@ -64,7 +64,7 @@ export function styleEditOps(
   const { own, track, isCaption } = locate(project, itemId);
   const cur = own ?? track ?? fallback;
   const inProject = project.styles[cur];
-  const base = inProject ?? (BUILTIN_STYLES as Record<string, TextStyle>)[cur];
+  const base = inProject ?? builtinStyles(project.canvas)[cur];
   if (!base) throw new MwError("NOT_FOUND", `样式「${cur}」不存在`);
   const ops: Op[] = [];
 

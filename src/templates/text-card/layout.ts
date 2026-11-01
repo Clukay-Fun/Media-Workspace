@@ -13,10 +13,12 @@ export function textCardLayout(
   size: CardSize,
 ): { box: Box; title: TextStyle | null; body: TextStyle } {
   const box = cardBox(size, width, height);
+  // 内边距按短边算（docs/decisions/0030）：横屏、竖屏全屏看时一样宽
+  const short = Math.min(width, height);
   // 小卡放不下大字：整体缩小
   const scale = size === "small" ? 0.75 : 1;
   const at = (k: number, y: number, maxLines: number): TextStyle => {
-    const s = inCard(style, box, width, y);
+    const s = inCard(style, box, short, y);
     return {
       ...s,
       font: { ...s.font, size: s.font.size * scale * k },

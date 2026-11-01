@@ -3,7 +3,7 @@ import { mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
-import { type AspectName, planAspect, scaleGuides } from "../core/aspect";
+import { type AspectName, builtinStyles, planAspect, scaleGuides } from "../core/aspect";
 import { compile, type ResolvedTimeline } from "../core/compile";
 import { coverView } from "../core/cover";
 import { croppedSize } from "../core/crop";
@@ -401,7 +401,7 @@ export async function lintDir(dir: string) {
     if (f) faces[id] = f;
   }
   const issues = lintProject(p, {
-    styles: { ...BUILTIN_STYLES, ...p.styles },
+    styles: { ...builtinStyles(p.canvas), ...p.styles },
     faces,
     layout: await getLayout().catch(() => null),
     overlayBounds: (o, style) => overlayBounds(o, style, p.canvas.width, p.canvas.height),
@@ -736,7 +736,7 @@ export async function transcribeProject(
   // 一条最多几个字：账号设置了就照用（长的折成两行），没设置按字幕样式一行放得下的字数，每条只占一行；
   // 都不超过样式允许的行数
   const styleId = capTrack.style ?? "caption-word-yellow";
-  const capStyle = p.styles[styleId] ?? (BUILTIN_STYLES as Record<string, TextStyle>)[styleId];
+  const capStyle = p.styles[styleId] ?? builtinStyles(p.canvas)[styleId];
   const perLine = capStyle ? charsPerLine(capStyle) : 14;
   const fit = capStyle ? perLine * capStyle.layout.maxLines : 28;
   const wanted = (await getLayout().catch(() => null))?.captionMaxChars ?? perLine;

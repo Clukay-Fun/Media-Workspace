@@ -3,6 +3,7 @@ import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import type { LibraryStyle } from "../core/api";
+import { fitStyle, STYLE_REFERENCE } from "../core/aspect";
 import { MwError } from "../core/errors";
 import { Layout, type LayoutInput } from "../core/layout";
 import { BUILTIN_STYLES } from "../core/presets";
@@ -23,6 +24,9 @@ const Entry = z.strictObject({
   description: z.string().max(200).default(""),
   savedAt: z.string(),
   style: TextStyle,
+  canvas: z
+    .strictObject({ width: z.number().int().positive(), height: z.number().int().positive() })
+    .optional(),
 });
 type Entry = z.infer<typeof Entry>;
 
@@ -42,6 +46,7 @@ export async function listStyles(): Promise<{ styles: LibraryStyle[]; skipped: s
     builtin: true,
     savedAt: null,
     style,
+    canvas: STYLE_REFERENCE,
   }));
   const skipped: string[] = [];
   const files = await readdir(textStylesDir()).catch(() => [] as string[]);
@@ -92,6 +97,7 @@ export async function saveStyle(
     description: o.description ?? "",
     savedAt: new Date().toISOString(),
     style,
+    canvas: { width: p.canvas.width, height: p.canvas.height },
   };
   await mkdir(textStylesDir(), { recursive: true });
   await writeFile(fileOf(name), `${JSON.stringify(entry, null, 2)}\n`);
@@ -107,8 +113,10 @@ export async function useStyle(
   const s = await getStyle(name);
   const id = checkName(o.as ?? name);
   const p = await loadProject(dir);
+  // 按存的时候的画布换算到这个工程（横屏工程用竖屏存的样式，字幕才不会跑出画面）
+  const style = fitStyle(s.style, s.canvas ?? STYLE_REFERENCE, p.canvas);
   const res = await applyToProject(dir, {
-    ops: [{ op: "style.add", id, style: s.style }],
+    ops: [{ op: "style.add", id, style }],
     baseRevision: o.baseRevision ?? p.revision,
     source: o.source,
     actor: o.actor,
