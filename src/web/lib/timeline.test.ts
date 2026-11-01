@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { compile } from "../../core/compile";
 import { Project } from "../../core/schema";
-import { filmstripTiles, tickStep, timecode, timelineRows, waveform } from "./timeline";
+import {
+  filmstripTiles,
+  tickStep,
+  timecode,
+  timelineRows,
+  trackInsertIndex,
+  waveform,
+} from "./timeline";
 
 const project = Project.parse({
   version: 7,
@@ -109,6 +116,20 @@ describe("时间线概览", () => {
     const fallback = filmstripTiles(10, 40, 0, 10);
     expect(fallback.tileWidth).toBe(71);
     expect(fallback.count).toBe(1);
+  });
+
+  it("拖轨道时主视频下面插不进去", () => {
+    const rows = [
+      { id: "main", top: 300, height: 40, index: 0 },
+      { id: "a", top: 200, height: 40, index: 1 },
+      { id: "b", top: 100, height: 40, index: 2 },
+      { id: "c", top: 40, height: 40, index: 3 },
+    ];
+    expect(trackInsertIndex(rows, "b", 20, 1)).toEqual({ index: 3, line: 40 });
+    expect(trackInsertIndex(rows, "b", 80, 1)).toEqual({ index: 2, line: 80 });
+    expect(trackInsertIndex(rows, "b", 250, 1)).toEqual({ index: 1, line: 240 });
+    expect(trackInsertIndex(rows, "b", 400, 1)).toEqual({ index: 1, line: 300 });
+    expect(trackInsertIndex(rows, "missing", 20, 1)).toBeNull();
   });
 
   it("时间码和刻度", () => {

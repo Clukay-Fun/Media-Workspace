@@ -1628,6 +1628,7 @@ textarea:focus-visible {
 }
 
 .tl-grid {
+  position: relative;
   display: grid;
   grid-auto-rows: auto;
   padding-right: 8px;
@@ -1829,6 +1830,28 @@ textarea:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.row-label.can-drag {
+  flex: 1;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.tl-head.is-dragging .row-label.can-drag {
+  cursor: grabbing;
+}
+
+.tl-drop {
+  position: absolute;
+  z-index: 6;
+  right: 8px;
+  left: 0;
+  height: 2px;
+  margin-top: -1px;
+  background: var(--accent);
+  pointer-events: none;
 }
 
 .row-tools {

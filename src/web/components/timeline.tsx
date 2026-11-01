@@ -1,7 +1,7 @@
 import type React from "react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { EditorState } from "../../core/api";
-import { type DragMode, planDrag } from "../../core/edit";
+import { type DragMode, planDrag, planTrackMove, trackInsertFloor } from "../../core/edit";
 import type { Op } from "../../core/ops";
 import type { Project, Track } from "../../core/schema";
 import { frameToMs, sourceFrameAt } from "../../core/time";
@@ -16,9 +16,11 @@ import {
   itemFrames,
   msOfFrame,
   type Row,
+  type TrackRowBox,
   tickStep,
   timecode,
   timelineRows,
+  trackInsertIndex,
   waveform,
 } from "../lib/timeline";
 import { type TransitionCut, transitionCutMarkers, transitionPairFor } from "../lib/transitions";
@@ -55,6 +57,7 @@ export function Timeline() {
   const [menu, setMenu] = useState<BlockMenu | null>(null);
   const [zoomPps, setZoomPps] = useState<number | null>(null);
   const [openTransitionId, setOpenTransitionId] = useState<string | null>(null);
+  const [trackDrop, setTrackDrop] = useState<{ id: string; top: number } | null>(null);
   const history = useStore((s) => s.history);
   const reviewedRev = useStore((s) => s.reviewedRev);
   const dragSession = useRef<DragSession | null>(null);
@@ -460,6 +463,7 @@ export function Timeline() {
           </>
         )}
 
+        {trackDrop && <div className="tl-drop" style={{ top: trackDrop.top }} />}
         {rows.map((row) => (
           <RowView
             key={row.track.id}
@@ -476,6 +480,8 @@ export function Timeline() {
             ghost={ghost}
             onDragStart={startDrag}
             onContextMenu={openBlockMenu}
+            trackDragging={trackDrop?.id === row.track.id}
+            onTrackPlace={setTrackDrop}
             transitionCuts={row.kind === "main" ? transitionCuts : []}
             openTransitionId={openTransitionId}
             setOpenTransitionId={setOpenTransitionId}
@@ -514,6 +520,16 @@ export function Timeline() {
   );
 }
 
+function measureTrackRows(tracks: { id: string }[]): TrackRowBox[] {
+  return [...document.querySelectorAll<HTMLElement>(".tl-head[data-track]")].flatMap((el) => {
+    const id = el.dataset.track ?? "";
+    const index = tracks.findIndex((item) => item.id === id);
+    if (index < 0) return [];
+    const rect = el.getBoundingClientRect();
+    return [{ id, top: rect.top, height: rect.height, index }];
+  });
+}
+
 function RowView({
   row,
   project,
@@ -528,6 +544,8 @@ function RowView({
   ghost,
   onDragStart,
   onContextMenu,
+  trackDragging,
+  onTrackPlace,
   transitionCuts,
   openTransitionId,
   setOpenTransitionId,
@@ -545,6 +563,8 @@ function RowView({
   ghost: Ghost | null;
   onDragStart: (e: React.PointerEvent, b: Block, mode: DragMode) => void;
   onContextMenu: (e: React.MouseEvent, b: Block) => void;
+  trackDragging: boolean;
+  onTrackPlace: (drop: { id: string; top: number } | null) => void;
   transitionCuts: TransitionCut[];
   openTransitionId: string | null;
   setOpenTransitionId: (id: string | null) => void;
@@ -555,11 +575,75 @@ function RowView({
   const toggle = (key: "locked" | "hidden" | "muted", label: string) =>
     void submit([{ op: "track.update", id: track.id, set: { [key]: !track[key] } }], label);
   const audible = track.kind === "video" || track.kind === "audio";
+  const canDrag = row.kind !== "main" && !track.locked;
+  const headTitle =
+    row.kind === "main"
+      ? "主视频固定在最下面"
+      : track.locked
+        ? "轨道已锁定"
+        : `${track.name ?? row.label}，拖动调整层级`;
+
+  const startTrackDrag = (event: React.PointerEvent<HTMLElement>) => {
+    if (event.button !== 0 || !canDrag) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const handle = event.currentTarget;
+    const place = (clientY: number) => {
+      const hit = trackInsertIndex(
+        measureTrackRows(project.tracks),
+        track.id,
+        clientY,
+        trackInsertFloor(project, track.id),
+      );
+      if (!hit) {
+        onTrackPlace(null);
+        return null;
+      }
+      const grid = handle.closest(".tl-grid");
+      const top = grid ? hit.line - grid.getBoundingClientRect().top : 0;
+      onTrackPlace({ id: track.id, top });
+      return hit;
+    };
+    const move = (ev: PointerEvent) => {
+      place(ev.clientY);
+    };
+    const finish = (ev: PointerEvent) => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", finish);
+      handle.removeEventListener("pointercancel", finish);
+      if (ev.type === "pointercancel") {
+        onTrackPlace(null);
+        return;
+      }
+      const hit = place(ev.clientY);
+      onTrackPlace(null);
+      if (!hit) return;
+      try {
+        const plan = planTrackMove(project, { id: track.id, index: hit.index });
+        if (plan.ops.length > 0) void submit(plan.ops, "调整了轨道层级");
+      } catch (err) {
+        useStore.getState().toast(err instanceof Error ? err.message : String(err), "error");
+      }
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", finish);
+    handle.addEventListener("pointercancel", finish);
+    handle.setPointerCapture(event.pointerId);
+  };
 
   return (
     <>
-      <div className={`tl-head ${track.hidden ? "is-hidden" : ""}`}>
-        <span className={`row-label row-${row.kind}`} title={track.name ?? track.id}>
+      <div
+        className={["tl-head", track.hidden ? "is-hidden" : "", trackDragging ? "is-dragging" : ""]
+          .filter(Boolean)
+          .join(" ")}
+        data-track={track.id}
+      >
+        <span
+          className={`row-label row-${row.kind}${canDrag ? " can-drag" : ""}`}
+          title={headTitle}
+          onPointerDown={canDrag ? startTrackDrag : undefined}
+        >
           <Icon name={ROW_ICON[row.kind]} size={13} />
           {row.label}
         </span>

@@ -37,6 +37,42 @@ const KIND_LABEL: Record<Track["kind"], string> = {
   audio: "音频",
 };
 
+export type TrackRowBox = { id: string; top: number; height: number; index: number };
+
+/**
+ * 拖轨道时指针落在哪条缝。index 是拿走被拖轨道之后的插入下标。
+ * 从上往下看，中线在指针上方的轨道会把插入位置压到它自己的下标。
+ */
+export function trackInsertIndex(
+  rows: TrackRowBox[],
+  dragId: string,
+  pointerY: number,
+  minIndex: number,
+): { index: number; line: number } | null {
+  const drag = rows.find((row) => row.id === dragId);
+  if (!drag) return null;
+  const visual = rows.slice().sort((a, b) => a.top - b.top || b.index - a.index);
+  const without = rows.filter((row) => row.id !== dragId).sort((a, b) => a.index - b.index);
+  const withoutIndex = new Map(without.map((row, index) => [row.id, index]));
+  let insertAt = without.length;
+  const first = visual.find((row) => row.id !== dragId);
+  let line = first ? first.top : drag.top;
+  for (const row of visual) {
+    if (row.id === dragId) continue;
+    if (row.top + row.height / 2 < pointerY) {
+      insertAt = withoutIndex.get(row.id) ?? insertAt;
+      line = row.top + row.height;
+    }
+  }
+  const floor = Math.max(0, Math.min(minIndex, without.length));
+  if (insertAt < floor) {
+    insertAt = floor;
+    const below = without[floor - 1];
+    if (below) line = below.top;
+  }
+  return { index: insertAt, line };
+}
+
 /** 上层的轨道排在上面，主轨在最下面（和剪映一致） */
 export function timelineRows(project: Project, tl: ResolvedTimeline): Row[] {
   const fileName = (asset: string) => project.assets[asset]?.path.split("/").at(-1) ?? asset;
