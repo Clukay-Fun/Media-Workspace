@@ -33,6 +33,8 @@ const ANIM_UNITS = [
   { value: "line", label: "整行" },
 ] as const;
 
+const FONT_GROUPS = [...new Set(Object.values(FONT_FAMILIES).map((font) => font.group))];
+
 export function TextStyleEditor({
   project,
   id,
@@ -135,10 +137,16 @@ export function TextStyleEditor({
           disabled={locked}
           onChange={(e) => update({ font: { family: e.currentTarget.value } })}
         >
-          {Object.entries(FONT_FAMILIES).map(([id, f]) => (
-            <option key={id} value={id}>
-              {f.css}
-            </option>
+          {FONT_GROUPS.map((group) => (
+            <optgroup key={group} label={group}>
+              {Object.entries(FONT_FAMILIES)
+                .filter(([, font]) => font.group === group)
+                .map(([id, font]) => (
+                  <option key={id} value={id}>
+                    {font.css}
+                  </option>
+                ))}
+            </optgroup>
           ))}
         </select>
       </Field>

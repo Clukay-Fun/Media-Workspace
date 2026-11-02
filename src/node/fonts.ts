@@ -31,7 +31,10 @@ export function resolveFaces(faces: FontFace[]): (FontFace & { path: string })[]
   });
   if (missing.length > 0) {
     throw new MwError("FONT_MISSING", `缺少字体文件：${missing.join("、")}`, {
-      hint: "运行 pnpm fonts:check 查看缺哪些；普惠体从官方下载，测试字体运行 pnpm fonts:fetch-test",
+      hint: [
+        "运行 pnpm fonts:check 查看缺哪些；按字体包说明将字体放入 assets/fonts/ 对应目录",
+        "测试字体运行 pnpm fonts:fetch-test",
+      ].join("；"),
     });
   }
   return out;
