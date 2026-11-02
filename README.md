@@ -1,61 +1,151 @@
 # Media Workspace
 
-本地运行的 AI 原生口播编排工作台：AI 通过 CLI / MCP 修改结构化工程，人在本地网页里预览、微调、导出。
+本机运行的 AI 原生口播视频编排与审片工作台。AI 通过 CLI 或 MCP 操作结构化工程；人在本地网页中预览、微调、写批注，再导出 MP4 和封面。
 
-- 开发计划：[docs/PLAN.md](docs/PLAN.md)
-- 开发规范：[AGENTS.md](AGENTS.md)
+> **开发状态 · 2026-11-02**：阶段 A–F 的核心能力已完成并验收。当前 `dev` 已包含素材裁切、9:16 / 16:9 画幅切换、视频号安全区校准和第三轮验收修复；仍在用新样片走完整流程，验收后再创建 `dev → main` PR。本项目仍处于开发和验收阶段，尚无稳定发布包。
 
-> 状态：阶段 A 已验收（2026-10-28，`dev` 分支，暂未合并到 `main`）。验收记录见 [docs/decisions/0004](docs/decisions/0004-phase-a-acceptance.md)。
+- [开发计划](docs/PLAN.md) · [给 AI 的编排指南](docs/orchestration-guide.md) · [模板指南](docs/template-guide.md)
+- [开发规范](AGENTS.md) · [设计决策记录](docs/decisions/)
 
-## 本地使用（阶段 A：CLI）
+## 概览
 
-需要 Node 24、pnpm 10、ffmpeg。
+给一段原片和一份文稿，AI 可以在同一个工程里完成识音、字幕、剪辑、画面布局和卡片编排。审片者通过网页预览成片、点选元素、提交批注；AI 再读取批注继续修改。影响成片的工程修改会进入历史，可以撤销或恢复；原始素材保持只读。
+
+工程数据由 CLI、MCP 和工作台共用。工作台只在本机监听，视频预览与最终导出使用同一套 Remotion 合成。
+
+## 功能
+
+### 编排与剪辑
+
+- 导入视频、图片和音频；读取媒体信息，必要时生成标准化素材和预览代理。
+- 从原片识音生成字幕；给文稿时按文稿校对，并报告识别不一致处。运行本地对齐后，逐字动画可以跟随实际语音时间。
+- 按音频静音剪停顿，调整片段入出点、倍速、转场和关键帧；主轨保持连续，修改可撤销。
+- 使用账号版式摆放人物、字幕和标题；按模板添加图片、画中画、卡片和片尾。
+- 对主轨视频、画中画和图片设置素材裁切；支持 9:16 与 16:9 画幅转换。
+- 导出 MP4、封面静帧，并可将工程与参考成片做画面和节奏对比。
+
+### 审片与质检
+
+- 本地网页实时预览、点选元素、查看时间线和属性。
+- 写带时间点和目标元素的批注，交给 AI 继续处理；支持撤销、重做、历史查看和版本恢复。
+- `lint` 检查字幕溢出、安全区、文字过小、元素遮挡、人脸遮挡和人物版式等问题。
+- 画面比例切换会换算画布与元素布局；竖屏素材切到横屏时会提示留黑和近景风险，需预览确认。
+
+### AI 接入
+
+- `mw` CLI 和 MCP 共用同一套工程操作、校验与结果结构。
+- MCP 提供工程初始化、素材导入、识音、编辑、预览、导出、批注等工具；`guide` 返回工具用法、字段和模板说明。
+- Claude Code 与 Codex 可选接入批注 hook，让当前审片工程中的新批注出现在 AI 对话上下文里。
+
+## 快速开始
+
+### 环境
+
+- Node.js 24.x、pnpm 10
+- `ffmpeg` 和 `ffprobe`；处理 HDR 素材需要带 zimg / libplacebo 的构建
+- 默认产品字体为阿里巴巴普惠体 3.0，字体文件不包含在仓库中
+
+### 安装与打开工作台
 
 ```bash
 pnpm install
-pnpm fonts:check            # 普惠体放进 assets/fonts/alibaba-puhuiti-3/；测试字体用 pnpm fonts:fetch-test 下载
-./bin/mw.mjs --help         # 或者 pnpm link --global 之后直接用 mw
-./bin/mw.mjs guide          # 给 AI 看的操作和样式说明
-./bin/mw.mjs models --fetch # 下载识音模型（约 230MB，只需一次）；之后 mw align <工程> 让逐字动画跟着语音走
+pnpm web:build
+
+# 新建工程并导入原片
+pnpm mw init demo
+pnpm mw import demo /绝对路径/口播原片.mov
+
+# 启动本机审片台，默认地址为 http://127.0.0.1:5170
+pnpm mw serve demo
 ```
 
-### 工作台和 AI 接入
+主轨为空时，导入的视频会自动放到主轨。工程默认保存在 `~/MediaWorkspace/projects/`；也可以直接把工程目录路径传给 `mw` 命令。`MW_HOME` 可用于更改默认数据目录。
+
+### 识音、预览和导出
+
+识音模型只需下载一次（约 230 MB）。有文稿时将它传给 `transcribe`；没有文稿时省略 `--script`：
 
 ```bash
-./bin/mw.mjs serve <工程>   # 本地工作台，默认 http://127.0.0.1:5170（网页需要先 pnpm web:build）
-pnpm web:dev                # 开发审片台（/api 代理到 mw serve）；VITE_MW_MOCK=1 时不连服务端，用示例工程
-./bin/mw.mjs mcp            # MCP stdio 服务
+pnpm mw models --fetch
+pnpm mw transcribe demo --script /绝对路径/文稿.txt
+pnpm mw lint demo
+pnpm mw preview demo --at 10000
+pnpm mw export demo
 ```
 
-接入 MCP 后，AI 直接调用工作台的工具（`init`、`import`、`transcribe`、`apply`、`preview`、`export` 等，和 `mw` 命令一一对应），
-预览图、烧录字幕检查图会直接给 AI 看。用 `node` 的绝对路径（`which node`），免得 AI 应用启动时找不到：
+识音和人脸检测都在本机执行。`mw --help` 和 `mw <命令> --help` 可查看完整参数；`pnpm mw guide` 查看给 AI 使用的编排说明。
+
+### 接入 MCP
+
+MCP 使用 stdio。请在 AI 客户端配置中填写当前 Node 和仓库的**绝对路径**：
 
 ```bash
-# Claude Code（-s user：所有目录都能用）
-claude mcp add -s user media-workspace -- /usr/local/bin/node <仓库路径>/bin/mw.mjs mcp
+# Claude Code
+claude mcp add -s user media-workspace -- /绝对路径/node /绝对路径/media-workspace/bin/mw.mjs mcp
 ```
 
 ```toml
 # Codex：~/.codex/config.toml
 [mcp_servers.media-workspace]
-command = "/usr/local/bin/node"
-args = ["<仓库路径>/bin/mw.mjs", "mcp"]
+command = "/绝对路径/node"
+args = ["/绝对路径/media-workspace/bin/mw.mjs", "mcp"]
 startup_timeout_sec = 60
 ```
 
-**让 AI 接到审片台的批注**：仓库自带对话 hook（Claude Code 用 `.claude/settings.json`，Codex 用 `.codex/hooks.json`）。
-在本仓库目录里和 AI 对话时，每发一条消息，正在审的工程里的新批注会自动附上；没有批注时什么都不加。
-Codex 的 hook 还是实验功能，需要在 `~/.codex/config.toml` 的 `[features]` 里打开 `codex_hooks = true`。
-想让 AI 一直等着批注，就让它在后台跑 `mw comments <工程> --wait`。
+在仓库中运行 `pnpm mw guide` 可查看操作规则。工作台的批注 hook 随仓库提供：Claude Code 使用 `.claude/settings.json`，Codex 使用 `.codex/hooks.json`。Codex hook 目前仍是实验功能；如需持续等待新批注，可运行 `pnpm mw comments <工程> --wait`。
 
-工程默认放在 `~/MediaWorkspace/projects/`，可以用 `MW_HOME` 修改；识音模型放在 `~/MediaWorkspace/models/`。
+### 字体
 
-## 授权说明
+将阿里巴巴普惠体 3.0 放入 `assets/fonts/alibaba-puhuiti-3/` 后运行 `pnpm fonts:check`。测试字体可通过 `pnpm fonts:fetch-test` 下载；它不替代产品默认字体。
 
-- 本仓库的代码采用 [MIT 协议](LICENSE)。
-- 本项目依赖 [Remotion](https://www.remotion.dev) 渲染视频。**Remotion 有自己的授权条款，不随本仓库的 MIT 协议一起授予。**
-  个人和小团队通常可以免费使用，公司和商业服务可能需要购买 Remotion 的授权，请自行阅读
-  [Remotion License](https://www.remotion.dev/license)。
-- 识音使用 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)（Apache-2.0）和 SenseVoice 模型，模型**不包含在本仓库中**，
-  由 `mw models --fetch` 从 sherpa-onnx 的发布页下载，请遵守模型自身的协议。
-- 默认字体阿里巴巴普惠体**不包含在本仓库中**，请从官方渠道下载，并遵守其使用协议。
+## 当前边界
+
+- 目前只支持 9:16 和 16:9。画幅转换会换算已有布局，但不会自动生成新的横屏构图。
+- `mw frame` 根据检测到的人脸为片段计算固定位置，不做逐帧跟踪或随人物移动的自动重构图。
+- 人脸检测命令 `mw faces` 目前仅支持 macOS。
+- 项目在本机运行，不提供云端协作、账号系统或桌面应用安装包。
+- 音频波形用于查看，不提供波形编辑。
+
+## 工程与代码
+
+工程目录通常包含：
+
+```text
+<name>.mwproj/
+  project.json     # 渲染和剪辑数据
+  editor.json      # 参考线、缩放等工作台状态
+  review.json      # 审片批注
+  history/         # 可回退的历史版本
+  captions/        # 导入字幕的副本
+  cache/           # 代理、波形和预览图
+  renders/         # 导出视频和封面
+```
+
+工程格式当前为 v9。原始素材不改写；可生成的中间文件与成片都放在工程目录中。`MW_HOME` 可更改工程与全局库的位置，识音模型默认放在 `~/MediaWorkspace/models/`。
+
+| 路径 | 内容 |
+|---|---|
+| `src/core/` | 工程 schema、操作、编译、校验、质检和时间线计算 |
+| `src/templates/` | 标题、字幕和卡片模板 |
+| `src/composition/` | Remotion 预览与导出合成 |
+| `src/web/` | 本地审片台 |
+| `src/node/` | 媒体处理、存储、识音和导出动作 |
+| `src/server/`、`src/mcp/` | 本地 API 与 MCP 服务 |
+| `docs/` | 开发计划、使用指南与设计决策 |
+
+开发检查：
+
+```bash
+pnpm web:dev
+VITE_MW_MOCK=1 pnpm web:dev  # 用示例工程预览界面，不连接服务端
+pnpm check
+pnpm test
+pnpm test:e2e
+```
+
+## 授权
+
+- 本仓库代码采用 [MIT 协议](LICENSE)。
+- 视频渲染依赖 [Remotion](https://www.remotion.dev)，其授权条款独立于本仓库的 MIT 协议；使用前请阅读 [Remotion License](https://www.remotion.dev/license)。
+- 识音使用 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) 与 SenseVoice 模型；模型不包含在仓库中，下载和使用时请遵守各自协议。
+- 阿里巴巴普惠体字体文件不包含在仓库中，请从官方渠道获取并遵守其使用协议。
