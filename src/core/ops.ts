@@ -273,6 +273,7 @@ function asClip(item: Item, id: string): ClipLike {
 
 class Ctx {
   readonly changed = new Set<string>();
+  private readonly reservedIds = new Set<string>();
   constructor(readonly p: Project) {}
 
   get tracks(): LooseTrack[] {
@@ -293,7 +294,11 @@ class Ctx {
     const ids = this.allIds();
     for (let n = 1; ; n++) {
       const id = `${prefix}${n}`;
-      if (!ids.has(id)) return id;
+      if (!ids.has(id) && !this.reservedIds.has(id)) {
+        // 同一操作可能先生成多个条目、最后才一起写入轨道。
+        this.reservedIds.add(id);
+        return id;
+      }
     }
   }
 

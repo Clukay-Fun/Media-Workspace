@@ -427,6 +427,10 @@ describe("字幕编辑", () => {
       "第二句",
       "第三句",
     ]);
+    const expanded = applyOps(p, [
+      { op: "caption.reflow", ids: ["s1", "s2"], lines: ["第", "一", "句", "话", "第二句"] },
+    ]).project.tracks[1]?.items;
+    expect(expanded?.map((c) => c.id)).toEqual(["s1", "s2", "s4", "s5", "s6", "s3"]);
     expect(() =>
       applyOps(p, [{ op: "caption.reflow", ids: ["s1", "s2"], lines: ["第一句话第三句"] }]),
     ).toThrow(MwError);
