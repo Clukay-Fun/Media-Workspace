@@ -32,6 +32,7 @@ import {
   validateDir,
 } from "../node/actions";
 import { ASR_MODEL, asrModelDir, fetchAsrModel, hasAsrModel } from "../node/asr";
+import { runBatchManifest } from "../node/batch";
 import {
   getDefaultOutro,
   getLayout,
@@ -142,6 +143,20 @@ cli
           actor: String(o.actor),
         }),
       );
+    }),
+  );
+
+cli
+  .command("batch <manifest>", "按 JSON 清单批量生成可编辑审片工程和逐项报告；不会导出 MP4")
+  .option("--actor <name>", "操作者", { default: "codex" })
+  .action(
+    act(async (manifest: string, o: { actor: string }) => {
+      const result = await runBatchManifest(manifest, {
+        actor: String(o.actor),
+        onLog: log,
+      });
+      out(result);
+      if (!result.ok) process.exitCode = 1;
     }),
   );
 
