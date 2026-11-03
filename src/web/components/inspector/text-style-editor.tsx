@@ -20,14 +20,60 @@ type TextStyleEditorProps = {
   elementLabel: string;
 };
 
-const ANIMATIONS: { value: Anim["preset"] | "none"; label: string }[] = [
+const ANIMATIONS: { value: Anim["preset"] | "none"; label: string; disabled?: boolean }[] = [
   { value: "none", label: "无" },
   { value: "fade", label: "淡入" },
   { value: "fade-up", label: "上浮淡入" },
   { value: "pop", label: "弹出" },
   { value: "typewriter", label: "打字机" },
-  { value: "color-sweep", label: "颜色扫过" },
 ];
+
+type CaptionAnimationPreset = {
+  label: string;
+  note: string;
+  animation: Pick<TextStyle["animation"], "in" | "unit" | "stagger" | "inSlot">;
+};
+
+export const CAPTION_ANIMATION_PRESETS: CaptionAnimationPreset[] = [
+  {
+    label: "1029 逐词短淡入",
+    note: "逐词出现，前快后慢；淡入 300 毫秒。",
+    animation: {
+      in: { preset: "fade", durationMs: 300, easing: "ease-out" },
+      unit: "word",
+      stagger: { fraction: 0.75 },
+      inSlot: 0.6,
+    },
+  },
+  {
+    label: "跟随语音",
+    note: "字幕含 charStartMs 时跟随真实发音；否则按句长平均。",
+    animation: {
+      in: { preset: "fade", durationMs: 220, easing: "ease-out" },
+      unit: "word",
+      stagger: "spread",
+      inSlot: 0.8,
+    },
+  },
+  {
+    label: "整行淡入",
+    note: "整行同时淡入 200 毫秒。",
+    animation: {
+      in: { preset: "fade", durationMs: 200, easing: "ease-out" },
+      unit: "line",
+      stagger: "spread",
+      inSlot: null,
+    },
+  },
+];
+
+export function animationOptionsFor(currentPreset: Anim["preset"] | null) {
+  if (currentPreset !== "color-sweep") return ANIMATIONS;
+  return [
+    ...ANIMATIONS,
+    { value: "color-sweep" as const, label: "颜色扫过（旧值，已停用）", disabled: true },
+  ];
+}
 
 const ANIM_UNITS = [
   { value: "char", label: "逐字" },
@@ -341,12 +387,31 @@ export function TextStyleEditor({
           disabled={locked}
           onChange={(e) => setAnimation(e.currentTarget.value)}
         >
-          {ANIMATIONS.map((a) => (
-            <option key={a.value} value={a.value}>
+          {animationOptionsFor(animIn?.preset ?? null).map((a) => (
+            <option key={a.value} value={a.value} disabled={a.disabled}>
               {a.label}
             </option>
           ))}
         </select>
+        {isCaption && (
+          <>
+            <p className="hint">快捷选项只改动画参数，不会更改字体、颜色、位置或高亮。</p>
+            <div className="preset-row">
+              {CAPTION_ANIMATION_PRESETS.map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  className="preset-chip"
+                  disabled={locked}
+                  onClick={() => update({ animation: preset.animation })}
+                >
+                  <b>{preset.label}</b>
+                  <span>{preset.note}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </Field>
 
       <div className="insp-grid">
