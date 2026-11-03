@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
+import { TextBlock } from "../../../composition/TextBlock";
 import { builtinStyles } from "../../../core/aspect";
 import { FONT_FAMILIES } from "../../../core/fonts";
-import type { Project } from "../../../core/schema";
+import type { Caption, Project } from "../../../core/schema";
 import { effectiveStyleId, type StyleScope } from "../../../core/style-scope";
 import type { Anim, TextStyle } from "../../../core/text-style";
 import { ApiFailure } from "../../data/client";
 import type { ItemRef } from "../../lib/project";
+import { itemFrames } from "../../lib/timeline";
 import { useStore } from "../../store";
 import { editStyle, Field, isImeComposing } from "./common";
 
@@ -33,7 +35,23 @@ const ANIM_UNITS = [
   { value: "line", label: "整行" },
 ] as const;
 
-const FONT_GROUPS = [...new Set(Object.values(FONT_FAMILIES).map((font) => font.group))];
+/** 1029 样片的首批预设：只列这条样片用到的两套，其他动画先不往这里放 */
+const PRESETS: { id: string; label: string; note: string; caption: boolean; title: boolean }[] = [
+  {
+    id: "caption-word-yellow",
+    label: "1029 字幕",
+    note: "白字黑边，当前词柠檬黄，逐词短淡入",
+    caption: true,
+    title: false,
+  },
+  {
+    id: "title-bar-yellow",
+    label: "1029 标题",
+    note: "金黄、重黑边，静态不加入场",
+    caption: false,
+    title: true,
+  },
+];
 
 export function TextStyleEditor({
   project,
@@ -57,8 +75,57 @@ export function TextStyleEditor({
     (a, b) => a - b,
   );
   const animIn = style.animation.in;
+  const [fontQuery, setFontQuery] = useState("");
+  const tl = useStore((s) => s.preview?.timeline);
+  const fps = tl?.fps ?? 30;
+  const range = tl ? itemFrames(tl, id) : null;
+  const duration = Math.max(1, Math.min(range ? range.to - range.from : 60, 300));
+  const isCaption = ref_.track.kind === "caption";
+  const template = "template" in ref_.item ? String(ref_.item.template) : "";
+  const isTitle = template === "title-bar";
+  const previewText = textForPreview(ref_);
+  const previewHighlights =
+    "highlights" in ref_.item ? ((ref_.item as Caption).highlights ?? []) : [];
+  const presets = PRESETS.filter((p) => (isCaption ? p.caption : p.title));
+  const fonts = Object.entries(FONT_FAMILIES).filter(([fid, font]) => {
+    const q = fontQuery.trim().toLowerCase();
+    return (
+      !q ||
+      font.css.toLowerCase().includes(q) ||
+      font.group.toLowerCase().includes(q) ||
+      fid.toLowerCase().includes(q)
+    );
+  });
 
   useEffect(() => setScope("item"), [id, activeStyleId]);
+
+  const chooseFont = (fid: string) => {
+    const next = FONT_FAMILIES[fid];
+    if (!next) return;
+    const available = Object.keys(next.faces)
+      .map(Number)
+      .sort((a, b) => a - b);
+    const weight = available.includes(style.font.weight)
+      ? style.font.weight
+      : available.reduce(
+          (best, w) =>
+            Math.abs(w - style.font.weight) < Math.abs(best - style.font.weight) ? w : best,
+          available[0] ?? style.font.weight,
+        );
+    update({ font: { family: fid, weight } });
+  };
+
+  const applyPreset = (presetId: string) => {
+    const preset = builtins[presetId];
+    if (!preset) return;
+    editStyle(
+      id,
+      preset as unknown as Record<string, unknown>,
+      scope,
+      fallback,
+      `已套用「${presetId}」`,
+    );
+  };
 
   const update = (patch: Record<string, unknown>) => editStyle(id, patch, scope, fallback);
 
@@ -124,31 +191,67 @@ export function TextStyleEditor({
         </p>
       </Field>
 
+      <TextPreview
+        text={previewText}
+        style={style}
+        highlights={previewHighlights}
+        durationInFrames={duration}
+        fps={fps}
+        canvasWidth={project.canvas.width}
+        canvasHeight={project.canvas.height}
+        label={elementLabel}
+      />
+
+      {presets.length > 0 && (
+        <Field label="常用预设" note="1029 样片">
+          <div className="preset-row">
+            {presets.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className="preset-chip"
+                disabled={locked}
+                onClick={() => applyPreset(p.id)}
+              >
+                <b>{p.label}</b>
+                <span>{p.note}</span>
+              </button>
+            ))}
+          </div>
+        </Field>
+      )}
+
       <Field label="模板">
         <button type="button" className="mini-btn" disabled={locked} onClick={saveAsTemplate}>
           存为模板
         </button>
       </Field>
 
-      <Field label="字体">
-        <select
-          className="select"
-          value={style.font.family}
-          disabled={locked}
-          onChange={(e) => update({ font: { family: e.currentTarget.value } })}
-        >
-          {FONT_GROUPS.map((group) => (
-            <optgroup key={group} label={group}>
-              {Object.entries(FONT_FAMILIES)
-                .filter(([, font]) => font.group === group)
-                .map(([id, font]) => (
-                  <option key={id} value={id}>
-                    {font.css}
-                  </option>
-                ))}
-            </optgroup>
+      <Field label="字体" note={`${fonts.length} 个`}>
+        <label className="search">
+          <input
+            type="search"
+            value={fontQuery}
+            placeholder="搜索字体名称或分组"
+            aria-label="搜索字体"
+            onChange={(e) => setFontQuery(e.currentTarget.value)}
+          />
+        </label>
+        <div className="font-list">
+          {fonts.map(([fid, font]) => (
+            <button
+              key={fid}
+              type="button"
+              className={style.font.family === fid ? "font-option on" : "font-option"}
+              disabled={locked}
+              aria-pressed={style.font.family === fid}
+              onClick={() => chooseFont(fid)}
+            >
+              <span>{font.css}</span>
+              <small>{font.group}</small>
+            </button>
           ))}
-        </select>
+        </div>
       </Field>
 
       <div className="insp-grid">
@@ -658,5 +761,111 @@ function ColorControl({
         onBlur={commit}
       />
     </label>
+  );
+}
+
+/** 取当前元素上能看到的一行 / 多行文字，放在真实 TextBlock 里预览 */
+function textForPreview(ref_: ItemRef): string {
+  const item = ref_.item as Record<string, unknown> & {
+    props?: Record<string, unknown>;
+  };
+  if (typeof item.text === "string" && item.text.trim()) return item.text;
+  const props = item.props;
+  const lines = props?.lines;
+  if (Array.isArray(lines)) {
+    const kept = lines.filter((x): x is string => typeof x === "string" && Boolean(x.trim()));
+    if (kept.length > 0) return kept.join("\n");
+  }
+  for (const key of ["title", "body", "name", "text"]) {
+    const value = props?.[key];
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return "标题这样显示";
+}
+
+/**
+ * 当前样式的真实文字预览：用和成片相同的 TextBlock，按画布宽度缩放后裁出文字带。
+ * 不画整个 9:16 画面，是为了让字体、描边、高亮在右栏里看得清。
+ */
+function TextPreview({
+  text,
+  style,
+  highlights,
+  durationInFrames,
+  fps,
+  canvasWidth,
+  canvasHeight,
+  label,
+}: {
+  text: string;
+  style: TextStyle;
+  highlights: { text: string; nth?: number }[];
+  durationInFrames: number;
+  fps: number;
+  canvasWidth: number;
+  canvasHeight: number;
+  label: string;
+}) {
+  const wrap = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(280);
+  const max = Math.max(0, durationInFrames - 1);
+  const [frame, setFrame] = useState(max);
+
+  useEffect(() => {
+    const el = wrap.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      if (entry) setWidth(entry.contentRect.width);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  useEffect(() => setFrame((f) => Math.min(f, max)), [max]);
+
+  // 按当前画布宽度缩放，保留真实的 x / align / maxWidth；只纵向裁一条文字带
+  const scale = Math.max(0.01, width / canvasWidth);
+  const band = Math.min(600, canvasHeight);
+  const focusY = Math.min(
+    Math.max(style.layout.y, band / 2),
+    Math.max(band / 2, canvasHeight - band / 2),
+  );
+  const offsetY = (band / 2 - focusY) * scale;
+
+  return (
+    <Field label="实际文字预览" note={label}>
+      <div className="text-preview-stage" ref={wrap} style={{ height: Math.round(band * scale) }}>
+        <div
+          className="text-preview-canvas"
+          style={{
+            width: canvasWidth,
+            height: canvasHeight,
+            transform: `translateY(${offsetY}px) scale(${scale})`,
+          }}
+        >
+          <TextBlock
+            text={text}
+            style={style}
+            highlights={highlights}
+            frame={frame}
+            durationInFrames={durationInFrames}
+            fps={fps}
+          />
+        </div>
+      </div>
+      <label className="text-preview-control">
+        <span>预览帧</span>
+        <input
+          type="range"
+          min={0}
+          max={max}
+          step={1}
+          value={frame}
+          aria-label="预览帧"
+          onChange={(e) => setFrame(Number(e.currentTarget.value))}
+        />
+        <span className="mono">{(frame / fps).toFixed(2)}s</span>
+      </label>
+      <p className="hint">按当前画布宽度和实际位置裁出文字带；完整画面以主预览为准</p>
+    </Field>
   );
 }

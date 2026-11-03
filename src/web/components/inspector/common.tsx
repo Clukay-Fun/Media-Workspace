@@ -1,5 +1,6 @@
 import type React from "react";
 import { useState } from "react";
+import { builtinStyles } from "../../../core/aspect";
 import type { Op } from "../../../core/ops";
 import type { Anchor, Caption, Project, Slot, Transform } from "../../../core/schema";
 import { type StyleScope, styleEditOps } from "../../../core/style-scope";
@@ -149,25 +150,52 @@ export function StylePicker({
   sample: string;
 }) {
   const [more, setMore] = useState(false);
+  const [q, setQ] = useState("");
   const isCaption = ref_.track.kind === "caption";
+  const template = "template" in ref_.item ? String(ref_.item.template) : "";
+  const prefix = isCaption ? "caption" : template.startsWith("title") ? "title" : "card";
+  const builtins = builtinStyles(project.canvas);
   const own = "style" in ref_.item ? (ref_.item.style ?? null) : null;
   // 元素没写样式时用轨道的样式（字幕轨）
   const styleId = own ?? ("style" in ref_.track ? (ref_.track.style ?? null) : null);
   const setStyle = (style: string) => {
-    const op: Op = isCaption
-      ? { op: "caption.update", id, set: { style } }
-      : { op: "item.update", id, set: { style } };
-    void useStore.getState().submit([op], `已套用样式「${style}」`);
+    const ops: Op[] = [];
+    const preset = project.styles[style] ?? builtins[style];
+    // 内置样式没有复制进工程时先复制，套用后旧工程仍然能独立开
+    if (!project.styles[style] && preset) ops.push({ op: "style.add", id: style, style: preset });
+    ops.push(
+      isCaption
+        ? { op: "caption.update", id, set: { style } }
+        : { op: "item.update", id, set: { style } },
+    );
+    void useStore.getState().submit(ops, `已套用样式「${style}」`);
   };
   const fit = relevantStyles(project, ref_);
-  const names = Object.keys(project.styles);
-  const shown = names.filter((n) => more || fit.has(n) || n === styleId);
+  for (const name of Object.keys(builtins)) {
+    if (name.startsWith(`${prefix}-`)) fit.add(name);
+  }
+  const names = [...new Set([...Object.keys(project.styles), ...Object.keys(builtins)])];
+  const query = q.trim().toLowerCase();
+  const inCategory = (n: string) => fit.has(n) || n === styleId;
+  // 搜索也要受元素类别限制：字幕栏不能搜出标题 / 卡片样式
+  const shown = names.filter((n) =>
+    query ? inCategory(n) && n.toLowerCase().includes(query) : more || inCategory(n),
+  );
   const hidden = names.length - names.filter((n) => fit.has(n) || n === styleId).length;
   return (
     <Field label="样式">
+      <label className="search">
+        <input
+          type="search"
+          value={q}
+          placeholder="搜索样式名"
+          aria-label="搜索样式"
+          onChange={(e) => setQ(e.currentTarget.value)}
+        />
+      </label>
       <div className="style-grid">
         {shown.flatMap((name) => {
-          const style = project.styles[name];
+          const style = project.styles[name] ?? builtins[name];
           return style
             ? [
                 <button
@@ -181,7 +209,10 @@ export function StylePicker({
                   <span className="style-chip-sample" style={swatch(style)}>
                     {sample}
                   </span>
-                  <span className="style-chip-name">{name}</span>
+                  <span className="style-chip-name">
+                    {name}
+                    {!project.styles[name] ? " · 内置" : ""}
+                  </span>
                 </button>,
               ]
             : [];

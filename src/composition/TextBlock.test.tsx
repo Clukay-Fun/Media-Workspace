@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { BUILTIN_STYLES } from "../core/presets";
 import { TextStyle } from "../core/text-style";
 import { TextBlock } from "./TextBlock";
 
@@ -111,4 +112,48 @@ describe("TextBlock 换行", () => {
     ].map((m) => (m[1] ?? "").replace(/<[^>]+>/g, ""));
     expect(groups).toEqual(["提交", "申请，", "保存"]);
   });
+});
+
+describe("1029 样片的文字预设", () => {
+  const groups = (text: string): string[] => {
+    const out = renderToStaticMarkup(
+      <TextBlock
+        text={text}
+        style={BUILTIN_STYLES["caption-word-yellow"]}
+        highlights={[]}
+        frame={119}
+        durationInFrames={120}
+        fps={30}
+      />,
+    );
+    const fill = out.slice(out.lastIndexOf('<div style="position:relative">'));
+    return [...fill.matchAll(/<span style="white-space:nowrap">(.*?)<\/span><\/span>/g)].map((m) =>
+      (m[1] ?? "").replace(/<[^>]+>/g, ""),
+    );
+  };
+
+  it("标题金黄、字幕高亮柠檬黄，是两支不同的黄；标题静态、字幕逐词短淡入", () => {
+    const caption = BUILTIN_STYLES["caption-word-yellow"];
+    const title = BUILTIN_STYLES["title-bar-yellow"];
+    expect(caption.highlight?.fill).toBe("#F5FA00");
+    expect(title.fill).toBe("#F8D800");
+    expect(caption.animation.in).toMatchObject({ preset: "fade", durationMs: 300 });
+    expect(caption.animation.unit).toBe("word");
+    expect(caption.animation.stagger).toEqual({ fraction: 0.75 });
+    expect(caption.animation.inSlot).toBe(0.6);
+    expect(title.animation.in).toBeNull();
+  });
+
+  it.each(["房产取得时间、身份情况", "申请条件或材料没有准备好", "拿到身份出售房产和资金出境呢"])(
+    "不在词中间断行：%s",
+    (text) => {
+      const g = groups(text);
+      for (const word of ["情况", "准备", "资金"]) {
+        if (!text.includes(word)) continue;
+        expect(g.some((x) => x.includes(word))).toBe(true);
+        expect(g).not.toContain(word[0]);
+        expect(g).not.toContain(word[1]);
+      }
+    },
+  );
 });
