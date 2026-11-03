@@ -4203,3 +4203,110 @@ button.change-target:hover .change-name {
 .block.caption .block-name {
   text-overflow: clip;
 }
+
+/* ---- 阶段 G：文字预览、字体查找、1029 预设 ---- */
+
+.text-preview-stage {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #121317;
+}
+
+.text-preview-canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: top left;
+}
+
+.text-preview-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.text-preview-control input {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+
+.font-list {
+  display: grid;
+  gap: 1px;
+  max-height: 148px;
+  margin-top: 2px;
+  padding: 2px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.font-option {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  text-align: left;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.font-option small {
+  flex: none;
+  font-size: 10px;
+  color: var(--text-3);
+}
+
+.font-option.on {
+  color: var(--text);
+  background: var(--raised-2);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .font-option:not(.on):hover:not(:disabled) {
+    color: var(--text);
+    background: var(--raised);
+  }
+}
+
+.preset-row {
+  display: grid;
+  gap: 6px;
+}
+
+.preset-chip {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  text-align: left;
+  background: var(--raised);
+}
+
+.preset-chip b {
+  font-size: 12px;
+  color: var(--text);
+}
+
+.preset-chip span {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .preset-chip:not(:disabled):hover {
+    border-color: var(--line-strong);
+    background: var(--raised-2);
+  }
+}
