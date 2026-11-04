@@ -25,4 +25,14 @@ describe("媒体服务 Range", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it("非法 URL 编码返回 400，服务继续可用", async () => {
+    const server = await startMediaServer(null);
+    try {
+      const bad = await fetch(`${server.baseUrl}/%E0%A4%A`, { redirect: "manual" });
+      expect(bad.status).toBe(400);
+    } finally {
+      await server.close();
+    }
+  });
 });

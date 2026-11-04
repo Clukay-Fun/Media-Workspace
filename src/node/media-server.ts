@@ -42,7 +42,13 @@ export async function startMediaServer(root: string | null, port = 0): Promise<M
       res.writeHead(204).end();
       return;
     }
-    const pathname = decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname);
+    let pathname: string;
+    try {
+      pathname = decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname);
+    } catch {
+      res.writeHead(400).end();
+      return;
+    }
     let file = registered.get(pathname);
     if (!file) {
       // 不允许访问根目录以外的文件
