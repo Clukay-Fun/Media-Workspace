@@ -10,6 +10,7 @@ import type { ItemRef } from "../../lib/project";
 import { stylePresentation, styleTemplateId } from "../../lib/style-presentation";
 import { itemFrames } from "../../lib/timeline";
 import { useStore } from "../../store";
+import { Icon } from "../icons";
 import { editStyle, Field, isImeComposing } from "./common";
 
 type TextStyleEditorProps = {
@@ -82,6 +83,67 @@ const ANIM_UNITS = [
   { value: "line", label: "整行" },
 ] as const;
 
+type TextStylePage = "home" | "text" | "layout" | "animation" | "advanced";
+type TextStyleSubpage = Exclude<TextStylePage, "home">;
+type AdvancedEffect = "stroke" | "box" | "shadow" | "glow" | "gradient";
+
+const TEXT_STYLE_PAGES: { id: TextStyleSubpage; label: string }[] = [
+  { id: "text", label: "字体与文字" },
+  { id: "layout", label: "位置与排列" },
+  { id: "animation", label: "动画" },
+  { id: "advanced", label: "高级外观" },
+];
+
+const ADVANCED_EFFECTS: { id: AdvancedEffect; label: string }[] = [
+  { id: "stroke", label: "描边" },
+  { id: "box", label: "背景框" },
+  { id: "shadow", label: "阴影" },
+  { id: "glow", label: "发光" },
+  { id: "gradient", label: "渐变" },
+];
+
+function textStylePageLabel(page: TextStylePage): string {
+  return TEXT_STYLE_PAGES.find((entry) => entry.id === page)?.label ?? "样式设置";
+}
+
+function advancedEffectLabel(effect: AdvancedEffect): string {
+  return ADVANCED_EFFECTS.find((entry) => entry.id === effect)?.label ?? "高级外观";
+}
+
+function advancedEffectEnabled(style: TextStyle, effect: AdvancedEffect): boolean {
+  switch (effect) {
+    case "stroke":
+      return style.stroke !== null;
+    case "box":
+      return style.box !== null;
+    case "shadow":
+      return style.shadow !== null;
+    case "glow":
+      return style.glow !== null;
+    case "gradient":
+      return style.gradient !== null;
+  }
+}
+
+function textStylePageSummary(page: TextStyleSubpage, style: TextStyle): string {
+  const summaries: Record<TextStyleSubpage, string> = {
+    text: `${style.font.size}px · ${FONT_FAMILIES[style.font.family]?.css ?? style.font.family}`,
+    layout: `${style.layout.align} · ${style.layout.maxWidth}px 宽`,
+    animation: `${style.animation.in?.preset ?? "无入场动画"} · ${style.animation.unit}`,
+    advanced:
+      [
+        style.stroke && "描边",
+        style.box && "背景",
+        style.shadow && "阴影",
+        style.glow && "发光",
+        style.gradient && "渐变",
+      ]
+        .filter(Boolean)
+        .join("、") || "描边、背景、阴影等",
+  };
+  return summaries[page];
+}
+
 /** 1029 样片的首批预设：只列这条样片用到的两套，其他动画先不往这里放 */
 const PRESETS: { id: string; label: string; note: string; caption: boolean; title: boolean }[] = [
   {
@@ -108,6 +170,8 @@ export function TextStyleEditor({
   showHighlight = false,
   elementLabel,
 }: TextStyleEditorProps) {
+  const [page, setPage] = useState<"home" | "text" | "layout" | "animation" | "advanced">("home");
+  const [advancedEffect, setAdvancedEffect] = useState<AdvancedEffect | null>(null);
   const activeStyleId = effectiveStyleId(project, id, fallback);
   const builtins = builtinStyles(project.canvas);
   const style =
@@ -144,7 +208,12 @@ export function TextStyleEditor({
     );
   });
 
-  useEffect(() => setScope("item"), [id, activeStyleId]);
+  useEffect(() => {
+    setScope("item");
+    setPage("home");
+    setAdvancedEffect(null);
+    setFontQuery("");
+  }, [id]);
 
   const chooseFont = (fid: string) => {
     const next = FONT_FAMILIES[fid];
@@ -238,424 +307,503 @@ export function TextStyleEditor({
         </p>
       </Field>
 
-      <TextPreview
-        text={previewText}
-        style={style}
-        highlights={previewHighlights}
-        durationInFrames={duration}
-        fps={fps}
-        canvasWidth={project.canvas.width}
-        canvasHeight={project.canvas.height}
-        label={elementLabel}
-      />
+      {page !== "home" && (
+        <div className="text-style-subhead">
+          <button
+            type="button"
+            className="text-style-back"
+            onClick={() =>
+              page === "advanced" && advancedEffect ? setAdvancedEffect(null) : setPage("home")
+            }
+          >
+            <Icon name="prev" size={14} />
+            {page === "advanced" && advancedEffect ? "返回高级外观" : "返回文字样式"}
+          </button>
+          <h3>
+            {page === "advanced" && advancedEffect
+              ? advancedEffectLabel(advancedEffect)
+              : textStylePageLabel(page)}
+          </h3>
+        </div>
+      )}
 
-      {presets.length > 0 && (
-        <Field label="常用预设" note="默认模板样式">
-          <div className="preset-row">
-            {presets.map((p) => (
+      {page === "home" && (
+        <>
+          <TextPreview
+            text={previewText}
+            style={style}
+            highlights={previewHighlights}
+            durationInFrames={duration}
+            fps={fps}
+            canvasWidth={project.canvas.width}
+            canvasHeight={project.canvas.height}
+            label={elementLabel}
+          />
+          {presets.length > 0 && (
+            <Field label="常用预设" note="默认模板样式">
+              <div className="preset-row">
+                {presets.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className="preset-chip"
+                    disabled={locked}
+                    onClick={() => applyPreset(p.id, p.label)}
+                  >
+                    <b>{p.label}</b>
+                    <span>{p.note}</span>
+                  </button>
+                ))}
+              </div>
+            </Field>
+          )}
+          <Field label="样式设置">
+            <div className="text-style-nav">
+              {TEXT_STYLE_PAGES.map((entry) => (
+                <button key={entry.id} type="button" onClick={() => setPage(entry.id)}>
+                  <span>
+                    <b>{entry.label}</b>
+                    <small>{textStylePageSummary(entry.id, style)}</small>
+                  </span>
+                  <Icon name="next" size={14} />
+                </button>
+              ))}
+            </div>
+          </Field>
+          <Field label="模板">
+            <button type="button" className="mini-btn" disabled={locked} onClick={saveAsTemplate}>
+              存为模板
+            </button>
+          </Field>
+        </>
+      )}
+
+      {page === "text" && (
+        <Field label="字体" note={`${fonts.length} 个`}>
+          <label className="search">
+            <input
+              type="search"
+              value={fontQuery}
+              placeholder="搜索字体名称或分组"
+              aria-label="搜索字体"
+              onChange={(e) => setFontQuery(e.currentTarget.value)}
+            />
+          </label>
+          <div className="font-list">
+            {fonts.map(([fid, font]) => (
               <button
-                key={p.id}
+                key={fid}
                 type="button"
-                className="preset-chip"
+                className={style.font.family === fid ? "font-option on" : "font-option"}
                 disabled={locked}
-                onClick={() => applyPreset(p.id, p.label)}
+                aria-pressed={style.font.family === fid}
+                onClick={() => chooseFont(fid)}
               >
-                <b>{p.label}</b>
-                <span>{p.note}</span>
+                <span>{font.css}</span>
+                <small>{font.group}</small>
               </button>
             ))}
+          </div>
+          {fonts.length === 0 && <p className="hint style-empty">没有匹配的字体</p>}
+        </Field>
+      )}
+
+      {page === "text" && (
+        <div className="insp-grid">
+          <NumberControl
+            label="字号"
+            value={style.font.size}
+            min={1}
+            max={400}
+            disabled={locked}
+            onCommit={(size) => update({ font: { size } })}
+          />
+          <label className="insp-control">
+            <span>字重</span>
+            <select
+              className="select"
+              value={style.font.weight}
+              disabled={locked}
+              onChange={(e) => update({ font: { weight: Number(e.currentTarget.value) } })}
+            >
+              {weights.map((weight) => (
+                <option key={weight} value={weight}>
+                  {weight}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
+
+      {page === "text" && (
+        <div className="insp-grid">
+          <ColorControl
+            label="填充色"
+            value={style.fill}
+            disabled={locked}
+            onCommit={(fill) => update({ fill })}
+          />
+          {showHighlight && (
+            <ColorControl
+              label="高亮色"
+              value={style.highlight?.fill ?? "#FFD400"}
+              disabled={locked}
+              onCommit={(fill) => update({ highlight: { fill } })}
+            />
+          )}
+        </div>
+      )}
+
+      {page === "layout" && (
+        <Field label="位置与排列">
+          <div className="insp-grid">
+            <NumberControl
+              label="X"
+              value={style.layout.x}
+              disabled={locked}
+              onCommit={(x) => update({ layout: { x } })}
+            />
+            <NumberControl
+              label="Y"
+              value={style.layout.y}
+              disabled={locked}
+              onCommit={(y) => update({ layout: { y } })}
+            />
+            <NumberControl
+              label="最大宽度"
+              value={style.layout.maxWidth}
+              min={1}
+              disabled={locked}
+              onCommit={(maxWidth) => update({ layout: { maxWidth } })}
+            />
+            <label className="insp-control">
+              <span>对齐</span>
+              <select
+                className="select"
+                value={style.layout.align}
+                disabled={locked}
+                onChange={(e) => update({ layout: { align: e.currentTarget.value } })}
+              >
+                <option value="left">左对齐</option>
+                <option value="center">居中</option>
+                <option value="right">右对齐</option>
+              </select>
+            </label>
           </div>
         </Field>
       )}
 
-      <Field label="模板">
-        <button type="button" className="mini-btn" disabled={locked} onClick={saveAsTemplate}>
-          存为模板
-        </button>
-      </Field>
-
-      <Field label="字体" note={`${fonts.length} 个`}>
-        <label className="search">
-          <input
-            type="search"
-            value={fontQuery}
-            placeholder="搜索字体名称或分组"
-            aria-label="搜索字体"
-            onChange={(e) => setFontQuery(e.currentTarget.value)}
-          />
-        </label>
-        <div className="font-list">
-          {fonts.map(([fid, font]) => (
-            <button
-              key={fid}
-              type="button"
-              className={style.font.family === fid ? "font-option on" : "font-option"}
-              disabled={locked}
-              aria-pressed={style.font.family === fid}
-              onClick={() => chooseFont(fid)}
-            >
-              <span>{font.css}</span>
-              <small>{font.group}</small>
-            </button>
-          ))}
-        </div>
-      </Field>
-
-      <div className="insp-grid">
-        <NumberControl
-          label="字号"
-          value={style.font.size}
-          min={1}
-          max={400}
-          disabled={locked}
-          onCommit={(size) => update({ font: { size } })}
-        />
-        <label className="insp-control">
-          <span>字重</span>
+      {page === "animation" && (
+        <Field label="入场动画">
           <select
             className="select"
-            value={style.font.weight}
+            value={animIn?.preset ?? "none"}
             disabled={locked}
-            onChange={(e) => update({ font: { weight: Number(e.currentTarget.value) } })}
+            onChange={(e) => setAnimation(e.currentTarget.value)}
           >
-            {weights.map((weight) => (
-              <option key={weight} value={weight}>
-                {weight}
+            {animationOptionsFor(animIn?.preset ?? null).map((a) => (
+              <option key={a.value} value={a.value} disabled={a.disabled}>
+                {a.label}
               </option>
             ))}
           </select>
-        </label>
-      </div>
+          {isCaption && (
+            <>
+              <p className="hint">快捷选项只改动画参数，不会更改字体、颜色、位置或高亮。</p>
+              <div className="preset-row">
+                {CAPTION_ANIMATION_PRESETS.map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    className="preset-chip"
+                    disabled={locked}
+                    onClick={() => update({ animation: preset.animation })}
+                  >
+                    <b>{preset.label}</b>
+                    <span>{preset.note}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </Field>
+      )}
 
-      <div className="insp-grid">
-        <ColorControl
-          label="填充色"
-          value={style.fill}
-          disabled={locked}
-          onCommit={(fill) => update({ fill })}
-        />
-        {showHighlight && (
-          <ColorControl
-            label="高亮色"
-            value={style.highlight?.fill ?? "#FFD400"}
-            disabled={locked}
-            onCommit={(fill) => update({ highlight: { fill } })}
-          />
-        )}
-      </div>
-
-      <Field label="位置">
+      {page === "animation" && (
         <div className="insp-grid">
-          <NumberControl
-            label="X"
-            value={style.layout.x}
-            disabled={locked}
-            onCommit={(x) => update({ layout: { x } })}
-          />
-          <NumberControl
-            label="Y"
-            value={style.layout.y}
-            disabled={locked}
-            onCommit={(y) => update({ layout: { y } })}
-          />
-          <NumberControl
-            label="最大宽度"
-            value={style.layout.maxWidth}
-            min={1}
-            disabled={locked}
-            onCommit={(maxWidth) => update({ layout: { maxWidth } })}
-          />
           <label className="insp-control">
-            <span>对齐</span>
+            <span>出现单位</span>
             <select
               className="select"
-              value={style.layout.align}
+              value={style.animation.unit}
               disabled={locked}
-              onChange={(e) => update({ layout: { align: e.currentTarget.value } })}
+              onChange={(e) => update({ animation: { unit: e.currentTarget.value } })}
             >
-              <option value="left">左对齐</option>
-              <option value="center">居中</option>
-              <option value="right">右对齐</option>
+              {ANIM_UNITS.map((unit) => (
+                <option key={unit.value} value={unit.value}>
+                  {unit.label}
+                </option>
+              ))}
             </select>
           </label>
+          <NumberControl
+            label="入场时长（毫秒）"
+            value={animIn?.durationMs ?? 300}
+            min={1}
+            max={10_000}
+            step={50}
+            disabled={locked || animIn === null}
+            onCommit={(durationMs) => update({ animation: { in: { durationMs } } })}
+          />
         </div>
-      </Field>
+      )}
 
-      <Field label="入场动画">
-        <select
-          className="select"
-          value={animIn?.preset ?? "none"}
-          disabled={locked}
-          onChange={(e) => setAnimation(e.currentTarget.value)}
-        >
-          {animationOptionsFor(animIn?.preset ?? null).map((a) => (
-            <option key={a.value} value={a.value} disabled={a.disabled}>
-              {a.label}
-            </option>
-          ))}
-        </select>
-        {isCaption && (
-          <>
-            <p className="hint">快捷选项只改动画参数，不会更改字体、颜色、位置或高亮。</p>
-            <div className="preset-row">
-              {CAPTION_ANIMATION_PRESETS.map((preset) => (
-                <button
-                  key={preset.label}
-                  type="button"
-                  className="preset-chip"
-                  disabled={locked}
-                  onClick={() => update({ animation: preset.animation })}
-                >
-                  <b>{preset.label}</b>
-                  <span>{preset.note}</span>
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-      </Field>
-
-      <div className="insp-grid">
-        <label className="insp-control">
-          <span>出现单位</span>
-          <select
-            className="select"
-            value={style.animation.unit}
-            disabled={locked}
-            onChange={(e) => update({ animation: { unit: e.currentTarget.value } })}
-          >
-            {ANIM_UNITS.map((unit) => (
-              <option key={unit.value} value={unit.value}>
-                {unit.label}
-              </option>
+      {page === "advanced" &&
+        (advancedEffect === null ? (
+          <div className="text-style-nav" aria-label="高级外观设置">
+            {ADVANCED_EFFECTS.map((effect) => (
+              <button key={effect.id} type="button" onClick={() => setAdvancedEffect(effect.id)}>
+                <span>
+                  <b>{effect.label}</b>
+                  <small>{advancedEffectEnabled(style, effect.id) ? "已启用" : "未启用"}</small>
+                </span>
+                <Icon name="next" size={14} />
+              </button>
             ))}
-          </select>
-        </label>
-        <NumberControl
-          label="入场时长（毫秒）"
-          value={animIn?.durationMs ?? 300}
-          min={1}
-          max={10_000}
-          step={50}
-          disabled={locked || animIn === null}
-          onCommit={(durationMs) => update({ animation: { in: { durationMs } } })}
-        />
-      </div>
-
-      <details className="style-more">
-        <summary>更多</summary>
-        <div className="style-more-body">
-          <OptionalEffect
-            label="描边"
-            enabled={style.stroke !== null}
-            disabled={locked}
-            onToggle={(enabled) =>
-              update({ stroke: enabled ? { color: "#000000", width: 4 } : null })
-            }
-          >
-            {style.stroke && (
-              <>
-                <ColorControl
-                  label="颜色"
-                  value={style.stroke.color}
-                  disabled={locked}
-                  onCommit={(color) => update({ stroke: { color } })}
-                />
-                <NumberControl
-                  label="粗细"
-                  value={style.stroke.width}
-                  min={0}
-                  max={40}
-                  step={0.5}
-                  disabled={locked}
-                  onCommit={(width) => update({ stroke: { width } })}
-                />
-              </>
-            )}
-          </OptionalEffect>
-
-          <OptionalEffect
-            label="阴影"
-            enabled={style.shadow !== null}
-            disabled={locked}
-            onToggle={(enabled) =>
-              update({
-                shadow: enabled ? { color: "#00000080", blur: 6, x: 0, y: 2 } : null,
-              })
-            }
-          >
-            {style.shadow && (
-              <>
-                <ColorControl
-                  label="颜色"
-                  value={style.shadow.color}
-                  disabled={locked}
-                  onCommit={(color) => update({ shadow: { color } })}
-                />
-                <NumberControl
-                  label="模糊"
-                  value={style.shadow.blur}
-                  min={0}
-                  disabled={locked}
-                  onCommit={(blur) => update({ shadow: { blur } })}
-                />
-                <NumberControl
-                  label="X 偏移"
-                  value={style.shadow.x}
-                  disabled={locked}
-                  onCommit={(x) => update({ shadow: { x } })}
-                />
-                <NumberControl
-                  label="Y 偏移"
-                  value={style.shadow.y}
-                  disabled={locked}
-                  onCommit={(y) => update({ shadow: { y } })}
-                />
-              </>
-            )}
-          </OptionalEffect>
-
-          <OptionalEffect
-            label="背景框"
-            enabled={style.box !== null}
-            disabled={locked}
-            onToggle={(enabled) =>
-              update({ box: enabled ? { color: "#000000AA", radius: 12, padding: [8, 16] } : null })
-            }
-          >
-            {style.box && (
-              <>
-                <ColorControl
-                  label="颜色"
-                  value={style.box.color}
-                  disabled={locked}
-                  onCommit={(color) => update({ box: { color } })}
-                />
-                <NumberControl
-                  label="圆角"
-                  value={style.box.radius}
-                  min={0}
-                  disabled={locked}
-                  onCommit={(radius) => update({ box: { radius } })}
-                />
-                <NumberControl
-                  label="上下内边距"
-                  value={style.box.padding[0]}
-                  min={0}
-                  disabled={locked}
-                  onCommit={(vertical) =>
-                    update({ box: { padding: [vertical, style.box?.padding[1] ?? 0] } })
-                  }
-                />
-                <NumberControl
-                  label="左右内边距"
-                  value={style.box.padding[1]}
-                  min={0}
-                  disabled={locked}
-                  onCommit={(horizontal) =>
-                    update({ box: { padding: [style.box?.padding[0] ?? 0, horizontal] } })
-                  }
-                />
-              </>
-            )}
-          </OptionalEffect>
-
-          <OptionalEffect
-            label="发光"
-            enabled={style.glow !== null}
-            disabled={locked}
-            onToggle={(enabled) =>
-              update({ glow: enabled ? { color: "#FFD400", blur: 12 } : null })
-            }
-          >
-            {style.glow && (
-              <>
-                <ColorControl
-                  label="颜色"
-                  value={style.glow.color}
-                  disabled={locked}
-                  onCommit={(color) => update({ glow: { color } })}
-                />
-                <NumberControl
-                  label="强度"
-                  value={style.glow.blur}
-                  min={0.1}
-                  max={100}
-                  step={0.5}
-                  disabled={locked}
-                  onCommit={(blur) => update({ glow: { blur } })}
-                />
-              </>
-            )}
-          </OptionalEffect>
-
-          <OptionalEffect
-            label="渐变"
-            enabled={style.gradient !== null}
-            disabled={locked}
-            onToggle={(enabled) =>
-              update({ gradient: enabled ? { colors: ["#FFFFFF", "#FFD400"] } : null })
-            }
-          >
-            {style.gradient && (
-              <>
-                {style.gradient.colors.map((color, index) => (
-                  <div key={`${index}-${color}`} className="insp-row">
+          </div>
+        ) : (
+          <div className="advanced-effect-editor">
+            {advancedEffect === "stroke" && (
+              <OptionalEffect
+                label="描边"
+                showHeading={false}
+                enabled={style.stroke !== null}
+                disabled={locked}
+                onToggle={(enabled) =>
+                  update({ stroke: enabled ? { color: "#000000", width: 4 } : null })
+                }
+              >
+                {style.stroke && (
+                  <>
                     <ColorControl
-                      label={`颜色 ${index + 1}`}
-                      value={color}
+                      label="颜色"
+                      value={style.stroke.color}
                       disabled={locked}
-                      onCommit={(next) => {
-                        const colors = [...style.gradient!.colors];
-                        colors[index] = next;
-                        update({ gradient: { colors } });
-                      }}
+                      onCommit={(color) => update({ stroke: { color } })}
                     />
-                    {style.gradient!.colors.length > 2 && (
+                    <NumberControl
+                      label="粗细"
+                      value={style.stroke.width}
+                      min={0}
+                      max={40}
+                      step={0.5}
+                      disabled={locked}
+                      onCommit={(width) => update({ stroke: { width } })}
+                    />
+                  </>
+                )}
+              </OptionalEffect>
+            )}
+
+            {advancedEffect === "shadow" && (
+              <OptionalEffect
+                label="阴影"
+                showHeading={false}
+                enabled={style.shadow !== null}
+                disabled={locked}
+                onToggle={(enabled) =>
+                  update({
+                    shadow: enabled ? { color: "#00000080", blur: 6, x: 0, y: 2 } : null,
+                  })
+                }
+              >
+                {style.shadow && (
+                  <>
+                    <ColorControl
+                      label="颜色"
+                      value={style.shadow.color}
+                      disabled={locked}
+                      onCommit={(color) => update({ shadow: { color } })}
+                    />
+                    <NumberControl
+                      label="模糊"
+                      value={style.shadow.blur}
+                      min={0}
+                      disabled={locked}
+                      onCommit={(blur) => update({ shadow: { blur } })}
+                    />
+                    <NumberControl
+                      label="X 偏移"
+                      value={style.shadow.x}
+                      disabled={locked}
+                      onCommit={(x) => update({ shadow: { x } })}
+                    />
+                    <NumberControl
+                      label="Y 偏移"
+                      value={style.shadow.y}
+                      disabled={locked}
+                      onCommit={(y) => update({ shadow: { y } })}
+                    />
+                  </>
+                )}
+              </OptionalEffect>
+            )}
+
+            {advancedEffect === "box" && (
+              <OptionalEffect
+                label="背景框"
+                showHeading={false}
+                enabled={style.box !== null}
+                disabled={locked}
+                onToggle={(enabled) =>
+                  update({
+                    box: enabled ? { color: "#000000AA", radius: 12, padding: [8, 16] } : null,
+                  })
+                }
+              >
+                {style.box && (
+                  <>
+                    <ColorControl
+                      label="颜色"
+                      value={style.box.color}
+                      disabled={locked}
+                      onCommit={(color) => update({ box: { color } })}
+                    />
+                    <NumberControl
+                      label="圆角"
+                      value={style.box.radius}
+                      min={0}
+                      disabled={locked}
+                      onCommit={(radius) => update({ box: { radius } })}
+                    />
+                    <NumberControl
+                      label="上下内边距"
+                      value={style.box.padding[0]}
+                      min={0}
+                      disabled={locked}
+                      onCommit={(vertical) =>
+                        update({ box: { padding: [vertical, style.box?.padding[1] ?? 0] } })
+                      }
+                    />
+                    <NumberControl
+                      label="左右内边距"
+                      value={style.box.padding[1]}
+                      min={0}
+                      disabled={locked}
+                      onCommit={(horizontal) =>
+                        update({ box: { padding: [style.box?.padding[0] ?? 0, horizontal] } })
+                      }
+                    />
+                  </>
+                )}
+              </OptionalEffect>
+            )}
+
+            {advancedEffect === "glow" && (
+              <OptionalEffect
+                label="发光"
+                showHeading={false}
+                enabled={style.glow !== null}
+                disabled={locked}
+                onToggle={(enabled) =>
+                  update({ glow: enabled ? { color: "#FFD400", blur: 12 } : null })
+                }
+              >
+                {style.glow && (
+                  <>
+                    <ColorControl
+                      label="颜色"
+                      value={style.glow.color}
+                      disabled={locked}
+                      onCommit={(color) => update({ glow: { color } })}
+                    />
+                    <NumberControl
+                      label="强度"
+                      value={style.glow.blur}
+                      min={0.1}
+                      max={100}
+                      step={0.5}
+                      disabled={locked}
+                      onCommit={(blur) => update({ glow: { blur } })}
+                    />
+                  </>
+                )}
+              </OptionalEffect>
+            )}
+
+            {advancedEffect === "gradient" && (
+              <OptionalEffect
+                label="渐变"
+                showHeading={false}
+                enabled={style.gradient !== null}
+                disabled={locked}
+                onToggle={(enabled) =>
+                  update({ gradient: enabled ? { colors: ["#FFFFFF", "#FFD400"] } : null })
+                }
+              >
+                {style.gradient && (
+                  <>
+                    {style.gradient.colors.map((color, index) => (
+                      <div key={`${index}-${color}`} className="insp-row">
+                        <ColorControl
+                          label={`颜色 ${index + 1}`}
+                          value={color}
+                          disabled={locked}
+                          onCommit={(next) => {
+                            const colors = [...style.gradient!.colors];
+                            colors[index] = next;
+                            update({ gradient: { colors } });
+                          }}
+                        />
+                        {style.gradient!.colors.length > 2 && (
+                          <button
+                            type="button"
+                            className="mini-btn"
+                            disabled={locked}
+                            aria-label={`移除颜色 ${index + 1}`}
+                            onClick={() => {
+                              const colors = style.gradient!.colors.filter((_, i) => i !== index);
+                              update({ gradient: { colors } });
+                            }}
+                          >
+                            移除
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {style.gradient.colors.length < 4 && (
                       <button
                         type="button"
                         className="mini-btn"
                         disabled={locked}
-                        aria-label={`移除颜色 ${index + 1}`}
-                        onClick={() => {
-                          const colors = style.gradient!.colors.filter((_, i) => i !== index);
-                          update({ gradient: { colors } });
-                        }}
+                        onClick={() =>
+                          update({ gradient: { colors: [...style.gradient!.colors, "#FFFFFF"] } })
+                        }
                       >
-                        移除
+                        添加颜色
                       </button>
                     )}
-                  </div>
-                ))}
-                {style.gradient.colors.length < 4 && (
-                  <button
-                    type="button"
-                    className="mini-btn"
-                    disabled={locked}
-                    onClick={() =>
-                      update({ gradient: { colors: [...style.gradient!.colors, "#FFFFFF"] } })
-                    }
-                  >
-                    添加颜色
-                  </button>
+                  </>
                 )}
-              </>
+              </OptionalEffect>
             )}
-          </OptionalEffect>
-        </div>
-      </details>
+          </div>
+        ))}
     </div>
   );
 }
 
 function OptionalEffect({
   label,
+  showHeading = true,
   enabled,
   disabled,
   onToggle,
   children,
 }: {
   label: string;
+  showHeading?: boolean;
   enabled: boolean;
   disabled: boolean;
   onToggle: (enabled: boolean) => void;
@@ -663,7 +811,7 @@ function OptionalEffect({
 }) {
   return (
     <section className="field">
-      <h3>{label}</h3>
+      {showHeading && <h3>{label}</h3>}
       <label className="insp-row insp-toggle">
         <input
           type="checkbox"

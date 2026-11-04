@@ -64,6 +64,7 @@ export function Timeline() {
   const [menu, setMenu] = useState<BlockMenu | null>(null);
   const [zoomPps, setZoomPps] = useState<number | null>(null);
   const [openTransitionId, setOpenTransitionId] = useState<string | null>(null);
+  const [openMarkerCluster, setOpenMarkerCluster] = useState<string | null>(null);
   const [trackDrop, setTrackDrop] = useState<{ id: string; top: number } | null>(null);
   const history = useStore((s) => s.history);
   const reviewedRev = useStore((s) => s.reviewedRev);
@@ -219,7 +220,12 @@ export function Timeline() {
     ticks.push({
       frame,
       kind,
-      label: kind === "major" ? timecode(frame, fps).replace(/\.\d$/, "") : null,
+      label:
+        kind === "major"
+          ? step < 1
+            ? timecode(frame, fps)
+            : timecode(frame, fps).replace(/\.\d$/, "")
+          : null,
     });
   }
 
@@ -332,6 +338,16 @@ export function Timeline() {
         target: i.id,
       })),
   ];
+  const markerClusters: { id: string; frame: number; items: typeof markers }[] = [];
+  for (const marker of [...markers].sort((a, b) => a.frame - b.frame)) {
+    const last = markerClusters.at(-1);
+    if (last && px(marker.frame) - px(last.items.at(-1)?.frame ?? last.frame) <= 24) {
+      last.items.push(marker);
+      last.frame = Math.round(
+        last.items.reduce((sum, item) => sum + item.frame, 0) / last.items.length,
+      );
+    } else markerClusters.push({ id: marker.key, frame: marker.frame, items: [marker] });
+  }
 
   /** 拖块：位移换算成毫秒交给 core 的 planDrag（吸附、主轨磁吸都在那里），松开时提交一次 */
   const startDrag = (e: React.PointerEvent, b: Block, mode: DragMode) => {
@@ -416,8 +432,8 @@ export function Timeline() {
 
   const openBlockMenu = (e: React.MouseEvent, b: Block) => {
     if (b.kind !== "outro") select(b.id);
-    const width = 220;
-    const height = 112;
+    const width = 280;
+    const height = 220;
     const pad = 8;
     setMenu({
       id: b.id,
@@ -468,21 +484,67 @@ export function Timeline() {
           </span>
         </div>
         <div className="tl-lane markers" onPointerDown={scrub}>
-          {markers.map((m) => (
-            <button
-              type="button"
-              key={m.key}
-              className={`marker ${m.kind}`}
-              style={{ left: px(m.frame) }}
-              title={m.title}
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={() => {
-                if (m.target) select(m.target);
-                seek(m.frame);
-              }}
+          {markerClusters.map((cluster) => (
+            <div
+              key={cluster.id}
+              className="marker-cluster-wrap"
+              style={{ left: px(cluster.frame) }}
             >
-              <Icon name={m.kind === "comment" ? "comment" : "warn"} size={11} />
-            </button>
+              <button
+                type="button"
+                className={`marker marker-cluster ${cluster.items.length > 1 ? "clustered" : cluster.items[0]!.kind}`}
+                title={
+                  cluster.items.length > 1
+                    ? `${cluster.items.length} 条批注/质检，点击查看`
+                    : cluster.items[0]!.title
+                }
+                aria-label={
+                  cluster.items.length > 1
+                    ? `${cluster.items.length} 条批注或质检`
+                    : cluster.items[0]!.title
+                }
+                aria-expanded={openMarkerCluster === cluster.id}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={() => {
+                  if (cluster.items.length > 1) {
+                    setOpenMarkerCluster((current) => (current === cluster.id ? null : cluster.id));
+                    return;
+                  }
+                  if (cluster.items[0]!.target) select(cluster.items[0]!.target);
+                  seek(cluster.items[0]!.frame);
+                }}
+              >
+                {cluster.items.length > 1 ? (
+                  <span>{cluster.items.length}</span>
+                ) : (
+                  <Icon
+                    name={cluster.items[0]!.kind === "comment" ? "comment" : "warn"}
+                    size={11}
+                  />
+                )}
+              </button>
+              {openMarkerCluster === cluster.id && cluster.items.length > 1 && (
+                <span className="marker-cluster-list" role="menu">
+                  {cluster.items.map((item) => (
+                    <span key={item.key} role="menuitem">
+                      <span className="mono">{timecode(item.frame, fps)}</span>
+                      <span>{item.title}</span>
+                      <button
+                        type="button"
+                        className="marker-cluster-jump"
+                        onClick={() => {
+                          if (item.target) select(item.target);
+                          seek(item.frame);
+                          setOpenMarkerCluster(null);
+                        }}
+                      >
+                        定位
+                      </button>
+                    </span>
+                  ))}
+                </span>
+              )}
+            </div>
           ))}
         </div>
 
@@ -538,7 +600,6 @@ export function Timeline() {
             setOpenTransitionId={setOpenTransitionId}
           />
         ))}
-        <AddTrack />
       </div>
       {viewportWidth > 0 && (
         <>
@@ -604,7 +665,7 @@ function AddTrack() {
 
   return (
     <>
-      <div className="tl-head tl-add" ref={root}>
+      <div className="tl-add-toolbar" ref={root}>
         <button
           type="button"
           className="tl-add-btn"
@@ -617,10 +678,9 @@ function AddTrack() {
             setMenu((cur) => (cur ? null : { x: rect.left, y: rect.top }));
           }}
         >
-          ＋
+          <Icon name="add" size={14} />
         </button>
       </div>
-      <div className="tl-lane tl-add-lane" />
       {menu &&
         createPortal(
           <div
@@ -1247,7 +1307,7 @@ function Toolbar({
           onClick={() => st.setAnnotating(!annotating)}
         />
         <DeleteButton />
-        <span className="tl-nudge-hint">选中后 ←→ 1 帧，Shift 1 秒</span>
+        <AddTrack />
       </div>
       <div className="tl-zoom-controls" aria-label="时间线缩放">
         <button
@@ -1325,7 +1385,7 @@ function DeleteButton() {
         if (selected) removeItem(selected);
       }}
     >
-      删除
+      <Icon name="trash" />
     </button>
   );
 }
@@ -1333,6 +1393,7 @@ function DeleteButton() {
 function BlockMenuView({ menu, onClose }: { menu: BlockMenu; onClose: () => void }) {
   const project = useStore((s) => s.project);
   const info = deleteInfo(project, menu.id);
+  const [replacing, setReplacing] = useState(false);
   useEffect(() => {
     const close = () => onClose();
     const onKey = (e: KeyboardEvent) => {
@@ -1354,10 +1415,47 @@ function BlockMenuView({ menu, onClose }: { menu: BlockMenu; onClose: () => void
       onPointerDown={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
     >
-      <div className="tl-menu-name" title={info.name}>
-        {info.name}
-      </div>
-      {info.track ? <div className="tl-menu-track">{info.track}</div> : null}
+      {menu.id === "outro" && (
+        <>
+          <button
+            type="button"
+            role="menuitem"
+            className="tl-menu-action"
+            onClick={() => setReplacing((value) => !value)}
+          >
+            替换片尾素材
+          </button>
+          {replacing && (
+            <div className="tl-outro-assets" role="group" aria-label="选择片尾素材">
+              {Object.entries(project?.assets ?? {})
+                .filter(
+                  ([id, asset]) =>
+                    id !== project?.outro?.asset &&
+                    (asset.kind === "video" || asset.kind === "image"),
+                )
+                .map(([id, asset]) => (
+                  <button
+                    type="button"
+                    key={id}
+                    className="tl-menu-action"
+                    onClick={() => {
+                      if (!project?.outro) return;
+                      void useStore
+                        .getState()
+                        .submit(
+                          [{ op: "outro.set", outro: { ...project.outro, asset: id } }],
+                          `替换了片尾素材：${asset.path.split("/").at(-1) ?? id}`,
+                        );
+                      onClose();
+                    }}
+                  >
+                    {asset.path.split("/").at(-1) ?? id}
+                  </button>
+                ))}
+            </div>
+          )}
+        </>
+      )}
       <button
         type="button"
         role="menuitem"
@@ -1365,11 +1463,14 @@ function BlockMenuView({ menu, onClose }: { menu: BlockMenu; onClose: () => void
         disabled={!info.ok}
         title={info.ok ? "删除" : info.reason}
         onClick={() => {
-          removeItem(menu.id);
+          if (menu.id === "outro") {
+            void useStore.getState().submit([{ op: "outro.remove" }], "删除了片尾");
+          } else removeItem(menu.id);
           onClose();
         }}
       >
-        删除
+        <Icon name="trash" />
+        <span>删除</span>
       </button>
     </div>
   );
@@ -1388,7 +1489,9 @@ function deleteInfo(project: Project | null, id: string | null): DeleteInfo {
     return { ok: false, reason: "先选中要删除的条目", name: "", track: "", kind: "" };
   }
   if (id === "outro") {
-    return { ok: false, reason: "片尾不能删除", name: "片尾", track: "主视频", kind: "片尾" };
+    return project.outro
+      ? { ok: true, reason: "删除", name: "片尾", track: "主视频", kind: "片尾" }
+      : { ok: false, reason: "工程没有片尾", name: "片尾", track: "主视频", kind: "片尾" };
   }
   const ref = findItem(project, id);
   if (!ref) return { ok: false, reason: "先选中要删除的条目", name: id, track: "", kind: "" };

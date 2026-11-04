@@ -18,8 +18,7 @@ export function TopBar() {
   const aiChange = useStore((s) => s.aiChange);
   const exportJob = useStore((s) => s.exportJob);
   const sideOpen = useStore((s) => s.sideOpen);
-  const leftOpen = useStore((s) => s.leftOpen);
-  const { startExport, setSideTab, setSideOpen, setLeftOpen, select, undo, dismissAiChange } =
+  const { startExport, setSideTab, setSideOpen, select, undo, dismissAiChange } =
     useStore.getState();
 
   const open = review?.comments.filter((c) => c.status === "open").length ?? 0;
@@ -37,15 +36,6 @@ export function TopBar() {
   return (
     <header className="topbar">
       <div className="topbar-title">
-        <button
-          type="button"
-          className="icon-btn left-toggle"
-          aria-label="左栏"
-          title="素材、样式"
-          onClick={() => setLeftOpen(!leftOpen)}
-        >
-          <Icon name="list" />
-        </button>
         <div className="project-switcher">
           <button
             type="button"
@@ -69,7 +59,7 @@ export function TopBar() {
             <h1 className="topbar-name" title={name}>
               {name || "载入中…"}
             </h1>
-            <span aria-hidden="true">⌄</span>
+            <Icon name="chevronDown" size={14} />
           </button>
           {switchOpen && (
             <div className="project-switcher-menu" role="listbox" aria-label="可打开工程">

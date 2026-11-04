@@ -19,6 +19,8 @@ const paths = {
   comment: "M2.5 3.5h11v7.5H7L4 13.5V11H2.5z",
   warn: "M8 2.5l6 10.5H2zM8 6.5v3M8 11.2v.3",
   add: "M8 3v10M3 8h10",
+  trash: "M3 4.5h10M6 4.5v-2h4v2M4.5 4.5l.6 9h5.8l.6-9M6.5 7v4M9.5 7v4",
+  chevronDown: "m4 6 4 4 4-4",
   transition: "M2 5h9m0 0-2-2m2 2-2 2M14 11H5m0 0 2-2m-2 2 2 2",
   arrowUp: "M8 13V3m0 0L5 6m3-3 3 3",
   arrowDown: "M8 3v10m0 0 3-3m-3 3-3-3",

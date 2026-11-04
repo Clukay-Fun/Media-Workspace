@@ -6,6 +6,7 @@ import { Project } from "../../../core/schema";
 import { styleEditOps } from "../../../core/style-scope";
 import { PROJECT_FORMAT_VERSION } from "../../../core/version";
 import { findItem } from "../../lib/project";
+import { StylePicker } from "./common";
 import {
   animationOptionsFor,
   CAPTION_ANIMATION_PRESETS,
@@ -44,6 +45,20 @@ const project = () =>
   });
 
 describe("字幕动画快捷选项", () => {
+  it("轨道锁定时禁用套用样式入口", () => {
+    const current = project();
+    const captionTrack = current.tracks.find((track) => track.kind === "caption");
+    if (!captionTrack) throw new Error("字幕轨道缺失");
+    captionTrack.locked = true;
+    const ref_ = findItem(current, "s1");
+    if (!ref_) throw new Error("测试字幕缺失");
+
+    const html = renderToStaticMarkup(
+      <StylePicker project={current} id="s1" ref_={ref_} sample="字幕" />,
+    );
+    expect(html).toContain('class="style-chip on" disabled=""');
+  });
+
   it("写入三个规定的完整动画参数", () => {
     expect(CAPTION_ANIMATION_PRESETS.map(({ label, animation }) => ({ label, animation }))).toEqual(
       [
@@ -80,7 +95,7 @@ describe("字幕动画快捷选项", () => {
     expect(CAPTION_ANIMATION_PRESETS[1]?.note).toContain("按句长平均");
   });
 
-  it("编辑器不再提供 color-sweep，新建旧值仍会显示为选中且停用", () => {
+  it("概览显示分组入口，动画选项保留旧值禁用规则", () => {
     const current = project();
     const legacyStyle = current.styles.cap!;
     current.styles.cap = {
@@ -101,18 +116,17 @@ describe("字幕动画快捷选项", () => {
         elementLabel="字幕"
       />,
     );
-    const legacyOption = html.match(/<option\b[^>]*>颜色扫过（旧值，已停用）<\/option>/)?.[0];
-
-    expect(legacyOption).toBeDefined();
-    expect(legacyOption).toContain('value="color-sweep"');
-    expect(legacyOption).toContain('disabled=""');
-    expect(legacyOption).toContain('selected=""');
+    expect(html).toContain("字体与文字");
+    expect(html).toContain("位置与排列");
+    expect(html).toContain("动画");
+    expect(html).toContain("高级外观");
     expect(html).toContain("默认模板字幕");
-    expect(html).toContain("默认模板逐词短淡入");
     expect(html).toContain("默认模板样式");
-    expect(html).toContain("跟随语音");
-    expect(html).toContain("整行淡入");
-    expect(html).toContain("不会更改字体、颜色、位置或高亮");
+    expect(animationOptionsFor("color-sweep")).toContainEqual({
+      value: "color-sweep",
+      label: "颜色扫过（旧值，已停用）",
+      disabled: true,
+    });
   });
 
   it("标题预设使用默认模板名称", () => {

@@ -1,5 +1,5 @@
 import type React from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { builtinStyles } from "../../../core/aspect";
 import type { Op } from "../../../core/ops";
 import type { Anchor, Caption, Project, Slot, Transform } from "../../../core/schema";
@@ -158,6 +158,10 @@ export function StylePicker({
   const own = "style" in ref_.item ? (ref_.item.style ?? null) : null;
   // 元素没写样式时用轨道的样式（字幕轨）
   const styleId = own ?? ("style" in ref_.track ? (ref_.track.style ?? null) : null);
+  useEffect(() => {
+    setMore(false);
+    setQ("");
+  }, [id]);
   const setStyle = (style: string) => {
     const ops: Op[] = [];
     const preset = project.styles[style] ?? builtins[style];
@@ -183,47 +187,51 @@ export function StylePicker({
   );
   const hidden = names.length - names.filter((n) => fit.has(n) || n === styleId).length;
   return (
-    <Field label="样式">
-      <label className="search">
-        <input
-          type="search"
-          value={q}
-          placeholder="搜索样式名"
-          aria-label="搜索样式"
-          onChange={(e) => setQ(e.currentTarget.value)}
-        />
-      </label>
-      <div className="style-grid">
-        {shown.flatMap((name) => {
-          const style = project.styles[name] ?? builtins[name];
-          return style
-            ? [
-                <button
-                  key={name}
-                  type="button"
-                  className={styleId === name ? "style-chip on" : "style-chip"}
-                  disabled={ref_.track.locked}
-                  title={name}
-                  onClick={() => styleId !== name && setStyle(name)}
-                >
-                  <span className="style-chip-sample" style={swatch(style)}>
-                    {sample}
-                  </span>
-                  <span className="style-chip-name">
-                    {name}
-                    {!project.styles[name] ? " · 内置" : ""}
-                  </span>
-                </button>,
-              ]
-            : [];
-        })}
-      </div>
-      {hidden > 0 && (
-        <button type="button" className="link more-styles" onClick={() => setMore(!more)}>
-          {more ? "收起" : `更多样式（${hidden}）`}
-        </button>
-      )}
-    </Field>
+    <div className="inspector-local-view style-picker-view">
+      <Field label="样式">
+        <label className="search">
+          <input
+            type="search"
+            value={q}
+            placeholder="搜索样式名"
+            aria-label="搜索样式"
+            onChange={(e) => setQ(e.currentTarget.value)}
+          />
+        </label>
+        <div className="style-grid">
+          {shown.flatMap((name) => {
+            const style = project.styles[name] ?? builtins[name];
+            return style
+              ? [
+                  <button
+                    key={name}
+                    type="button"
+                    className={styleId === name ? "style-chip on" : "style-chip"}
+                    disabled={ref_.track.locked}
+                    aria-pressed={styleId === name}
+                    title={name}
+                    onClick={() => styleId !== name && setStyle(name)}
+                  >
+                    <span className="style-chip-sample" style={swatch(style)}>
+                      {sample}
+                    </span>
+                    <span className="style-chip-footer">
+                      <span className="style-chip-name">{name}</span>
+                      {!project.styles[name] && <small className="style-chip-source">内置</small>}
+                    </span>
+                  </button>,
+                ]
+              : [];
+          })}
+        </div>
+        {shown.length === 0 && <p className="hint style-empty">没有匹配的样式</p>}
+        {hidden > 0 && (
+          <button type="button" className="link more-styles" onClick={() => setMore(!more)}>
+            {more ? "收起" : `更多样式（${hidden}）`}
+          </button>
+        )}
+      </Field>
+    </div>
   );
 }
 

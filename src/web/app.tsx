@@ -1,6 +1,5 @@
 import type React from "react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { LeftPanel } from "./components/left-panel";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ReviewSidebar } from "./components/review-sidebar";
 import { Splitter } from "./components/splitter";
 import { Stage } from "./components/stage";
@@ -10,7 +9,7 @@ import { DEFAULT_LAYOUT, useLayout } from "./lib/layout";
 import { useStore } from "./store";
 
 /**
- * 上面两栏：中间预览，右栏属性 / 批注 / AI 改动；左栏素材 / 样式平时收起，从顶栏按钮滑出。
+ * 上面两栏：中间预览，右栏属性 / 批注 / AI 改动。
  * 下面整宽时间线。断点按容器宽度（container query），嵌进别的应用时也对。
  */
 export function App() {
@@ -51,27 +50,29 @@ export function App() {
         }
       >
         <TopBar />
-        <LeftPanel key={projectId ?? "no-project"} />
-        <Stage key={projectId ?? "no-project"} />
-        <Splitter
-          axis="x"
-          label="调整审阅栏宽度"
-          className="side"
-          onStart={measure}
-          onDrag={dragSide}
-          onReset={() => setLayout({ sideW: null })}
-        />
-        <ReviewSidebar key={projectId ?? "no-project"} />
-        <Splitter
-          axis="y"
-          label="调整时间线高度"
-          onStart={() => {
-            origin.current = layout;
-          }}
-          onDrag={dragTimeline}
-          onReset={() => setLayout({ timelineH: DEFAULT_LAYOUT.timelineH })}
-        />
-        <Timeline key={projectId ?? "no-project"} />
+        {/* 同一工程的一组视图要一起换 key；分别给四个兄弟加 key 会在切工程时留下旧的子树。 */}
+        <Fragment key={projectId ?? "no-project"}>
+          <Stage />
+          <Splitter
+            axis="x"
+            label="调整审阅栏宽度"
+            className="side"
+            onStart={measure}
+            onDrag={dragSide}
+            onReset={() => setLayout({ sideW: null })}
+          />
+          <ReviewSidebar />
+          <Splitter
+            axis="y"
+            label="调整时间线高度"
+            onStart={() => {
+              origin.current = layout;
+            }}
+            onDrag={dragTimeline}
+            onReset={() => setLayout({ timelineH: DEFAULT_LAYOUT.timelineH })}
+          />
+          <Timeline />
+        </Fragment>
         <Toasts />
       </div>
     </div>

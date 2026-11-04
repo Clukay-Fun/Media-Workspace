@@ -10,7 +10,7 @@ import { applyOps, type Op } from "../../core/ops";
 import { isLandscape } from "../../core/safe-area";
 import type { Project } from "../../core/schema";
 import { type HitBox, hitBoxes, pick } from "../lib/geometry";
-import { type Corner, resizeFromCorner } from "../lib/pip";
+
 import { findItem } from "../lib/project";
 import { frameOfMs, msOfFrame, timecode } from "../lib/timeline";
 import { useStore } from "../store";
@@ -29,6 +29,7 @@ const KIND: Record<HitBox["kind"], string> = {
 type Drag = {
   mode: "move" | "resize";
   id: string;
+  pointerId: number;
   x0: number;
   y0: number;
   bx: number;
@@ -36,8 +37,8 @@ type Drag = {
   /** 元素有关键帧时，播放头相对元素开始的毫秒数 */
   atMs: number | undefined;
   ops: Op[] | null;
-  /** 拖角缩放：开始时的选中框（画布像素）、拖的角、当时的缩放 */
-  corner?: Corner;
+  /** 拖边缩放：开始时的选中框（画布像素）、拖的边、当时的缩放 */
+  edge?: "top" | "right" | "bottom" | "left";
   box?: HitBox["box"];
   scale0?: number;
 };
@@ -152,6 +153,11 @@ export function Stage() {
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!project || e.button !== 0) return;
+    // 上一次 pointerup 丢失时不要把旧 drag 带进新的一次点选
+    if (drag.current) {
+      drag.current = null;
+      st.setDraft(null);
+    }
     const p = toCanvas(e.clientX, e.clientY);
     const hit = pick(boxes, p.x, p.y);
     if (useStore.getState().annotating) {
@@ -207,6 +213,7 @@ export function Stage() {
     drag.current = {
       mode: "move",
       id: hit.id,
+      pointerId: e.pointerId,
       x0: p.x,
       y0: p.y,
       bx: now?.x ?? t?.x ?? W / 2,
@@ -217,8 +224,11 @@ export function Stage() {
     e.currentTarget.setPointerCapture(e.pointerId);
   };
 
-  /** 从四个角开始缩放：对角固定，拖动中只更新本地预览，松手提交一次 */
-  const startResize = (e: React.PointerEvent<HTMLButtonElement>, corner: Corner) => {
+  /** 从四条边的中心开始缩放：对边中点固定，拖动中只更新本地预览，松手提交一次 */
+  const startResize = (
+    e: React.PointerEvent<HTMLButtonElement>,
+    edge: "top" | "right" | "bottom" | "left",
+  ) => {
     e.preventDefault();
     e.stopPropagation();
     if (!project || !selBox || !timeline) return;
@@ -232,13 +242,14 @@ export function Stage() {
     drag.current = {
       mode: "resize",
       id: selBox.id,
+      pointerId: e.pointerId,
       x0: 0,
       y0: 0,
       bx: t.x,
       by: t.y,
       atMs,
       ops: null,
-      corner,
+      edge,
       box: selBox.box,
       scale0: t.scale,
     };
@@ -253,13 +264,8 @@ export function Stage() {
       return;
     }
     if (d.mode === "resize") {
-      if (!d.box || !d.corner || d.scale0 === undefined) return;
-      const r = resizeFromCorner({
-        box: d.box,
-        corner: d.corner,
-        pointer: p,
-        scale: d.scale0,
-      });
+      if (!d.box || !d.edge || d.scale0 === undefined) return;
+      const r = resizeFromEdge({ box: d.box, edge: d.edge, pointer: p, scale: d.scale0 });
       if (!r) return;
       try {
         const plan = planTransform(project, {
@@ -299,10 +305,21 @@ export function Stage() {
     }
   };
 
-  const onPointerUp = async () => {
+  const onPointerUp = async (e: React.PointerEvent<HTMLDivElement>) => {
     const d = drag.current;
     drag.current = null;
+    if (hitLayer.current?.hasPointerCapture(e.pointerId)) {
+      hitLayer.current.releasePointerCapture(e.pointerId);
+    }
     if (d?.ops) await st.submit(d.ops);
+    // 提交期间用户可能已经开始拖另一个元素，不能把新拖动的草稿清掉
+    if (!drag.current) st.setDraft(null);
+  };
+
+  // 指针被浏览器收回（例如系统弹窗、触控取消）时清掉拖动草稿，避免下一次拖动卡在旧状态
+  const cancelDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!drag.current || drag.current.pointerId !== e.pointerId) return;
+    drag.current = null;
     st.setDraft(null);
   };
 
@@ -380,12 +397,13 @@ export function Stage() {
               }
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}
-              onPointerUp={() => void onPointerUp()}
+              onPointerUp={(e) => void onPointerUp(e)}
+              onPointerCancel={cancelDrag}
+              onLostPointerCapture={cancelDrag}
               onPointerLeave={() => setHover(null)}
             >
               <AccountGuides width={W} height={H} />
               <SafeAreaOverlay width={W} height={H} scale={scale} />
-              <CanvasGuides width={W} height={H} scale={scale} />
               {draft?.guides.map((g) => (
                 <div
                   key={`${g.axis}-${g.pos}`}
@@ -458,6 +476,11 @@ export function Stage() {
             )}
           </div>
         )}
+        {inputProps && scale > 0 && (
+          <div className="guides-frame" style={{ width: W * scale, height: H * scale }}>
+            <CanvasGuides width={W} height={H} scale={scale} />
+          </div>
+        )}
         <CropToolbar />
         {annotating && (
           <div className="annotation-hint" role="status">
@@ -526,33 +549,121 @@ export function Stage() {
   );
 }
 
-const RESIZE_HANDLES: { corner: Corner; className: string; label: string }[] = [
-  { corner: "top-left", className: "nw", label: "左上" },
-  { corner: "top-right", className: "ne", label: "右上" },
-  { corner: "bottom-left", className: "sw", label: "左下" },
-  { corner: "bottom-right", className: "se", label: "右下" },
+type ResizeEdge = "top" | "right" | "bottom" | "left";
+
+const RESIZE_HANDLES: {
+  edge: ResizeEdge;
+  label: string;
+  style: React.CSSProperties;
+}[] = [
+  {
+    edge: "top",
+    label: "上边",
+    style: {
+      left: "50%",
+      top: 0,
+      transform: "translate(-50%, -50%)",
+      cursor: "ns-resize",
+      zIndex: 2,
+    },
+  },
+  {
+    edge: "right",
+    label: "右边",
+    style: {
+      right: 0,
+      top: "50%",
+      transform: "translate(50%, -50%)",
+      cursor: "ew-resize",
+      zIndex: 2,
+    },
+  },
+  {
+    edge: "bottom",
+    label: "下边",
+    style: {
+      left: "50%",
+      bottom: 0,
+      transform: "translate(-50%, 50%)",
+      cursor: "ns-resize",
+      zIndex: 2,
+    },
+  },
+  {
+    edge: "left",
+    label: "左边",
+    style: {
+      left: 0,
+      top: "50%",
+      transform: "translate(-50%, -50%)",
+      cursor: "ew-resize",
+      zIndex: 2,
+    },
+  },
 ];
 
-/** 选中框四角的缩放手柄；对角固定，等比缩放 */
+/** 选中框四条边中心的缩放手柄；对边中点固定，等比缩放 */
 function ResizeHandles({
   onStart,
 }: {
-  onStart: (e: React.PointerEvent<HTMLButtonElement>, corner: Corner) => void;
+  onStart: (e: React.PointerEvent<HTMLButtonElement>, edge: ResizeEdge) => void;
 }) {
   return (
     <>
       {RESIZE_HANDLES.map((h) => (
         <button
-          key={h.corner}
+          key={h.edge}
           type="button"
-          className={`box-handle ${h.className}`}
-          aria-label={`拖角缩放（${h.label}）`}
-          title="拖动缩放，对角固定"
-          onPointerDown={(e) => onStart(e, h.corner)}
+          className="box-handle"
+          style={h.style}
+          aria-label={`拖${h.label}缩放`}
+          title={`拖动${h.label}缩放，对边中点固定`}
+          onPointerDown={(e) => onStart(e, h.edge)}
         />
       ))}
     </>
   );
+}
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+/** 拖边等比缩放：对边中点固定，只用垂直于边的距离计算缩放 */
+export function resizeFromEdge({
+  box,
+  edge,
+  pointer,
+  scale,
+  minScale = 0.02,
+  maxScale = 20,
+}: {
+  box: HitBox["box"];
+  edge: ResizeEdge;
+  pointer: { x: number; y: number };
+  scale: number;
+  minScale?: number;
+  maxScale?: number;
+}): { scale: number; x: number; y: number } | null {
+  if (!(scale > 0)) return null;
+  const horizontal = edge === "left" || edge === "right";
+  const anchor = {
+    x: edge === "left" ? box.x1 : edge === "right" ? box.x0 : (box.x0 + box.x1) / 2,
+    y: edge === "top" ? box.y1 : edge === "bottom" ? box.y0 : (box.y0 + box.y1) / 2,
+  };
+  const dragged = {
+    x: edge === "left" ? box.x0 : edge === "right" ? box.x1 : (box.x0 + box.x1) / 2,
+    y: edge === "top" ? box.y0 : edge === "bottom" ? box.y1 : (box.y0 + box.y1) / 2,
+  };
+  const base = horizontal ? Math.abs(anchor.x - dragged.x) : Math.abs(anchor.y - dragged.y);
+  if (base < 1e-6) return null;
+  const distance = horizontal ? Math.abs(pointer.x - anchor.x) : Math.abs(pointer.y - anchor.y);
+  const nextScale = Math.round(clamp(scale * (distance / base), minScale, maxScale) * 1000) / 1000;
+  const k = nextScale / scale;
+  const center = { x: (box.x0 + box.x1) / 2, y: (box.y0 + box.y1) / 2 };
+  return {
+    scale: nextScale,
+    x: Math.round(anchor.x + (center.x - anchor.x) * k),
+    y: Math.round(anchor.y + (center.y - anchor.y) * k),
+  };
 }
 
 function PlayerFooter({
@@ -580,30 +691,12 @@ function PlayerFooter({
       <div className="player-transport">
         <button
           type="button"
-          className="icon-btn player-step"
-          aria-label="上一帧（←）"
-          title="上一帧（←）"
-          onClick={() => st.seek(Math.max(0, frame - 1))}
-        >
-          <Icon name="prev" />
-        </button>
-        <button
-          type="button"
           className="play-btn"
           aria-label={playing ? "暂停" : "播放"}
           title={playing ? "暂停（空格）" : "播放（空格）"}
           onClick={() => st.setPlaying(!playing)}
         >
           <Icon name={playing ? "pause" : "play"} size={14} />
-        </button>
-        <button
-          type="button"
-          className="icon-btn player-step"
-          aria-label="下一帧（→）"
-          title="下一帧（→）"
-          onClick={() => st.seek(Math.min(total - 1, frame + 1))}
-        >
-          <Icon name="next" />
         </button>
       </div>
       <div className="player-status">
@@ -642,6 +735,7 @@ function PreviewSettings({ width, height }: { width: number; height: number }) {
   const accountGuides = useStore((s) => s.accountGuides);
   const { updateEditor, toggleAccountGuides, setLayoutEditing } = useStore.getState();
   const box = useRef<HTMLDetailsElement>(null);
+  const [submenu, setSubmenu] = useState<"guides" | "safe" | "account" | null>(null);
   // 点菜单外面或按 Esc 收起（details 本身不会自己关）
   useEffect(() => {
     const close = (e: Event) => {
@@ -670,98 +764,140 @@ function PreviewSettings({ width, height }: { width: number; height: number }) {
         <Icon name="menu" />
       </summary>
       <div className="preview-settings-panel">
-        <strong>参考线与标尺</strong>
-        <p className="layout-hint">只在这个工程里辅助构图，不进成片；从标尺往画面里拖也能加线</p>
-        <div className="preview-actions">
-          <button type="button" disabled={!editor} onClick={() => addGuide("h", width, height)}>
-            加水平线
-          </button>
-          <button type="button" disabled={!editor} onClick={() => addGuide("v", width, height)}>
-            加垂直线
-          </button>
-        </div>
-        <label className="preview-setting">
-          <input
-            type="checkbox"
-            disabled={!guides}
-            checked={!!guides && !guides.hidden}
-            onChange={() => setGuides({ hidden: !guides?.hidden })}
-          />
-          <span>显示参考线</span>
-        </label>
-        <label className="preview-setting">
-          <input
-            type="checkbox"
-            disabled={!guides}
-            checked={!!guides?.locked}
-            onChange={() => setGuides({ locked: !guides?.locked })}
-          />
-          <span>锁定参考线</span>
-        </label>
-        <label className="preview-setting">
-          <input
-            type="checkbox"
-            disabled={!editor}
-            checked={!!editor?.rulers}
-            onChange={() => updateEditor({ rulers: !editor?.rulers })}
-          />
-          <span>显示标尺</span>
-        </label>
-        <button
-          type="button"
-          className="preview-link"
-          disabled={count === 0}
-          onClick={() => setGuides({ items: [] })}
-        >
-          清除参考线{count ? `（${count}）` : ""}
-        </button>
-
-        <strong>安全区</strong>
-        {(
-          [
-            ["off", "不显示"],
-            ["title", "字幕 / 操作安全区"],
-            ["channels", "视频号安全区"],
-          ] as const
-        ).map(([v, label]) => (
-          <label key={v} className="preview-setting">
-            <input
-              type="radio"
-              name="safe-area"
-              disabled={!editor}
-              checked={mode === v}
-              onChange={() => updateEditor({ showSafeArea: v })}
-            />
-            <span>{label}</span>
-          </label>
-        ))}
-
-        <strong>账号版式</strong>
-        <p className="layout-hint">
-          {landscape
-            ? "账号版式按竖屏定，横屏工程里不显示、不能编辑"
-            : "所有工程共用：人物位置、口播倍速、字幕字数，AI 出片按它来"}
-        </p>
-        <label className="preview-setting">
-          <input
-            type="checkbox"
-            disabled={landscape}
-            checked={accountGuides && !landscape}
-            onChange={toggleAccountGuides}
-          />
-          <span>显示账号参考线</span>
-        </label>
-        <button
-          type="button"
-          className="preview-link"
-          disabled={landscape}
-          onClick={() => {
-            if (box.current) box.current.open = false;
-            setLayoutEditing(true);
-          }}
-        >
-          编辑账号版式…
-        </button>
+        {submenu ? (
+          <>
+            <button
+              type="button"
+              className="preview-settings-back"
+              onClick={() => setSubmenu(null)}
+            >
+              <Icon name="prev" size={13} /> 设置
+            </button>
+            <strong>
+              {submenu === "guides" ? "参考线与标尺" : submenu === "safe" ? "安全区" : "账号版式"}
+            </strong>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="preview-settings-entry"
+              onClick={() => setSubmenu("guides")}
+            >
+              <span>参考线与标尺</span>
+              <Icon name="next" size={13} />
+            </button>
+            <button
+              type="button"
+              className="preview-settings-entry"
+              onClick={() => setSubmenu("safe")}
+            >
+              <span>安全区</span>
+              <Icon name="next" size={13} />
+            </button>
+            <button
+              type="button"
+              className="preview-settings-entry"
+              onClick={() => setSubmenu("account")}
+            >
+              <span>账号版式</span>
+              <Icon name="next" size={13} />
+            </button>
+          </>
+        )}
+        {submenu === "guides" && (
+          <>
+            <div className="preview-actions">
+              <button type="button" disabled={!editor} onClick={() => addGuide("h", width, height)}>
+                加水平线
+              </button>
+              <button type="button" disabled={!editor} onClick={() => addGuide("v", width, height)}>
+                加垂直线
+              </button>
+            </div>
+            <label className="preview-setting">
+              <input
+                type="checkbox"
+                disabled={!guides}
+                checked={!!guides && !guides.hidden}
+                onChange={() => setGuides({ hidden: !guides?.hidden })}
+              />
+              <span>显示参考线</span>
+            </label>
+            <label className="preview-setting">
+              <input
+                type="checkbox"
+                disabled={!guides}
+                checked={!!guides?.locked}
+                onChange={() => setGuides({ locked: !guides?.locked })}
+              />
+              <span>锁定参考线</span>
+            </label>
+            <label className="preview-setting">
+              <input
+                type="checkbox"
+                disabled={!editor}
+                checked={!!editor?.rulers}
+                onChange={() => updateEditor({ rulers: !editor?.rulers })}
+              />
+              <span>显示标尺</span>
+            </label>
+            <button
+              type="button"
+              className="preview-link"
+              disabled={count === 0}
+              onClick={() => setGuides({ items: [] })}
+            >
+              清除参考线{count ? `（${count}）` : ""}
+            </button>
+          </>
+        )}
+        {submenu === "safe" && (
+          <>
+            {(
+              [
+                ["off", "不显示"],
+                ["title", "字幕 / 操作安全区"],
+                ["channels", "视频号安全区"],
+              ] as const
+            ).map(([v, label]) => (
+              <label key={v} className="preview-setting">
+                <input
+                  type="radio"
+                  name="safe-area"
+                  disabled={!editor}
+                  checked={mode === v}
+                  onChange={() => updateEditor({ showSafeArea: v })}
+                />
+                <span>{label}</span>
+              </label>
+            ))}
+          </>
+        )}
+        {submenu === "account" && (
+          <>
+            <label className="preview-setting">
+              <input
+                type="checkbox"
+                disabled={landscape}
+                checked={accountGuides && !landscape}
+                onChange={toggleAccountGuides}
+              />
+              <span>显示账号参考线</span>
+            </label>
+            <button
+              type="button"
+              className="preview-link"
+              disabled={landscape}
+              onClick={() => {
+                if (box.current) box.current.open = false;
+                setLayoutEditing(true);
+              }}
+            >
+              编辑账号版式…
+            </button>
+          </>
+        )}
       </div>
     </details>
   );
