@@ -185,7 +185,7 @@ export function createMockApi(): Api {
   ];
   const listeners = new Set<(e: LiveEvent) => void>();
   const emit = (e: ServerEvent) => {
-    for (const fn of listeners) fn(e);
+    for (const fn of listeners) fn({ ...e, projectId: "示例" });
   };
   const current = () => entries.at(-1)?.project ?? init;
 
@@ -234,6 +234,12 @@ export function createMockApi(): Api {
   });
 
   const api: Api = {
+    projectId: "示例",
+    projects: async () => ({
+      ok: true,
+      projects: [{ id: "示例", name: "示例", revision: current().revision }],
+    }),
+    forProject: () => api,
     project: async () => ({ ok: true, name: "存钱三件事（示例）", project: current() }),
     preview: async () => ({
       ok: true,
@@ -399,7 +405,7 @@ export function createMockApi(): Api {
     subscribe(onEvent, onStatus) {
       listeners.add(onEvent);
       onStatus(true);
-      onEvent({ type: "hello", revision: current().revision });
+      onEvent({ type: "hello", projectId: "示例", revision: current().revision });
       return () => listeners.delete(onEvent);
     },
   };

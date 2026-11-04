@@ -450,6 +450,119 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
+.project-switcher {
+  position: relative;
+  min-width: 0;
+}
+
+.project-switcher-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: min(360px, 100%);
+  padding: 2px 7px 2px 0;
+  border-radius: var(--radius);
+}
+
+.project-switcher-trigger:hover {
+  background: var(--raised);
+}
+
+.project-switcher-trigger > span {
+  color: var(--text-3);
+}
+
+.project-switcher-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  left: 0;
+  width: min(340px, calc(100vw - 24px));
+  padding: 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: 0 12px 36px rgb(28 27 24 / 0.18);
+}
+
+.project-switcher-search {
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--raised);
+}
+
+.project-switcher-list {
+  display: grid;
+  gap: 2px;
+  max-height: min(360px, 55vh);
+  margin-top: 6px;
+  overflow: auto;
+}
+
+.project-switcher-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 34px;
+  padding: 5px 9px;
+  border-radius: var(--radius);
+  text-align: left;
+}
+
+.project-switcher-list button:hover,
+.project-switcher-list button[aria-selected="true"] {
+  background: var(--raised-2);
+}
+
+.project-switcher-list button small,
+.project-switcher-list p {
+  color: var(--text-3);
+}
+
+.project-switcher-list p {
+  margin: 8px;
+}
+
+.project-switcher-backdrop {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(28 27 24 / 0.28);
+}
+
+.project-switcher-dialog {
+  width: min(420px, calc(100vw - 32px));
+  padding: 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: 0 16px 44px rgb(28 27 24 / 0.2);
+}
+
+.project-switcher-dialog h2 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+.project-switcher-dialog p {
+  margin: 0;
+  color: var(--text-2);
+}
+
+.project-switcher-dialog > div {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 18px;
+}
+
 .topbar-center {
   display: flex;
   justify-content: center;

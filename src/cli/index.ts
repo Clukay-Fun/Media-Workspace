@@ -849,23 +849,23 @@ for (const direction of ["undo", "redo"] as const) {
 }
 
 cli
-  .command("serve <proj>", "启动本地工作台（只监听 127.0.0.1）")
+  .command("serve [proj]", "启动本地工作台（只监听 127.0.0.1）")
   .option("--port <n>", `端口（默认 ${API_PORT}）`)
   .action(
-    act(async (proj: string, o: { port?: number }) => {
-      const s = await startServer(resolveProjectDir(proj), {
+    act(async (proj: string | undefined, o: { port?: number }) => {
+      const dir = proj === undefined ? undefined : resolveProjectDir(proj);
+      const s = await startServer(dir, {
         port: o.port === undefined ? API_PORT : Number(o.port),
         onLog: log,
       });
-      const dir = resolveProjectDir(proj);
-      await markServing(dir);
+      if (dir) await markServing(dir);
       out({ ok: true, url: s.url });
       // 一直运行，直到 Ctrl+C
       await new Promise<void>((done) => {
         const stop = () =>
           void s
             .close()
-            .then(() => clearServing(dir))
+            .then(() => (dir ? clearServing(dir) : undefined))
             .then(done);
         process.once("SIGINT", stop);
         process.once("SIGTERM", stop);

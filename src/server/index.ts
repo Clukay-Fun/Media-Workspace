@@ -6,10 +6,12 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { API_PORT } from "../core/api";
 import { MwError } from "../core/errors";
 import { startMediaServer } from "../node/media-server";
+import { projectsDir } from "../node/paths";
 import { loadProject } from "../node/store";
 import { createApp } from "./app";
 import { createBus, watchProject } from "./events";
 import { createExportJobs } from "./export-jobs";
+import { ProjectSessions } from "./project-sessions";
 
 // mw serve：本地服务 + 工作台网页。只监听 127.0.0.1（D9）。
 
@@ -18,20 +20,31 @@ const WEB_DIST = resolve(import.meta.dirname, "..", "..", "dist", "web");
 export type RunningServer = { url: string; port: number; close: () => Promise<void> };
 
 export async function startServer(
-  dir: string,
+  dir?: string,
   opts: { port?: number; onLog?: (s: string) => void } = {},
 ): Promise<RunningServer> {
-  // 先确认工程能打开，出错时直接报给命令行
-  await loadProject(dir);
+  // 传入工程时保持旧的单工程服务；不传时仅允许浏览 projectsDir() 下的工程。
+  if (dir) await loadProject(dir);
   const media = await startMediaServer(null);
   const bus = createBus();
-  const watcher = await watchProject(dir, bus, (e) => opts.onLog?.(`读取修改日志失败：${e}`));
-  const app = createApp({
-    dir,
-    bus,
-    register: (abs) => media.register(abs),
-    exports: createExportJobs(dir, bus),
-  });
+  const sessions = dir ? null : new ProjectSessions(media);
+  const watcher = dir
+    ? await watchProject(dir, bus, (e) => opts.onLog?.(`读取修改日志失败：${e}`))
+    : null;
+  const app = createApp(
+    sessions
+      ? {
+          listProjects: () => sessions.list(),
+          resolveProject: (id: string) => sessions.get(id),
+          watchProject: (id: string) => sessions.watch(id),
+        }
+      : {
+          dir: dir as string,
+          bus,
+          register: (abs) => media.register(abs),
+          exports: createExportJobs(dir as string, bus),
+        },
+  );
 
   // 工作台网页（pnpm web:build 的产物）；开发时用 Vite（5173 端口，/api 代理到这里）
   if (existsSync(join(WEB_DIST, "index.html"))) {
@@ -65,7 +78,8 @@ export async function startServer(
     url,
     port: actual,
     close: async () => {
-      watcher.close();
+      watcher?.close();
+      await sessions?.close();
       await new Promise<void>((ok) => server.close(() => ok()));
       await media.close();
     },

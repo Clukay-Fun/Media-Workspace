@@ -88,6 +88,7 @@ export function Stage() {
     if (annotationDraft && selected !== annotationDraft.target) {
       setAnnotationDraft(null);
       setCommentText("");
+      st.setCommentDraft(null);
     }
   }, [selected, annotationDraft]);
 
@@ -182,13 +183,15 @@ export function Stage() {
       st.setPin(point);
       st.setAnnotating(false);
       setCommentText("");
-      setAnnotationDraft({
+      const nextDraft = {
         target: hit.id,
         point,
         atMs: msOfFrame(useStore.getState().frame, fps),
         left,
         top,
-      });
+      };
+      setAnnotationDraft(nextDraft);
+      st.setCommentDraft({ text: "", atMs: nextDraft.atMs, target: nextDraft.target, point });
       return;
     }
     st.select(hit?.id ?? null);
@@ -306,6 +309,7 @@ export function Stage() {
   const dismissAnnotation = () => {
     setAnnotationDraft(null);
     setCommentText("");
+    st.setCommentDraft(null);
     st.setPin(null);
   };
 
@@ -315,10 +319,17 @@ export function Stage() {
     const text = commentText.trim();
     if (!draft || !text || commentBusy) return;
     setCommentBusy(true);
-    await st.addComment({ text, atMs: draft.atMs, target: draft.target, point: draft.point });
+    const saved = await st.addComment({
+      text,
+      atMs: draft.atMs,
+      target: draft.target,
+      point: draft.point,
+    });
     setCommentBusy(false);
+    if (!saved) return;
     setAnnotationDraft(null);
     setCommentText("");
+    st.setCommentDraft(null);
   };
 
   const nowMs = msOfFrame(frame, fps);
@@ -471,7 +482,17 @@ export function Stage() {
               value={commentText}
               placeholder="添加批注…"
               aria-label="批注内容"
-              onChange={(e) => setCommentText(e.target.value)}
+              onChange={(e) => {
+                const text = e.target.value;
+                setCommentText(text);
+                if (annotationDraft)
+                  st.setCommentDraft({
+                    text,
+                    atMs: annotationDraft.atMs,
+                    target: annotationDraft.target,
+                    point: annotationDraft.point,
+                  });
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Escape") {
                   e.preventDefault();

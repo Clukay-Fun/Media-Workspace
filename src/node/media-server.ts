@@ -27,7 +27,7 @@ export type MediaServer = {
   /** 把根目录下的文件路径转换成 URL */
   urlFor: (absPath: string) => string;
   /** 登记任意位置的单个文件（例如用户的原始图片、字体），返回它的 URL。只有登记过的文件能被访问 */
-  register: (absPath: string) => string;
+  register: (absPath: string, projectId?: string) => string;
   close: () => Promise<void>;
 };
 
@@ -110,9 +110,10 @@ export async function startMediaServer(root: string | null, port = 0): Promise<M
   const baseUrl = `http://127.0.0.1:${actual}`;
   return {
     baseUrl,
-    register: (absPath) => {
+    register: (absPath, projectId) => {
       const abs = resolve(absPath);
-      const key = `/f/${createHash("sha1").update(abs).digest("hex").slice(0, 12)}/${basename(abs)}`;
+      const scope = projectId ? `/p/${projectId}` : "";
+      const key = `${scope}/f/${createHash("sha1").update(abs).digest("hex").slice(0, 12)}/${basename(abs)}`;
       registered.set(key, abs);
       return `${baseUrl}${key.split("/").map(encodeURIComponent).join("/")}`;
     },

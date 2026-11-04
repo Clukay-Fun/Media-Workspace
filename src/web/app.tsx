@@ -15,6 +15,7 @@ import { useStore } from "./store";
  */
 export function App() {
   useEffect(() => useStore.getState().init(), []);
+  const projectId = useStore((s) => s.projectId);
   useShortcuts();
   const [layout, setLayout] = useLayout();
   const app = useRef<HTMLDivElement>(null);
@@ -50,8 +51,8 @@ export function App() {
         }
       >
         <TopBar />
-        <LeftPanel />
-        <Stage />
+        <LeftPanel key={projectId ?? "no-project"} />
+        <Stage key={projectId ?? "no-project"} />
         <Splitter
           axis="x"
           label="调整审阅栏宽度"
@@ -60,7 +61,7 @@ export function App() {
           onDrag={dragSide}
           onReset={() => setLayout({ sideW: null })}
         />
-        <ReviewSidebar />
+        <ReviewSidebar key={projectId ?? "no-project"} />
         <Splitter
           axis="y"
           label="调整时间线高度"
@@ -70,7 +71,7 @@ export function App() {
           onDrag={dragTimeline}
           onReset={() => setLayout({ timelineH: DEFAULT_LAYOUT.timelineH })}
         />
-        <Timeline />
+        <Timeline key={projectId ?? "no-project"} />
         <Toasts />
       </div>
     </div>

@@ -116,8 +116,16 @@ export type CompileWarningDto = { code: string; path: string; message: string };
  * name 是工程目录名（去掉 .mwproj）。
  * dir 是工程目录的绝对路径（右栏项目概览用）；mock 模式没有服务端，所以是可选的。
  */
-export type ProjectResponse = { ok: true; name: string; dir?: string; project: Project };
-export type PreviewResponse = { ok: true; props: PreviewProps };
+export type ProjectResponse = {
+  ok: true;
+  id?: string;
+  name: string;
+  dir?: string;
+  project: Project;
+};
+export type AvailableProject = { id: string; name: string; revision: number };
+export type ProjectsResponse = { ok: true; projects: AvailableProject[] };
+export type PreviewResponse = { ok: true; projectId?: string; props: PreviewProps };
 export type EditorResponse = { ok: true; editor: EditorState };
 export type OpsResponse = {
   ok: true;
@@ -224,6 +232,7 @@ export type ServerEvent =
 // ---- 路由 ----
 
 export const ROUTES = {
+  projects: "/api/projects",
   project: "/api/project",
   preview: "/api/preview",
   editor: "/api/editor",

@@ -5,6 +5,7 @@ import { streamSSE } from "hono/streaming";
 import { ZodError, type z } from "zod";
 import {
   type ApiError,
+  type AvailableProject,
   CommentRequest,
   CommentStatusRequest,
   EditorState,
@@ -42,9 +43,20 @@ import type { ExportJobs } from "./export-jobs";
 // 本地服务的路由（接口约定见 core/api.ts）。这里只做参数解析和输出格式，逻辑都在 node/ 和 core/ 里。
 
 export type AppContext = {
+  dir?: string;
+  bus?: EventBus;
+  /** 把本机文件登记到媒体服务，返回网页能访问的 URL（支持 Range） */
+  register?: (absPath: string) => string;
+  exports?: ExportJobs;
+  listProjects?: () => Promise<AvailableProject[]>;
+  resolveProject?: (id: string) => Promise<ProjectRequestContext>;
+  watchProject?: (id: string) => Promise<() => void>;
+};
+
+export type ProjectRequestContext = {
+  id: string;
   dir: string;
   bus: EventBus;
-  /** 把本机文件登记到媒体服务，返回网页能访问的 URL（支持 Range） */
   register: (absPath: string) => string;
   exports: ExportJobs;
 };
@@ -55,6 +67,38 @@ const DEV_ORIGINS = new Set(["http://127.0.0.1:5173", "http://localhost:5173"]);
 
 export function createApp(ctx: AppContext): Hono {
   const app = new Hono();
+
+  const projectContext = async (c: {
+    req: {
+      header: (name: string) => string | undefined;
+      query: (name: string) => string | undefined;
+    };
+  }): Promise<ProjectRequestContext> => {
+    const encodedId = c.req.header("x-mw-project");
+    let id = c.req.query("project");
+    if (encodedId) {
+      try {
+        id = decodeURIComponent(encodedId);
+      } catch {
+        throw new MwError("USAGE", "工程 ID 编码无效");
+      }
+    }
+    if (ctx.resolveProject) {
+      if (!id) throw new MwError("USAGE", "项目态请求必须指定工程 ID");
+      return ctx.resolveProject(id);
+    }
+    if (!ctx.dir || !ctx.bus || !ctx.register || !ctx.exports)
+      throw new Error("工作台工程上下文没有配置");
+    const fixedId = basename(ctx.dir, ".mwproj");
+    if (id && id !== fixedId) throw new MwError("NOT_FOUND", `工程「${id}」不属于此工作台`);
+    return {
+      id: fixedId,
+      dir: ctx.dir,
+      bus: ctx.bus,
+      register: ctx.register,
+      exports: ctx.exports,
+    };
+  };
 
   app.use("/api/*", async (c, next) => {
     const host = c.req.header("host") ?? "";
@@ -89,30 +133,53 @@ export function createApp(ctx: AppContext): Hono {
     return s.parse(raw) as z.output<T>;
   };
 
-  app.get(ROUTES.project, async (c) =>
-    c.json({
-      ok: true,
-      name: basename(ctx.dir, ".mwproj"),
-      dir: ctx.dir,
-      project: await loadProject(ctx.dir),
-    }),
-  );
-
-  app.get(ROUTES.preview, async (c) => {
-    const project = await loadProject(ctx.dir);
-    const { props } = await buildProps(ctx.dir, project, ctx.register, "proxy");
-    return c.json({ ok: true, props });
+  app.get(ROUTES.projects, async (c) => {
+    const projects = ctx.listProjects
+      ? await ctx.listProjects()
+      : ctx.dir
+        ? [
+            {
+              id: basename(ctx.dir, ".mwproj"),
+              name: basename(ctx.dir, ".mwproj"),
+              revision: (await loadProject(ctx.dir)).revision,
+            },
+          ]
+        : [];
+    return c.json({ ok: true, projects });
   });
 
-  app.get(ROUTES.editor, async (c) => c.json({ ok: true, editor: await loadEditor(ctx.dir) }));
+  app.get(ROUTES.project, async (c) => {
+    const p = await projectContext(c);
+    return c.json({
+      ok: true,
+      id: p.id,
+      name: basename(p.dir, ".mwproj"),
+      dir: p.dir,
+      project: await loadProject(p.dir),
+    });
+  });
+
+  app.get(ROUTES.preview, async (c) => {
+    const p = await projectContext(c);
+    const project = await loadProject(p.dir);
+    const { props } = await buildProps(p.dir, project, p.register, "proxy");
+    return c.json({ ok: true, projectId: p.id, props });
+  });
+
+  app.get(ROUTES.editor, async (c) => {
+    const p = await projectContext(c);
+    return c.json({ ok: true, projectId: p.id, editor: await loadEditor(p.dir) });
+  });
   app.put(ROUTES.editor, async (c) => {
-    await saveEditor(ctx.dir, await body(c, EditorState));
-    return c.json({ ok: true });
+    const p = await projectContext(c);
+    await saveEditor(p.dir, await body(c, EditorState));
+    return c.json({ ok: true, projectId: p.id });
   });
 
   app.post(ROUTES.ops, async (c) => {
+    const p = await projectContext(c);
     const req = await body(c, OpsRequest);
-    const r = await applyToProject(ctx.dir, {
+    const r = await applyToProject(p.dir, {
       ops: req.ops,
       baseRevision: req.baseRevision,
       source: "ui",
@@ -120,18 +187,19 @@ export function createApp(ctx: AppContext): Hono {
       dryRun: req.dryRun,
       ...templateOpts,
     });
-    return c.json(r);
+    return c.json({ ...r, projectId: p.id });
   });
 
   app.get(ROUTES.libraryStyles, async (c) => c.json({ ok: true, ...(await listStyles()) }));
   app.post(ROUTES.libraryStyles, async (c) => {
+    const p = await projectContext(c);
     const { style, as, description, overwrite } = await body(c, SaveLibraryStyleRequest);
-    const saved = await saveStyle(ctx.dir, style, {
+    const saved = await saveStyle(p.dir, style, {
       overwrite,
       ...(as === undefined ? {} : { as }),
       ...(description === undefined ? {} : { description }),
     });
-    return c.json({ ok: true, saved: saved.name });
+    return c.json({ ok: true, projectId: p.id, saved: saved.name });
   });
 
   app.get(ROUTES.layout, async (c) => c.json({ ok: true, layout: await getLayout() }));
@@ -139,96 +207,126 @@ export function createApp(ctx: AppContext): Hono {
     c.json({ ok: true, layout: await setLayout(await body(c, Layout)) }),
   );
 
-  app.get(ROUTES.lint, async (c) => c.json(await lintDir(ctx.dir)));
+  app.get(ROUTES.lint, async (c) => {
+    const p = await projectContext(c);
+    return c.json({ ...(await lintDir(p.dir)), projectId: p.id });
+  });
 
-  app.get(ROUTES.comments, async (c) => c.json({ ok: true, review: await loadReview(ctx.dir) }));
+  app.get(ROUTES.comments, async (c) => {
+    const p = await projectContext(c);
+    return c.json({ ok: true, projectId: p.id, review: await loadReview(p.dir) });
+  });
   app.post(ROUTES.comments, async (c) => {
+    const p = await projectContext(c);
     const { actor, ...input } = await body(c, CommentRequest);
-    return c.json(await commentOnProject(ctx.dir, input, { author: actor, source: "ui" }));
+    return c.json({
+      ...(await commentOnProject(p.dir, input, { author: actor, source: "ui" })),
+      projectId: p.id,
+    });
   });
   app.post("/api/comments/:id", async (c) => {
+    const p = await projectContext(c);
     const req = await body(c, CommentStatusRequest);
-    return c.json(
-      await setCommentOnProject(ctx.dir, {
+    return c.json({
+      ...(await setCommentOnProject(p.dir, {
         id: c.req.param("id"),
         status: req.status,
         note: req.note,
         author: req.actor,
-      }),
-    );
+      })),
+      projectId: p.id,
+    });
   });
-  app.delete("/api/comments/:id", async (c) =>
-    c.json(await removeCommentFromProject(ctx.dir, c.req.param("id"))),
-  );
+  app.delete("/api/comments/:id", async (c) => {
+    const p = await projectContext(c);
+    return c.json({
+      ...(await removeCommentFromProject(p.dir, c.req.param("id"))),
+      projectId: p.id,
+    });
+  });
 
-  app.get(ROUTES.history, async (c) => c.json({ ok: true, ...(await historyState(ctx.dir)) }));
+  app.get(ROUTES.history, async (c) => {
+    const p = await projectContext(c);
+    return c.json({ ok: true, projectId: p.id, ...(await historyState(p.dir)) });
+  });
   app.get("/api/history/:rev", async (c) => {
+    const p = await projectContext(c);
     const rev = Number(c.req.param("rev"));
     if (!Number.isInteger(rev) || rev < 0) throw new MwError("USAGE", "版本号必须是非负整数");
-    return c.json(await revisionDiff(ctx.dir, rev));
+    return c.json({ ...(await revisionDiff(p.dir, rev)), projectId: p.id });
   });
 
   for (const direction of ["undo", "redo"] as const) {
     app.post(ROUTES[direction], async (c) => {
+      const p = await projectContext(c);
       const req = await body(c, UndoRequest);
-      const r = await undoProject(ctx.dir, {
+      const r = await undoProject(p.dir, {
         direction,
         baseRevision: req.baseRevision,
         source: "ui",
         actor: req.actor,
       });
-      return c.json(r);
+      return c.json({ ...r, projectId: p.id });
     });
   }
 
   app.post(ROUTES.restoreCut, async (c) => {
+    const p = await projectContext(c);
     const req = await body(c, RestoreCutRequest);
-    const r = await restoreCut(ctx.dir, req.clip, {
+    const r = await restoreCut(p.dir, req.clip, {
       baseRevision: req.baseRevision,
       source: "ui",
       actor: req.actor,
     });
-    return c.json(r);
+    return c.json({ ...r, projectId: p.id });
   });
 
   app.get("/api/media/:asset/peaks", async (c) => {
+    const p = await projectContext(c);
     const id = c.req.param("asset");
-    const project = await loadProject(ctx.dir);
+    const project = await loadProject(p.dir);
     const peaks = project.assets[id]?.cache?.peaks;
     if (!peaks) throw new MwError("NOT_FOUND", `素材「${id}」没有波形数据`);
-    const data = JSON.parse(await readFile(join(ctx.dir, peaks), "utf8"));
-    return c.json({ ok: true, ...data });
+    const data = JSON.parse(await readFile(join(p.dir, peaks), "utf8"));
+    return c.json({ ok: true, projectId: p.id, ...data });
   });
 
   app.post(ROUTES.export, async (c) => {
+    const p = await projectContext(c);
     const req = await body(c, ExportRequest);
-    return c.json({ ok: true, jobId: ctx.exports.start(req.out) });
+    return c.json({ ok: true, projectId: p.id, jobId: p.exports.start(req.out) });
   });
 
-  app.post(ROUTES.cover, async (c) => c.json(await coverProject(ctx.dir)));
+  app.post(ROUTES.cover, async (c) => {
+    const p = await projectContext(c);
+    return c.json({ ...(await coverProject(p.dir)), projectId: p.id });
+  });
 
-  app.get(ROUTES.events, (c) =>
-    streamSSE(c, async (stream) => {
+  app.get(ROUTES.events, async (c) => {
+    const p = await projectContext(c);
+    return streamSSE(c, async (stream) => {
+      const release = await ctx.watchProject?.(p.id);
       const queue: ServerEvent[] = [];
       let wake: (() => void) | null = null;
-      const unsubscribe = ctx.bus.subscribe((e) => {
+      const unsubscribe = p.bus.subscribe((e) => {
         queue.push(e);
         wake?.();
       });
       stream.onAbort(() => {
         unsubscribe();
+        release?.();
         wake?.();
       });
       // 先告诉网页当前的版本，断线重连后可以判断要不要刷新
-      const project = await loadProject(ctx.dir);
+      const project = await loadProject(p.dir);
       await stream.writeSSE({
         event: "hello",
-        data: JSON.stringify({ revision: project.revision }),
+        data: JSON.stringify({ projectId: p.id, revision: project.revision }),
       });
       while (!stream.aborted) {
         const e = queue.shift();
         if (e) {
-          await stream.writeSSE({ event: e.type, data: JSON.stringify(e) });
+          await stream.writeSSE({ event: e.type, data: JSON.stringify({ ...e, projectId: p.id }) });
           continue;
         }
         // 没有事件时每 15 秒发一次心跳，避免连接被中间环节断开
@@ -240,8 +338,8 @@ export function createApp(ctx: AppContext): Hono {
         if (queue.length === 0 && !stream.aborted)
           await stream.writeSSE({ event: "ping", data: "" });
       }
-    }),
-  );
+    });
+  });
 
   app.notFound((c) =>
     c.req.path.startsWith("/api/")

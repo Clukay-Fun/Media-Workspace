@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ServerEvent } from "../core/api";
+import { MwError } from "../core/errors";
 import { applyToProject, commentOnProject, initProject } from "../node/store";
 import { createApp } from "./app";
 import { createBus, watchProject } from "./events";
@@ -58,6 +59,95 @@ function setup(run?: Parameters<typeof createExportJobs>[2]) {
 }
 
 describe("本地服务接口", () => {
+  it("多工程 API 必须显式指定工程 ID，写入不会落到另一个工程", async () => {
+    const projects = join(root, "projects");
+    const firstDir = join(projects, "工程一.mwproj");
+    const secondDir = join(projects, "工程二.mwproj");
+    await initProject(firstDir);
+    await initProject(secondDir);
+
+    const contexts = new Map(
+      [firstDir, secondDir].map((projectDir) => {
+        const id =
+          projectDir
+            .split("/")
+            .at(-1)
+            ?.replace(/\.mwproj$/, "") ?? "";
+        const bus = createBus();
+        return [
+          id,
+          {
+            id,
+            dir: projectDir,
+            bus,
+            register: (abs: string) => `http://media/${abs}`,
+            exports: createExportJobs(projectDir, bus),
+          },
+        ] as const;
+      }),
+    );
+    const fallbackBus = createBus();
+    const app = createApp({
+      dir,
+      bus: fallbackBus,
+      register: (abs) => `http://media/${abs}`,
+      exports: createExportJobs(dir, fallbackBus),
+      listProjects: async () => [
+        { id: "工程一", name: "工程一", revision: 0 },
+        { id: "工程二", name: "工程二", revision: 0 },
+      ],
+      resolveProject: async (id) => {
+        const context = contexts.get(id);
+        if (!context) throw new MwError("NOT_FOUND", `工程「${id}」不存在`);
+        return context;
+      },
+    });
+    const req = (path: string, projectId?: string, body?: unknown) =>
+      app.request(`http://127.0.0.1:5170${path}`, {
+        method: body === undefined ? "GET" : "POST",
+        headers: {
+          host: "127.0.0.1:5170",
+          "content-type": "application/json",
+          ...(projectId ? { "x-mw-project": encodeURIComponent(projectId) } : {}),
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+
+    expect((await req("/api/projects")).status).toBe(200);
+    expect((await req("/api/project")).status).toBe(400);
+    expect((await req("/api/project", "../first")).status).toBe(404);
+    expect((await (await req("/api/project", "工程一")).json()).project.revision).toBe(0);
+    expect((await req("/api/ops", "工程一", { ops: [asset], baseRevision: 0 })).status).toBe(200);
+    expect((await (await req("/api/project", "工程一")).json()).project.revision).toBe(1);
+    expect((await (await req("/api/project", "工程二")).json()).project.revision).toBe(0);
+
+    const controller = new AbortController();
+    const events = await app.request(
+      `http://127.0.0.1:5170/api/events?project=${encodeURIComponent("工程一")}`,
+      {
+        headers: { host: "127.0.0.1:5170" },
+        signal: controller.signal,
+      },
+    );
+    const reader = events.body?.getReader();
+    expect(reader).toBeDefined();
+    const decoder = new TextDecoder();
+    const hello = await reader?.read();
+    expect(decoder.decode(hello?.value)).toContain('"projectId":"工程一"');
+    contexts.get("工程一")?.bus.emit({
+      type: "project",
+      revision: 2,
+      changed: ["a1"],
+      actor: "codex",
+      source: "mcp",
+      kind: "apply",
+    });
+    const event = await reader?.read();
+    expect(decoder.decode(event?.value)).toContain('"projectId":"工程一"');
+    controller.abort();
+    await reader?.cancel();
+  });
+
   it("账号版式：读、整份替换，不合法返回 422", async () => {
     const old = process.env.MW_HOME;
     process.env.MW_HOME = root;
@@ -180,6 +270,7 @@ describe("本地服务接口", () => {
       revision: 1,
       issues: [],
       noFaceData: ["a1"],
+      projectId: "demo",
     });
   });
 
@@ -245,7 +336,7 @@ describe("本地服务接口", () => {
       expect(list.styles.map((s: { name: string }) => s.name)).toContain("caption-word-yellow");
       const body = { style: "caption-word-yellow", as: "srv-cap" };
       const saved = await req("/api/library/styles", { method: "POST", body });
-      expect(await saved.json()).toEqual({ ok: true, saved: "srv-cap" });
+      expect(await saved.json()).toEqual({ ok: true, projectId: "demo", saved: "srv-cap" });
       const again = await req("/api/library/styles", { method: "POST", body });
       expect(again.status).toBe(422);
       expect((await again.json()).code).toBe("DUPLICATE_ID");

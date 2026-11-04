@@ -16,6 +16,7 @@ import {
   type PeaksResponse,
   type PreviewResponse,
   type ProjectResponse,
+  type ProjectsResponse,
   type RestoreCutRequest,
   type RestoreCutResponse,
   type ReviewResponse,
@@ -26,13 +27,15 @@ import {
 } from "../../core/api";
 import type { LayoutInput } from "../../core/layout";
 
-// 界面所有的网络请求都在这里。真实服务端和 mock（VITE_MW_MOCK=1）实现同一个接口，组件不关心是哪一个。
+// 界面所有网络请求都从这里发出；forProject 创建的 API 把目标工程固定在该标签页上下文中。
 
 export type Api = {
+  readonly projectId: string | null;
+  projects(): Promise<ProjectsResponse>;
+  forProject(id: string): Api;
   project(): Promise<ProjectResponse>;
   preview(): Promise<PreviewResponse>;
   history(): Promise<HistoryResponse>;
-  /** 某一版相对上一版改了什么 */
   revision(rev: number): Promise<RevisionDiffResponse>;
   lint(): Promise<LintResponse>;
   review(): Promise<ReviewResponse>;
@@ -40,7 +43,6 @@ export type Api = {
   saveEditor(editor: EditorState): Promise<void>;
   libraryStyles(): Promise<LibraryStylesResponse>;
   saveLibraryStyle(req: SaveLibraryStyleRequest): Promise<{ ok: true; saved: string }>;
-  /** 账号版式（所有工程共用）；没设置过时 layout 为 null */
   layout(): Promise<LayoutResponse>;
   saveLayout(layout: LayoutInput): Promise<LayoutResponse>;
   peaks(assetId: string): Promise<PeaksResponse | null>;
@@ -51,14 +53,17 @@ export type Api = {
   setComment(id: string, req: CommentStatusRequest): Promise<CommentResponse>;
   exportVideo(): Promise<ExportStarted>;
   cover(): Promise<CoverResponse>;
-  /** 订阅推送；返回取消订阅。onStatus 报告连接状态 */
   subscribe(onEvent: (e: LiveEvent) => void, onStatus: (live: boolean) => void): () => void;
 };
 
-/** 推送事件，加上连接建立时的 hello（带当前 revision，断线重连后据此判断要不要刷新） */
-export type LiveEvent = ServerEvent | { type: "hello"; revision: number };
+export type LiveEvent =
+  | (ServerEvent & { projectId: string })
+  | {
+      type: "hello";
+      projectId: string;
+      revision: number;
+    };
 
-/** 服务端返回的结构化错误 */
 export class ApiFailure extends Error {
   constructor(
     readonly code: ApiError["code"],
@@ -68,10 +73,17 @@ export class ApiFailure extends Error {
   }
 }
 
-async function request<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
+async function request<T>(
+  path: string,
+  init?: { method?: string; body?: unknown },
+  projectId?: string | null,
+): Promise<T> {
+  const headers: Record<string, string> = {};
+  if (init?.body !== undefined) headers["content-type"] = "application/json";
+  if (projectId) headers["x-mw-project"] = encodeURIComponent(projectId);
   const res = await fetch(path, {
     method: init?.method ?? (init?.body === undefined ? "GET" : "POST"),
-    headers: init?.body === undefined ? undefined : { "content-type": "application/json" },
+    headers: Object.keys(headers).length ? headers : undefined,
     body: init?.body === undefined ? undefined : JSON.stringify(init.body),
   });
   const data = (await res.json().catch(() => null)) as (T & { ok: boolean }) | ApiError | null;
@@ -80,42 +92,70 @@ async function request<T>(path: string, init?: { method?: string; body?: unknown
     const e = data as ApiError;
     throw new ApiFailure(e.code, e.message);
   }
+  const responseProjectId =
+    "projectId" in data && typeof data.projectId === "string"
+      ? data.projectId
+      : "id" in data && typeof data.id === "string"
+        ? data.id
+        : null;
+  if (projectId && responseProjectId && responseProjectId !== projectId)
+    throw new ApiFailure("CONFLICT", "服务端返回了另一个工程的数据，已丢弃这次响应");
   return data as T;
 }
 
-export const httpApi: Api = {
-  project: () => request(ROUTES.project),
-  preview: () => request(ROUTES.preview),
-  history: () => request(ROUTES.history),
-  revision: (rev) => request(ROUTES.revision(rev)),
-  lint: () => request(ROUTES.lint),
-  review: () => request(ROUTES.comments),
-  editor: () => request(ROUTES.editor),
-  saveEditor: async (editor) => {
-    await request<{ ok: true }>(ROUTES.editor, { method: "PUT", body: editor });
-  },
-  libraryStyles: () => request(ROUTES.libraryStyles),
-  saveLibraryStyle: (req) => request(ROUTES.libraryStyles, { body: req }),
-  layout: () => request(ROUTES.layout),
-  saveLayout: (layout) => request(ROUTES.layout, { method: "PUT", body: layout }),
-  peaks: (id) => request<PeaksResponse>(ROUTES.peaks(id)).catch(() => null),
-  ops: (req) => request(ROUTES.ops, { body: req }),
-  restoreCut: (req) => request(ROUTES.restoreCut, { body: req }),
-  undo: (direction, baseRevision) => request(ROUTES[direction], { body: { baseRevision } }),
-  comment: (req) => request(ROUTES.comments, { body: req }),
-  setComment: (id, req) => request(ROUTES.comment(id), { body: req }),
-  exportVideo: () => request(ROUTES.export, { body: {} }),
-  cover: () => request(ROUTES.cover, { body: {} }),
-  subscribe(onEvent, onStatus) {
-    const es = new EventSource(ROUTES.events);
-    const handle = (m: MessageEvent<string>) => onEvent(JSON.parse(m.data) as ServerEvent);
-    for (const type of ["project", "review", "export"]) es.addEventListener(type, handle);
-    es.addEventListener("hello", (m) => {
-      onStatus(true);
-      const { revision } = JSON.parse((m as MessageEvent<string>).data) as { revision: number };
-      onEvent({ type: "hello", revision });
-    });
-    es.onerror = () => onStatus(false);
-    return () => es.close();
-  },
-};
+function createHttpApi(projectId: string | null): Api {
+  const req = <T>(path: string, init?: { method?: string; body?: unknown }) =>
+    request<T>(path, init, projectId);
+  return {
+    projectId,
+    projects: () => request(ROUTES.projects),
+    forProject: (id) => createHttpApi(id),
+    project: () => req(ROUTES.project),
+    preview: () => req(ROUTES.preview),
+    history: () => req(ROUTES.history),
+    revision: (rev) => req(ROUTES.revision(rev)),
+    lint: () => req(ROUTES.lint),
+    review: () => req(ROUTES.comments),
+    editor: () => req(ROUTES.editor),
+    saveEditor: async (editor) => {
+      await req<{ ok: true }>(ROUTES.editor, { method: "PUT", body: editor });
+    },
+    libraryStyles: () => request(ROUTES.libraryStyles),
+    saveLibraryStyle: (body) => req(ROUTES.libraryStyles, { body }),
+    layout: () => request(ROUTES.layout),
+    saveLayout: (layout) => request(ROUTES.layout, { method: "PUT", body: layout }),
+    peaks: (id) => req<PeaksResponse>(ROUTES.peaks(id)).catch(() => null),
+    ops: (body) => req(ROUTES.ops, { body }),
+    restoreCut: (body) => req(ROUTES.restoreCut, { body }),
+    undo: (direction, baseRevision) => req(ROUTES[direction], { body: { baseRevision } }),
+    comment: (body) => req(ROUTES.comments, { body }),
+    setComment: (id, body) => req(ROUTES.comment(id), { body }),
+    exportVideo: () => req(ROUTES.export, { body: {} }),
+    cover: () => req(ROUTES.cover, { body: {} }),
+    subscribe(onEvent, onStatus) {
+      const eventUrl = projectId
+        ? `${ROUTES.events}?project=${encodeURIComponent(projectId)}`
+        : ROUTES.events;
+      const es = new EventSource(eventUrl);
+      const handle = (m: MessageEvent<string>) =>
+        onEvent({ ...(JSON.parse(m.data) as ServerEvent), projectId: projectId ?? "" });
+      for (const type of ["project", "review", "export"]) es.addEventListener(type, handle);
+      es.addEventListener("hello", (m) => {
+        onStatus(true);
+        const data = JSON.parse((m as MessageEvent<string>).data) as {
+          revision: number;
+          projectId?: string;
+        };
+        onEvent({
+          type: "hello",
+          revision: data.revision,
+          projectId: data.projectId ?? projectId ?? "",
+        });
+      });
+      es.onerror = () => onStatus(false);
+      return () => es.close();
+    },
+  };
+}
+
+export const httpApi: Api = createHttpApi(null);

@@ -1,4 +1,5 @@
 import type React from "react";
+import { useMemo, useState } from "react";
 import { useStore } from "../store";
 import { Icon } from "./icons";
 import { IssuesMenu } from "./issues-menu";
@@ -6,6 +7,12 @@ import { IssuesMenu } from "./issues-menu";
 export function TopBar() {
   const project = useStore((s) => s.project);
   const name = useStore((s) => s.name);
+  const projectId = useStore((s) => s.projectId);
+  const projects = useStore((s) => s.projects);
+  const switchTarget = useStore((s) => s.switchTarget);
+  const requestProjectSwitch = useStore((s) => s.requestProjectSwitch);
+  const resolveProjectSwitch = useStore((s) => s.resolveProjectSwitch);
+  const toast = useStore((s) => s.toast);
   const history = useStore((s) => s.history);
   const review = useStore((s) => s.review);
   const aiChange = useStore((s) => s.aiChange);
@@ -19,6 +26,14 @@ export function TopBar() {
   const exporting = exportJob !== null && !exportJob.done;
   const canUndoAi = aiChange && aiChange.revision === project?.revision && history?.undo;
 
+  const [switchOpen, setSwitchOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const filtered = useMemo(
+    () =>
+      projects.filter((p) => p.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())),
+    [projects, query],
+  );
+
   return (
     <header className="topbar">
       <div className="topbar-title">
@@ -31,9 +46,62 @@ export function TopBar() {
         >
           <Icon name="list" />
         </button>
-        <h1 className="topbar-name" title={name}>
-          {name || "载入中…"}
-        </h1>
+        <div className="project-switcher">
+          <button
+            type="button"
+            className="project-switcher-trigger"
+            aria-label="切换工程"
+            aria-expanded={switchOpen}
+            onPointerDown={(event) => {
+              const active = document.activeElement;
+              const isEditor =
+                active instanceof HTMLElement &&
+                active.matches("input, textarea, select, [contenteditable='true']") &&
+                !active.closest(".project-switcher");
+              if (isEditor) {
+                event.preventDefault();
+                toast("请先完成当前输入；文本框失焦后会自动保存，再切换工程", "info");
+                return;
+              }
+              setSwitchOpen((open) => !open);
+            }}
+          >
+            <h1 className="topbar-name" title={name}>
+              {name || "载入中…"}
+            </h1>
+            <span aria-hidden="true">⌄</span>
+          </button>
+          {switchOpen && (
+            <div className="project-switcher-menu" role="listbox" aria-label="可打开工程">
+              <input
+                className="project-switcher-search"
+                aria-label="搜索工程"
+                placeholder="搜索工程"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+              <div className="project-switcher-list">
+                {filtered.map((item) => (
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={item.id === projectId}
+                    key={item.id}
+                    onClick={() => {
+                      setSwitchOpen(false);
+                      setQuery("");
+                      requestProjectSwitch(item.id);
+                    }}
+                  >
+                    <span>{item.name}</span>
+                    <small>rev {item.revision}</small>
+                  </button>
+                ))}
+                {filtered.length === 0 && <p>没有匹配的工程</p>}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="topbar-center">
@@ -102,6 +170,42 @@ export function TopBar() {
           {exporting ? `导出中 ${Math.round(exportJob.progress * 100)}%` : "导出"}
         </button>
       </div>
+      {switchTarget && (
+        <div className="project-switcher-backdrop" role="presentation">
+          <section
+            className="project-switcher-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="switch-title"
+          >
+            <h2 id="switch-title">有一条未提交的批注</h2>
+            <p>先保存到「{name}」，或明确丢弃后切换工程。</p>
+            <div>
+              <button
+                type="button"
+                className="chip"
+                onClick={() => void resolveProjectSwitch("cancel")}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="chip"
+                onClick={() => void resolveProjectSwitch("discard")}
+              >
+                丢弃并切换
+              </button>
+              <button
+                type="button"
+                className="export-btn"
+                onClick={() => void resolveProjectSwitch("save")}
+              >
+                保存并切换
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </header>
   );
 }
