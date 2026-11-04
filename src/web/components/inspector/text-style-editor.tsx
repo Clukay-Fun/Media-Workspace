@@ -7,6 +7,7 @@ import { effectiveStyleId, type StyleScope } from "../../../core/style-scope";
 import type { Anim, TextStyle } from "../../../core/text-style";
 import { ApiFailure } from "../../data/client";
 import type { ItemRef } from "../../lib/project";
+import { stylePresentation, styleTemplateId } from "../../lib/style-presentation";
 import { itemFrames } from "../../lib/timeline";
 import { useStore } from "../../store";
 import { editStyle, Field, isImeComposing } from "./common";
@@ -36,7 +37,7 @@ type CaptionAnimationPreset = {
 
 export const CAPTION_ANIMATION_PRESETS: CaptionAnimationPreset[] = [
   {
-    label: "1029 逐词短淡入",
+    label: "默认模板逐词短淡入",
     note: "逐词出现，前快后慢；淡入 300 毫秒。",
     animation: {
       in: { preset: "fade", durationMs: 300, easing: "ease-out" },
@@ -85,14 +86,14 @@ const ANIM_UNITS = [
 const PRESETS: { id: string; label: string; note: string; caption: boolean; title: boolean }[] = [
   {
     id: "caption-word-yellow",
-    label: "1029 字幕",
+    label: "默认模板字幕",
     note: "白字黑边，当前词柠檬黄，逐词短淡入",
     caption: true,
     title: false,
   },
   {
     id: "title-bar-yellow",
-    label: "1029 标题",
+    label: "默认模板标题",
     note: "金黄、重黑边，静态不加入场",
     caption: false,
     title: true,
@@ -161,7 +162,7 @@ export function TextStyleEditor({
     update({ font: { family: fid, weight } });
   };
 
-  const applyPreset = (presetId: string) => {
+  const applyPreset = (presetId: string, label: string) => {
     const preset = builtins[presetId];
     if (!preset) return;
     editStyle(
@@ -169,7 +170,7 @@ export function TextStyleEditor({
       preset as unknown as Record<string, unknown>,
       scope,
       fallback,
-      `已套用「${presetId}」`,
+      `已套用「${label}」`,
     );
   };
 
@@ -177,7 +178,7 @@ export function TextStyleEditor({
 
   const saveAsTemplate = async () => {
     const st = useStore.getState();
-    const requested = window.prompt("模板名称", activeStyleId)?.trim();
+    const requested = window.prompt("模板名称", styleTemplateId(activeStyleId))?.trim();
     if (!requested) return;
 
     try {
@@ -249,7 +250,7 @@ export function TextStyleEditor({
       />
 
       {presets.length > 0 && (
-        <Field label="常用预设" note="1029 样片">
+        <Field label="常用预设" note="默认模板样式">
           <div className="preset-row">
             {presets.map((p) => (
               <button
@@ -257,7 +258,7 @@ export function TextStyleEditor({
                 type="button"
                 className="preset-chip"
                 disabled={locked}
-                onClick={() => applyPreset(p.id)}
+                onClick={() => applyPreset(p.id, p.label)}
               >
                 <b>{p.label}</b>
                 <span>{p.note}</span>

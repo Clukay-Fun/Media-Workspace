@@ -35,6 +35,11 @@ const project = () =>
           { id: "s2", asset: "a1", startMs: 2000, endMs: 3000, text: "第二句" },
         ],
       },
+      {
+        id: "titles",
+        kind: "overlay",
+        items: [{ id: "o1", template: "title-bar", at: { ms: 0 }, durationMs: 3000, props: {} }],
+      },
     ],
   });
 
@@ -43,7 +48,7 @@ describe("字幕动画快捷选项", () => {
     expect(CAPTION_ANIMATION_PRESETS.map(({ label, animation }) => ({ label, animation }))).toEqual(
       [
         {
-          label: "1029 逐词短淡入",
+          label: "默认模板逐词短淡入",
           animation: {
             in: { preset: "fade", durationMs: 300, easing: "ease-out" },
             unit: "word",
@@ -102,10 +107,30 @@ describe("字幕动画快捷选项", () => {
     expect(legacyOption).toContain('value="color-sweep"');
     expect(legacyOption).toContain('disabled=""');
     expect(legacyOption).toContain('selected=""');
-    expect(html).toContain("1029 逐词短淡入");
+    expect(html).toContain("默认模板字幕");
+    expect(html).toContain("默认模板逐词短淡入");
+    expect(html).toContain("默认模板样式");
     expect(html).toContain("跟随语音");
     expect(html).toContain("整行淡入");
     expect(html).toContain("不会更改字体、颜色、位置或高亮");
+  });
+
+  it("标题预设使用默认模板名称", () => {
+    const current = project();
+    const ref_ = findItem(current, "o1");
+    if (!ref_) throw new Error("测试标题缺失");
+    const html = renderToStaticMarkup(
+      <TextStyleEditor
+        project={current}
+        id="o1"
+        ref_={ref_}
+        fallback="title-bar-yellow"
+        elementLabel="标题"
+      />,
+    );
+
+    expect(html).toContain("默认模板标题");
+    expect(html).not.toContain("1029 标题");
   });
 
   it("逐项套用时仅更改 animation，保留其余字段和当前 / 共用范围规则", () => {

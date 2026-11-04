@@ -16,7 +16,7 @@
   },
   "items": [
     {
-      "projectName": "1029-样片-A",
+      "projectName": "默认模板-样片-A",
       "video": "剪辑前.mov",
       "scriptFile": "script.txt",
       "titleLines": ["主标题", "副标题"]
@@ -24,6 +24,8 @@
   ]
 }
 ```
+
+界面中这两套样式显示为“默认模板字幕”和“默认模板标题”。清单仍使用样式库 ID `1029-caption-puhui-v1`、`1029-title-puhui-v1`；这些 ID 是已有工程和样式库的兼容标识，改显示名称不会更改它们。
 
 每项要提供唯一的 `projectName`、视频、纯文本 `scriptFile` 和正好两段 `titleLines`。批量预检先按样式库保存的画布把标题样式适配到新建的 9:16 工程，再估算总行数；超过两行的项目会被拒绝并在报告中记录估算值，不会创建工程。估算沿用 `core/lint.ts` 的 `estimateLines`：中文字符按字号宽度估算，其他字符按较窄的平均宽度估算。
 

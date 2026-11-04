@@ -10,6 +10,7 @@ import type { TextStyle } from "../../core/text-style";
 import { ApiFailure } from "../data/client";
 import { placeAsset } from "../lib/pip";
 import { findItem } from "../lib/project";
+import { stylePresentation } from "../lib/style-presentation";
 import { msOfFrame } from "../lib/timeline";
 import { type LeftTab, useStore } from "../store";
 import { Icon } from "./icons";
@@ -111,13 +112,14 @@ function Styles() {
   const st = useStore.getState();
   const apply = (name: string) => {
     if (!target || !selected) return;
+    const label = stylePresentation(name).name;
     void st.submit(
       [
         target.track.kind === "caption"
           ? { op: "caption.update", id: selected, set: { style: name } }
           : { op: "item.update", id: selected, set: { style: name } },
       ],
-      `已把「${name}」套用到 ${selected}`,
+      `已把「${label}」套用到 ${selected}`,
     );
   };
   const save = async (name: string) => {
@@ -131,7 +133,9 @@ function Styles() {
         if (!window.confirm(`模板库里已经有「${as}」，覆盖它吗？`)) throw null;
         await send(true);
       });
-      st.toast(`已把「${name}」存进模板库（${as}），其他工程也能用`);
+      const label = stylePresentation(name).name;
+      const savedAs = stylePresentation(as).name;
+      st.toast(`已把「${label}」存进模板库（${savedAs}），其他工程也能用`);
       reload();
     } catch (e) {
       if (e) st.toast(e instanceof Error ? e.message : String(e), "error");
@@ -146,15 +150,20 @@ function Styles() {
           style: fitStyle(l.style, l.canvas ?? STYLE_REFERENCE, project.canvas),
         },
       ],
-      `已把「${l.name}」加入本工程`,
+      `已把「${stylePresentation(l.name).name}」加入本工程`,
     );
 
-  const own = Object.entries(project.styles).filter(([name, style]) =>
-    matches(q, name, describeStyle(style)),
-  );
-  const more = (library ?? []).filter(
-    (l) => !(l.name in project.styles) && matches(q, l.name, l.description, describeStyle(l.style)),
-  );
+  const own = Object.entries(project.styles).filter(([name, style]) => {
+    const presentation = stylePresentation(name);
+    return matches(q, name, presentation.name, presentation.description, describeStyle(style));
+  });
+  const more = (library ?? []).filter((l) => {
+    const presentation = stylePresentation(l.name, l.description);
+    return (
+      !(l.name in project.styles) &&
+      matches(q, l.name, presentation.name, presentation.description, describeStyle(l.style))
+    );
+  });
   return (
     <div className="styles">
       <SearchBox value={q} onChange={setQ} />
@@ -165,7 +174,7 @@ function Styles() {
             type="button"
             className="icon-btn ghost"
             title="存为模板：以后在其他工程里也能用"
-            aria-label={`把 ${name} 存为模板`}
+            aria-label={`把 ${stylePresentation(name).name} 存为模板`}
             onClick={() => void save(name)}
           >
             <Icon name="save" size={13} />
@@ -204,7 +213,7 @@ function Styles() {
   );
 }
 
-function StyleCard({
+export function StyleCard({
   name,
   style,
   note,
@@ -217,6 +226,7 @@ function StyleCard({
 }) {
   const fonts = useStore((s) => s.preview?.fonts);
   const [hover, setHover] = useState(false);
+  const presentation = stylePresentation(name, note);
   return (
     <div
       className="style-card"
@@ -234,8 +244,8 @@ function StyleCard({
       </div>
       <div className="style-info">
         <div>
-          <b>{name}</b>
-          <span className="muted">{note || describeStyle(style)}</span>
+          <b>{presentation.name}</b>
+          <span className="muted">{presentation.description || describeStyle(style)}</span>
         </div>
         <div className="style-actions">{children}</div>
       </div>
