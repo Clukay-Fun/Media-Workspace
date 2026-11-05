@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockSeekFrame, captionSeekFrame, seekFrameOnSelect } from "./seek";
+import { blockSeekFrame, captionSeekFrame, clampPlayheadFrame } from "./seek";
 
 describe("seek 目标帧计算", () => {
   it("captionSeekFrame 计算字幕 80% 处的帧位置", () => {
@@ -17,21 +17,9 @@ describe("seek 目标帧计算", () => {
     expect(blockSeekFrame(100, 110, undefined)).toBe(100);
   });
 
-  it("seekFrameOnSelect：当前帧在区间外时跳转，在区间内时不跳转", () => {
-    // 当前在区间前 (now = 50, from = 100, to = 150)
-    expect(seekFrameOnSelect(50, 100, 150, "caption")).toBe(140);
-    expect(seekFrameOnSelect(50, 100, 150, "clip")).toBe(100);
-
-    // 当前在区间后 (now = 200, from = 100, to = 150)
-    expect(seekFrameOnSelect(200, 100, 150, "caption")).toBe(140);
-
-    // 当前刚好在区间起始处 (now = 100) -> 在区间内，不跳
-    expect(seekFrameOnSelect(100, 100, 150, "caption")).toBeNull();
-
-    // 当前在区间中 (now = 120) -> 在区间内，不跳
-    expect(seekFrameOnSelect(120, 100, 150, "caption")).toBeNull();
-
-    // 当前在区间结束边界 (now = 150) -> 已在区间外，跳
-    expect(seekFrameOnSelect(150, 100, 150, "caption")).toBe(140);
+  it("总时长缩短时只夹取越界播放头，保留仍有效的位置", () => {
+    expect(clampPlayheadFrame(300, 301)).toBe(300);
+    expect(clampPlayheadFrame(300, 240)).toBe(239);
+    expect(clampPlayheadFrame(0, 0)).toBe(0);
   });
 });

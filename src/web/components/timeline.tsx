@@ -15,7 +15,7 @@ import { frameToMs, sourceFrameAt } from "../../core/time";
 import { aiChanges } from "../lib/changes";
 import { keyframeMarkerPositions } from "../lib/keyframes";
 import { findItem, type ItemRef, kindLabel } from "../lib/project";
-import { seekFrameOnSelect } from "../lib/seek";
+import { clampPlayheadFrame } from "../lib/seek";
 import {
   type Block,
   filmstripTiles,
@@ -151,6 +151,12 @@ export function Timeline() {
   const tl = preview?.timeline;
   const fps = tl?.fps ?? 30;
   const total = Math.max(1, tl?.durationInFrames ?? 1);
+  useEffect(() => {
+    if (!tl) return;
+    const current = useStore.getState().frame;
+    const clamped = clampPlayheadFrame(current, total);
+    if (clamped !== current) seek(clamped);
+  }, [tl, total, seek]);
   const transitionCuts = useMemo(() => (tl ? transitionCutMarkers(tl.videos) : []), [tl]);
   const fitPps = viewportWidth > 0 ? (viewportWidth * fps) / total : 40;
   const pps = zoomPps ?? fitPps;
@@ -899,9 +905,6 @@ function RowView({
                 onSelect={() => {
                   if (b.kind === "outro") return;
                   select(b.id);
-                  // 播放头不在这一段里时跳过去，预览上能看到选中的是什么
-                  const to = seekFrameOnSelect(useStore.getState().frame, b.from, b.to, b.kind);
-                  if (to !== null) seek(to);
                 }}
                 track={track}
               />

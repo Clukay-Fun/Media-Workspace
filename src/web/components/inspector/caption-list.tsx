@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { highlightAt, highlightMask } from "../../../core/animate";
 import type { Caption, Highlight } from "../../../core/schema";
 import { findItem } from "../../lib/project";
-import { seekFrameOnSelect } from "../../lib/seek";
+import { blockSeekFrame } from "../../lib/seek";
 import { timecode } from "../../lib/timeline";
 import { useStore } from "../../store";
 import { Icon } from "../icons";
 
 /**
- * 全部字幕，点一句跳到文字已显示的地方（和时间线点选同一规则）；当前选中的那句滚到可见。
+ * 全部字幕：行点击只选择，明确的“定位”按钮跳到文字已显示处。
  * 每句右边的笔展开这一句的高亮编辑（docs/decisions/0015），只改这一句，不跳转。
  */
 export function CaptionList() {
@@ -47,15 +47,25 @@ export function CaptionList() {
               type="button"
               className="caption-row-main"
               onClick={() => {
-                const { select, seek, frame: now } = useStore.getState();
-                select(c.id, { reveal: false });
-                const to = c.from + c.durationInFrames;
-                const target = seekFrameOnSelect(now, c.from, to, "caption");
-                if (target !== null) seek(target);
+                useStore.getState().select(c.id, { reveal: false });
               }}
             >
               <span className="mono">{timecode(c.from, tl.fps)}</span>
               <MarkedText text={text} highlights={highlights} />
+            </button>
+            <button
+              type="button"
+              className="caption-locate"
+              aria-label={`定位到 ${timecode(c.from, tl.fps)} ${text}`}
+              title="定位到这句字幕"
+              onClick={() => {
+                const { select, seek } = useStore.getState();
+                select(c.id, { reveal: false });
+                seek(blockSeekFrame(c.from, c.from + c.durationInFrames, "caption"));
+              }}
+            >
+              <Icon name="target" size={12} />
+              定位
             </button>
             <button
               type="button"

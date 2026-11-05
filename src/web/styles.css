@@ -3179,7 +3179,7 @@ textarea:focus-visible {
 
 .caption-row {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: start;
   column-gap: 4px;
   padding: 2px 2px 2px 8px;
@@ -3195,6 +3195,29 @@ textarea:focus-visible {
   padding: 5px 0;
   text-align: left;
   color: inherit;
+}
+
+.caption-locate {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  align-self: center;
+  min-height: 26px;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--text-2);
+  background: var(--panel);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.caption-locate:hover,
+.caption-locate:focus-visible {
+  border-color: var(--accent);
+  color: var(--text);
 }
 
 .caption-row > .icon-btn {
