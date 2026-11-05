@@ -1282,6 +1282,14 @@ textarea:focus-visible {
 
 .hit-layer.dragging {
   cursor: grabbing;
+  /* 拖动时只保留一层即时预览，避免浏览器把旧合成帧做过渡叠加。 */
+  contain: paint;
+}
+
+.hit-layer.dragging .box,
+.hit-layer.dragging .box-handle {
+  transition: none !important;
+  will-change: transform;
 }
 
 .hit-layer.annotating {

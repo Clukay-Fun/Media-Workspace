@@ -123,6 +123,19 @@ function storeOnA(overridesFor: (id: string | null) => Partial<Api> = () => ({})
 afterEach(() => vi.unstubAllGlobals());
 
 describe("工程切换异步隔离", () => {
+  it("等待当前工程的素材修改写入后再切换，避免修改丢失", async () => {
+    installWindow();
+    const opsWrite = deferred<Awaited<ReturnType<Api["ops"]>>>();
+    const store = storeOnA((id) => (id === "A" ? { ops: () => opsWrite.promise } : {}));
+
+    const saving = store.getState().submit([{} as never]);
+    store.getState().requestProjectSwitch("B");
+    expect(store.getState().projectId).toBe("A");
+    opsWrite.resolve({ ok: true, revision: 1, changed: [], warnings: [], dryRun: false });
+    await saving;
+    await vi.waitFor(() => expect(store.getState().projectId).toBe("B"));
+  });
+
   it("批注刷新在切换后返回时不覆盖新工程的 review", async () => {
     installWindow();
     const oldReview = deferred<Awaited<ReturnType<Api["review"]>>>();
