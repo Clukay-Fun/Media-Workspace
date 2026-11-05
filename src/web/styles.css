@@ -695,6 +695,7 @@ textarea:focus-visible {
 
 .sidebar {
   grid-area: side;
+  container-type: inline-size;
 }
 
 .tabs {
@@ -4749,6 +4750,27 @@ button.change-target:hover .change-name {
 .tabs .tab .count {
   flex: none;
   margin-left: 0;
+}
+
+/* 右栏可以被拖到最窄 260px；缩紧标签和徽标，保留三项完整语义，避免徽标压到下一项。 */
+@container (max-width: 280px) {
+  .sidebar .tabs {
+    gap: 0;
+    padding-inline: 4px;
+  }
+
+  .sidebar .tabs .tab {
+    gap: 3px;
+    padding-inline: 3px;
+    font-size: 14px;
+  }
+
+  .sidebar .tabs .tab .count {
+    min-width: 16px;
+    padding-inline: 3px;
+    font-size: 10px;
+    line-height: 16px;
+  }
 }
 
 @media (hover: hover) and (pointer: fine) {

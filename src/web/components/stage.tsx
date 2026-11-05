@@ -318,7 +318,7 @@ export function Stage() {
     }
     if (d?.ops) await st.submit(d.ops);
     // 提交期间用户可能已经开始拖另一个元素，不能把新拖动的草稿清掉
-    if (!drag.current) st.setDraft(null);
+    if (shouldClearDragDraft(drag.current)) st.setDraft(null);
   };
 
   // 指针被浏览器收回（例如系统弹窗、触控取消）时清掉拖动草稿，避免下一次拖动卡在旧状态
@@ -574,7 +574,16 @@ export function Stage() {
   );
 }
 
-type ResizeEdge = "top" | "right" | "bottom" | "left";
+/**
+ * 提交一次拖动时，只有在期间没有新的拖动接管指针，才能清掉草稿。
+ * 这条判断单独保留，避免旧拖动的异步提交把新选中素材的草稿清掉。
+ */
+export function shouldClearDragDraft(activeDrag: object | null): boolean {
+  return activeDrag === null;
+}
+
+export const RESIZE_HANDLE_EDGES = ["top", "right", "bottom", "left"] as const;
+type ResizeEdge = (typeof RESIZE_HANDLE_EDGES)[number];
 
 const RESIZE_HANDLES: {
   edge: ResizeEdge;

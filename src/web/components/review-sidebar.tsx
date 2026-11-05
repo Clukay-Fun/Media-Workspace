@@ -54,7 +54,7 @@ export function ReviewSidebar() {
             className={tab === t.id ? "tab active" : "tab"}
             onClick={() => setSideTab(t.id)}
           >
-            {t.label}
+            <span className="tab-label">{t.label}</span>
             {t.count > 0 && <span className={`count tone-${t.tone}`}>{t.count}</span>}
           </button>
         ))}
