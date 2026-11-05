@@ -61,9 +61,10 @@ type Moving = { id: string; axis: "h" | "v"; pos: number; fresh: boolean };
 /** 每隔多少画布像素一个刻度、一个数字 */
 const TICK = 100;
 const LABEL = 500;
+export const RULER_BAND = 28;
 
 /** 构图参考线和标尺：线随时能拖，拖出画面就删掉；从标尺上往画面里拖出一条新线 */
-export function CanvasGuides({ width, height, scale }: Dims) {
+export function CanvasGuides({ width, height, scale, band }: Dims & { band: number }) {
   const editor = useStore((s) => s.editor);
   const [moving, setMoving] = useState<Moving | null>(null);
   const layer = useRef<HTMLDivElement>(null);
@@ -71,7 +72,9 @@ export function CanvasGuides({ width, height, scale }: Dims) {
   const posAt = (axis: "h" | "v", e: { clientX: number; clientY: number }) => {
     const r = layer.current?.getBoundingClientRect();
     if (!r || scale <= 0) return 0;
-    return Math.round(axis === "h" ? (e.clientY - r.top) / scale : (e.clientX - r.left) / scale);
+    return Math.round(
+      axis === "h" ? (e.clientY - r.top - band) / scale : (e.clientX - r.left - band) / scale,
+    );
   };
 
   // 拖动期间在 window 上跟指针，拖到画面外面也能收到松开
@@ -125,7 +128,11 @@ export function CanvasGuides({ width, height, scale }: Dims) {
     Array.from({ length: Math.floor(len / LABEL) + 1 }, (_, i) => i * LABEL);
 
   return (
-    <div ref={layer} className={moving ? "canvas-guides moving" : "canvas-guides"}>
+    <div
+      ref={layer}
+      className={moving ? "canvas-guides moving" : "canvas-guides"}
+      style={{ "--ruler-band": `${band}px` } as React.CSSProperties}
+    >
       {lines.map((g) => {
         const out = g.pos < 0 || g.pos > (g.axis === "h" ? height : width);
         return (
@@ -137,7 +144,7 @@ export function CanvasGuides({ width, height, scale }: Dims) {
               guides.locked ? "locked" : "",
               out ? "removing" : "",
             ].join(" ")}
-            style={g.axis === "h" ? { top: g.pos * scale } : { left: g.pos * scale }}
+            style={g.axis === "h" ? { top: band + g.pos * scale } : { left: band + g.pos * scale }}
             title={guides.locked ? "参考线已锁定" : "拖动调整；拖出画面删除"}
             onPointerDown={grab(g)}
           >
@@ -149,7 +156,7 @@ export function CanvasGuides({ width, height, scale }: Dims) {
         <>
           <div
             className="ruler top"
-            style={{ backgroundSize: `${TICK * scale}px 100%` }}
+            style={{ left: band, height: band, backgroundSize: `${TICK * scale}px 100%` }}
             title="往下拖出水平参考线"
             onPointerDown={pull("h")}
           >
@@ -161,7 +168,7 @@ export function CanvasGuides({ width, height, scale }: Dims) {
           </div>
           <div
             className="ruler left"
-            style={{ backgroundSize: `100% ${TICK * scale}px` }}
+            style={{ top: band, width: band, backgroundSize: `100% ${TICK * scale}px` }}
             title="往右拖出垂直参考线"
             onPointerDown={pull("v")}
           >

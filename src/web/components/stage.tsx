@@ -14,7 +14,7 @@ import { type HitBox, hitBoxes, pick } from "../lib/geometry";
 import { findItem } from "../lib/project";
 import { frameOfMs, msOfFrame, timecode } from "../lib/timeline";
 import { useStore } from "../store";
-import { addGuide, CanvasGuides, SafeAreaOverlay, safeAreaMode } from "./canvas-guides";
+import { addGuide, CanvasGuides, RULER_BAND, SafeAreaOverlay, safeAreaMode } from "./canvas-guides";
 import { CropOverlay, CropToolbar } from "./crop-editor";
 import { Icon } from "./icons";
 import { AccountGuides, LayoutEditorCard } from "./layout-editor";
@@ -53,6 +53,7 @@ type AnnotationDraft = {
 export function Stage() {
   const name = useStore((s) => s.name);
   const project = useStore((s) => s.project);
+  const editor = useStore((s) => s.editor);
   const preview = useStore((s) => s.preview);
   const draft = useStore((s) => s.draft);
   const frame = useStore((s) => s.frame);
@@ -108,7 +109,11 @@ export function Stage() {
   const H = timeline?.height ?? 1920;
   const fps = timeline?.fps ?? 30;
   const total = Math.max(1, timeline?.durationInFrames ?? 1);
-  const scale = size.w && size.h ? Math.min(size.w / W, size.h / H) : 0;
+  const rulerBand = editor?.rulers ? RULER_BAND : 0;
+  const scale =
+    size.w && size.h
+      ? Math.min(Math.max(0, size.w - rulerBand) / W, Math.max(0, size.h - rulerBand) / H)
+      : 0;
   // Player 的帧号同步回界面；界面跳转时再推给 Player（播放中的帧变化不回推，避免互相触发）
   useEffect(() => {
     const p = player.current;
@@ -371,95 +376,112 @@ export function Stage() {
         <PreviewSettings width={W} height={H} />
         {layoutEditing && !isLandscape(W, H) && <LayoutEditorCard />}
         {inputProps && scale > 0 ? (
-          <div className="canvas" style={{ width: W * scale, height: H * scale }}>
-            <Player
-              ref={player}
-              component={Main}
-              inputProps={inputProps}
-              durationInFrames={total}
-              compositionWidth={W}
-              compositionHeight={H}
-              fps={fps}
-              style={{ width: "100%", height: "100%" }}
-              clickToPlay={false}
-              doubleClickToFullscreen={false}
-              spaceKeyToPlayOrPause={false}
-              moveToBeginningWhenEnded={false}
-            />
+          <div
+            className="preview-frame"
+            style={{ width: W * scale + rulerBand, height: H * scale + rulerBand }}
+          >
             <div
-              ref={hitLayer}
-              className={
-                annotating
-                  ? "hit-layer annotating"
-                  : drag.current
-                    ? "hit-layer dragging"
-                    : "hit-layer"
-              }
-              onPointerDown={onPointerDown}
-              onPointerMove={onPointerMove}
-              onPointerUp={(e) => void onPointerUp(e)}
-              onPointerCancel={cancelDrag}
-              onLostPointerCapture={cancelDrag}
-              onPointerLeave={() => setHover(null)}
+              className="canvas"
+              style={{
+                width: W * scale,
+                height: H * scale,
+                left: rulerBand,
+                top: rulerBand,
+              }}
             >
-              <AccountGuides width={W} height={H} />
-              <SafeAreaOverlay width={W} height={H} scale={scale} />
-              {draft?.guides.map((g) => (
-                <div
-                  key={`${g.axis}-${g.pos}`}
-                  className={`snap-guide ${g.axis}`}
-                  style={g.axis === "h" ? { top: g.pos * scale } : { left: g.pos * scale }}
-                />
-              ))}
-              {hoverBox && (hoverBox.kind !== "video" || !hoverBox.main) && (
-                <div className="box hover" style={rect(hoverBox.box)} />
-              )}
-              {flashing &&
-                boxes
-                  .filter((b) => flashing.ids.includes(b.id) && b.kind !== "video")
-                  .map((b) => (
-                    <div key={`${b.id}-${flashing.at}`} className="box flash" style={rect(b.box)} />
-                  ))}
-              {selBox && !cropping && (selBox.kind !== "video" || !selBox.main) && (
-                <div
-                  className={[
-                    "box selected",
-                    selBox.locked ? "locked" : "",
-                    // 贴着画面顶边时，标签放进框里，免得被裁掉
-                    selBox.box.y0 * scale < 24 ? "tag-inside" : "",
-                  ].join(" ")}
-                  style={rect(selBox.box)}
-                >
-                  <span className="box-tag">
-                    {selectedHasIssue && <Icon name="warn" size={11} className="box-warning" />}
-                    {selBox.locked && <Icon name="lock" size={11} />}
-                    {KIND[selBox.kind]} · {boxName(project, selBox.id)}
-                  </span>
-                  {!selBox.locked && (selBox.kind === "image" || selBox.kind === "video") && (
-                    <ResizeHandles onStart={startResize} />
-                  )}
-                </div>
-              )}
-              {pins.map((c) => (
-                <button
-                  type="button"
-                  key={c.id}
-                  className="pin"
-                  title={c.text}
-                  style={{ left: (c.point?.x ?? 0) * scale, top: (c.point?.y ?? 0) * scale }}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={() => {
-                    if (c.target) st.select(c.target, { reveal: false });
-                    st.setSideTab("comments");
-                  }}
-                >
-                  <span>{c.id.replace(/^k/, "")}</span>
-                </button>
-              ))}
-              {pin && (
-                <span className="pin draft" style={{ left: pin.x * scale, top: pin.y * scale }} />
-              )}
-              <CropOverlay width={W} height={H} scale={scale} />
+              <Player
+                ref={player}
+                component={Main}
+                inputProps={inputProps}
+                durationInFrames={total}
+                compositionWidth={W}
+                compositionHeight={H}
+                fps={fps}
+                style={{ width: "100%", height: "100%" }}
+                clickToPlay={false}
+                doubleClickToFullscreen={false}
+                spaceKeyToPlayOrPause={false}
+                moveToBeginningWhenEnded={false}
+              />
+              <div
+                ref={hitLayer}
+                className={
+                  annotating
+                    ? "hit-layer annotating"
+                    : drag.current
+                      ? "hit-layer dragging"
+                      : "hit-layer"
+                }
+                onPointerDown={onPointerDown}
+                onPointerMove={onPointerMove}
+                onPointerUp={(e) => void onPointerUp(e)}
+                onPointerCancel={cancelDrag}
+                onLostPointerCapture={cancelDrag}
+                onPointerLeave={() => setHover(null)}
+              >
+                <AccountGuides width={W} height={H} />
+                <SafeAreaOverlay width={W} height={H} scale={scale} />
+                {draft?.guides.map((g) => (
+                  <div
+                    key={`${g.axis}-${g.pos}`}
+                    className={`snap-guide ${g.axis}`}
+                    style={g.axis === "h" ? { top: g.pos * scale } : { left: g.pos * scale }}
+                  />
+                ))}
+                {hoverBox && (hoverBox.kind !== "video" || !hoverBox.main) && (
+                  <div className="box hover" style={rect(hoverBox.box)} />
+                )}
+                {flashing &&
+                  boxes
+                    .filter((b) => flashing.ids.includes(b.id) && b.kind !== "video")
+                    .map((b) => (
+                      <div
+                        key={`${b.id}-${flashing.at}`}
+                        className="box flash"
+                        style={rect(b.box)}
+                      />
+                    ))}
+                {selBox && !cropping && (selBox.kind !== "video" || !selBox.main) && (
+                  <div
+                    className={[
+                      "box selected",
+                      selBox.locked ? "locked" : "",
+                      // 贴着画面顶边时，标签放进框里，免得被裁掉
+                      selBox.box.y0 * scale < 24 ? "tag-inside" : "",
+                    ].join(" ")}
+                    style={rect(selBox.box)}
+                  >
+                    <span className="box-tag">
+                      {selectedHasIssue && <Icon name="warn" size={11} className="box-warning" />}
+                      {selBox.locked && <Icon name="lock" size={11} />}
+                      {KIND[selBox.kind]} · {boxName(project, selBox.id)}
+                    </span>
+                    {!selBox.locked && (selBox.kind === "image" || selBox.kind === "video") && (
+                      <ResizeHandles onStart={startResize} />
+                    )}
+                  </div>
+                )}
+                {pins.map((c) => (
+                  <button
+                    type="button"
+                    key={c.id}
+                    className="pin"
+                    title={c.text}
+                    style={{ left: (c.point?.x ?? 0) * scale, top: (c.point?.y ?? 0) * scale }}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={() => {
+                      if (c.target) st.select(c.target, { reveal: false });
+                      st.setSideTab("comments");
+                    }}
+                  >
+                    <span>{c.id.replace(/^k/, "")}</span>
+                  </button>
+                ))}
+                {pin && (
+                  <span className="pin draft" style={{ left: pin.x * scale, top: pin.y * scale }} />
+                )}
+                <CropOverlay width={W} height={H} scale={scale} />
+              </div>
             </div>
           </div>
         ) : (
@@ -477,8 +499,11 @@ export function Stage() {
           </div>
         )}
         {inputProps && scale > 0 && (
-          <div className="guides-frame" style={{ width: W * scale, height: H * scale }}>
-            <CanvasGuides width={W} height={H} scale={scale} />
+          <div
+            className="guides-frame"
+            style={{ width: W * scale + rulerBand, height: H * scale + rulerBand }}
+          >
+            <CanvasGuides width={W} height={H} scale={scale} band={rulerBand} />
           </div>
         )}
         <CropToolbar />

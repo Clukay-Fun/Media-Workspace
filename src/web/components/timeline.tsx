@@ -23,6 +23,7 @@ import {
   itemFrames,
   msOfFrame,
   type Row,
+  rulerLabel,
   type TrackRowBox,
   tickStep,
   timecode,
@@ -226,12 +227,7 @@ export function Timeline() {
     ticks.push({
       frame,
       kind,
-      label:
-        kind === "major"
-          ? step < 1
-            ? timecode(frame, fps)
-            : timecode(frame, fps).replace(/\.\d$/, "")
-          : null,
+      label: kind === "major" ? rulerLabel(frame, fps, step) : null,
     });
   }
 

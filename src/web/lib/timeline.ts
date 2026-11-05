@@ -187,6 +187,12 @@ export function tickStep(pxPerSecond: number, minPx = 64): number {
   return [0.5, 1, 2, 5, 10, 15, 30, 60, 120].find((s) => s * pxPerSecond >= minPx) ?? 300;
 }
 
+/** 放大到一秒或更密时保留十分秒，避免相邻主刻度显示相同的整秒标签。 */
+export function rulerLabel(frame: number, fps: number, stepSeconds: number): string {
+  const label = timecode(frame, fps);
+  return stepSeconds <= 1 ? label : label.replace(/\.\d$/, "");
+}
+
 /**
  * 主轨片段的波形：每个像素列取对应素材时间段里的最大峰值（0–1）。
  * 时间线帧 → 素材帧用 core/time 的 sourceFrameAt（考虑倍速），再换算成素材毫秒去取峰值。

@@ -4,6 +4,7 @@ import { Project } from "../../core/schema";
 import { PROJECT_FORMAT_VERSION } from "../../core/version";
 import {
   filmstripTiles,
+  rulerLabel,
   tickStep,
   timecode,
   timelineRows,
@@ -148,7 +149,18 @@ describe("时间线概览", () => {
   it("时间码和刻度", () => {
     expect(timecode(0, 30)).toBe("00:00.0");
     expect(timecode(30 * 75 + 15, 30)).toBe("01:15.5");
+    expect(tickStep(130)).toBe(0.5);
     expect(tickStep(100)).toBe(1);
     expect(tickStep(10)).toBe(10);
+  });
+
+  it("放大后每秒及半秒刻度标签保留十分秒", () => {
+    expect([60, 75, 90].map((frame) => rulerLabel(frame, 30, 0.5))).toEqual([
+      "00:02.0",
+      "00:02.5",
+      "00:03.0",
+    ]);
+    expect([60, 90].map((frame) => rulerLabel(frame, 30, 1))).toEqual(["00:02.0", "00:03.0"]);
+    expect(rulerLabel(600, 30, 2)).toBe("00:20");
   });
 });

@@ -1062,10 +1062,10 @@ textarea:focus-visible {
   place-items: center;
 }
 
-/* 预览设置浮在预览区右上角，不占播放控制栏 */
+/* 预览设置放在预览区顶部留白下方，避开顶部标尺带 */
 .preview-settings {
   position: absolute;
-  bottom: 8px;
+  top: 38px;
   right: 8px;
   z-index: 12;
 }
@@ -1098,8 +1098,8 @@ textarea:focus-visible {
 
 .preview-settings-panel {
   position: absolute;
-  top: auto;
-  bottom: calc(100% + 6px);
+  top: calc(100% + 6px);
+  bottom: auto;
   right: 0;
   width: 232px;
   /* 预览区会裁掉超出的部分：高度按预览区算（窗口减顶栏、时间线和上下留白） */
@@ -1174,7 +1174,7 @@ textarea:focus-visible {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  min-height: 42px;
+  min-height: 58px;
   padding: 0 10px;
   background: var(--panel);
 }
@@ -1189,12 +1189,13 @@ textarea:focus-visible {
 .player-transport {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 0;
+  background: transparent;
 }
 
 .player-transport .play-btn {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   color: #fff;
   background: #1d1d1b;
@@ -1222,6 +1223,11 @@ textarea:focus-visible {
   overflow: hidden;
   background: #000;
   box-shadow: none;
+}
+
+.preview-frame {
+  position: relative;
+  flex: none;
 }
 
 .guides-frame {
@@ -1424,7 +1430,7 @@ textarea:focus-visible {
 }
 
 .user-guide.h {
-  left: 0;
+  left: var(--ruler-band, 0px);
   right: 0;
   height: 9px;
   margin-top: -4px;
@@ -1433,7 +1439,7 @@ textarea:focus-visible {
 }
 
 .user-guide.v {
-  top: 0;
+  top: var(--ruler-band, 0px);
   bottom: 0;
   width: 9px;
   margin-left: -4px;
@@ -1479,10 +1485,8 @@ textarea:focus-visible {
 }
 
 .ruler.top {
-  top: -14px;
-  left: 0;
+  top: 0;
   right: 0;
-  height: 14px;
   background-image: linear-gradient(90deg, rgb(255 255 255 / 0.55) 1px, transparent 1px);
   background-repeat: repeat-x;
   background-position: 0 100%;
@@ -1490,10 +1494,9 @@ textarea:focus-visible {
 }
 
 .ruler.left {
-  top: 0;
+  top: var(--ruler-band, 0px);
   bottom: 0;
-  left: -14px;
-  width: 14px;
+  left: 0;
   background-image: linear-gradient(rgb(255 255 255 / 0.55) 1px, transparent 1px);
   background-repeat: repeat-y;
   background-position: 100% 0;
