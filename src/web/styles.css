@@ -2459,14 +2459,19 @@ textarea:focus-visible {
   box-shadow: 0 2px 8px rgb(28 27 24 / 0.14);
   transform: translate(-50%, -50%);
   opacity: 0;
-  pointer-events: none;
+  pointer-events: auto;
   transition: opacity 120ms ease;
 }
 
 .transition-control:hover .transition-trigger--timeline,
 .transition-control:focus-within .transition-trigger--timeline {
   opacity: 1;
-  pointer-events: auto;
+}
+
+.transition-trigger--timeline:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--ai);
+  outline-offset: 2px;
 }
 
 .transition-trigger--timeline.no-transition {
@@ -2985,9 +2990,7 @@ textarea:focus-visible {
 }
 
 .marker-cluster-list {
-  position: absolute;
-  top: calc(100% + 5px);
-  left: 0;
+  position: fixed;
   z-index: 12;
   display: flex;
   flex-direction: column;
@@ -3001,12 +3004,17 @@ textarea:focus-visible {
   color: var(--text);
   background: var(--panel);
   box-shadow: var(--shadow);
+  visibility: hidden;
+}
+
+.marker-cluster-list[data-positioned="true"] {
+  visibility: visible;
 }
 
 .marker-cluster-list > span {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
+  align-items: start;
   gap: 6px;
   padding: 4px;
   text-align: left;
@@ -3014,9 +3022,9 @@ textarea:focus-visible {
 }
 
 .marker-cluster-list > span > span:nth-child(2) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .marker-cluster-jump {

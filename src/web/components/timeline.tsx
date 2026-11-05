@@ -1,5 +1,5 @@
 import type React from "react";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { EditorState } from "../../core/api";
 import {
@@ -66,6 +66,10 @@ export function Timeline() {
   const [zoomPps, setZoomPps] = useState<number | null>(null);
   const [openTransitionId, setOpenTransitionId] = useState<string | null>(null);
   const [openMarkerCluster, setOpenMarkerCluster] = useState<string | null>(null);
+  const [markerClusterPosition, setMarkerClusterPosition] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
   const [trackDrop, setTrackDrop] = useState<{ id: string; top: number } | null>(null);
   const history = useStore((s) => s.history);
   const reviewedRev = useStore((s) => s.reviewedRev);
@@ -77,6 +81,8 @@ export function Timeline() {
 
   // 量整个时间线区域（数据没到之前也在），轨道区宽度 = 总宽 − 轨道头 − 右边距
   const root = useRef<HTMLElement>(null);
+  const markerClusterAnchors = useRef(new Map<string, HTMLButtonElement>());
+  const markerClusterMenu = useRef<HTMLSpanElement>(null);
   const [rootW, setRootW] = useState(0);
   useEffect(() => {
     const el = root.current;
@@ -85,6 +91,58 @@ export function Timeline() {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+  useLayoutEffect(() => {
+    if (!openMarkerCluster) {
+      setMarkerClusterPosition(null);
+      return;
+    }
+    const update = () => {
+      const anchor = markerClusterAnchors.current.get(openMarkerCluster)?.getBoundingClientRect();
+      const menu = markerClusterMenu.current?.getBoundingClientRect();
+      if (!anchor || !menu) return;
+      const margin = 8;
+      const gap = 6;
+      const maxLeft = Math.max(margin, window.innerWidth - menu.width - margin);
+      const left = Math.max(margin, Math.min(anchor.left, maxLeft));
+      const below = anchor.bottom + gap;
+      const above = anchor.top - gap - menu.height;
+      const preferredTop = below + menu.height <= window.innerHeight - margin ? below : above;
+      const top = Math.max(
+        margin,
+        Math.min(preferredTop, Math.max(margin, window.innerHeight - menu.height - margin)),
+      );
+      setMarkerClusterPosition((previous) =>
+        previous && Math.abs(previous.left - left) < 0.5 && Math.abs(previous.top - top) < 0.5
+          ? previous
+          : { left, top },
+      );
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    const menu = markerClusterMenu.current;
+    const observer = menu ? new ResizeObserver(update) : null;
+    if (menu && observer) observer.observe(menu);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpenMarkerCluster(null);
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (markerClusterAnchors.current.get(openMarkerCluster)?.contains(target)) return;
+      if (markerClusterMenu.current?.contains(target)) return;
+      setOpenMarkerCluster(null);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onPointerDown);
+      observer?.disconnect();
+    };
+  }, [openMarkerCluster]);
   useEffect(() => {
     const el = root.current;
     if (!el) return;
@@ -494,6 +552,10 @@ export function Timeline() {
               style={{ left: px(cluster.frame) }}
             >
               <button
+                ref={(element) => {
+                  if (element) markerClusterAnchors.current.set(cluster.id, element);
+                  else markerClusterAnchors.current.delete(cluster.id);
+                }}
                 type="button"
                 className={`marker marker-cluster ${cluster.items.length > 1 ? "clustered" : cluster.items[0]!.kind}`}
                 title={
@@ -526,27 +588,37 @@ export function Timeline() {
                   />
                 )}
               </button>
-              {openMarkerCluster === cluster.id && cluster.items.length > 1 && (
-                <span className="marker-cluster-list" role="menu">
-                  {cluster.items.map((item) => (
-                    <span key={item.key} role="menuitem">
-                      <span className="mono">{timecode(item.frame, fps)}</span>
-                      <span>{item.title}</span>
-                      <button
-                        type="button"
-                        className="marker-cluster-jump"
-                        onClick={() => {
-                          if (item.target) select(item.target);
-                          seek(item.frame);
-                          setOpenMarkerCluster(null);
-                        }}
-                      >
-                        定位
-                      </button>
-                    </span>
-                  ))}
-                </span>
-              )}
+              {openMarkerCluster === cluster.id &&
+                cluster.items.length > 1 &&
+                createPortal(
+                  <span
+                    ref={markerClusterMenu}
+                    className="marker-cluster-list"
+                    role="menu"
+                    style={markerClusterPosition ?? { left: 0, top: 0 }}
+                    data-positioned={markerClusterPosition ? "true" : undefined}
+                    onPointerDown={(event) => event.stopPropagation()}
+                  >
+                    {cluster.items.map((item) => (
+                      <span key={item.key} role="menuitem">
+                        <span className="mono">{timecode(item.frame, fps)}</span>
+                        <span>{item.title}</span>
+                        <button
+                          type="button"
+                          className="marker-cluster-jump"
+                          onClick={() => {
+                            if (item.target) select(item.target);
+                            seek(item.frame);
+                            setOpenMarkerCluster(null);
+                          }}
+                        >
+                          定位
+                        </button>
+                      </span>
+                    ))}
+                  </span>,
+                  document.body,
+                )}
             </div>
           ))}
         </div>
