@@ -20,6 +20,8 @@ export type DragRequest = {
   mode: DragMode;
   /** 鼠标在时间线上移动的毫秒数（界面用 pxPerSecond 换算） */
   deltaMs: number;
+  /** 指针在时间线上的最终时间；主轨换序按这个落点选插入槽 */
+  dropMs?: number;
   snap: boolean;
   /** 吸附阈值（毫秒），界面按 thresholdPx / pxPerSecond 换算；默认 100 */
   snapThresholdMs?: number;
@@ -188,8 +190,13 @@ export function planDrag(project: Project, req: DragRequest): DragPlan {
   if (isMainTrack(track) && "type" in item && item.type === "clip" && !("at" in item)) {
     if (req.mode === "move") {
       const segs = layoutMainTrack(project).filter((s) => s.clip.id !== req.id);
-      const mid = (start + end) / 2;
-      const to = segs.filter((s) => (s.startMs + s.endMs) / 2 < mid).length;
+      // 拖拽落点经吸附或时间线起点夹取后，随片段一起平移相同距离。
+      // 用指针落点而不是片段中心选槽，避免长片段比短片段更难换序。
+      const dropMs =
+        req.dropMs === undefined
+          ? (start + end) / 2
+          : req.dropMs + start - (cur.startMs + req.deltaMs);
+      const to = segs.filter((s) => (s.startMs + s.endMs) / 2 < dropMs).length;
       const ops: Op[] = to === index ? [] : [{ op: "item.move", id: req.id, index: to }];
       return { ops, preview: { startMs: start, endMs: end }, snappedTo };
     }

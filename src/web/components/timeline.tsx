@@ -380,6 +380,7 @@ export function Timeline() {
           id: b.id,
           mode,
           deltaMs: msOfFrame((dx / timelineWidth) * total, fps),
+          dropMs: msOfFrame(frameAt(ev.clientX), fps),
           snap: s.snap && !ev.metaKey,
           playheadMs: msOfFrame(s.frame, fps),
         });

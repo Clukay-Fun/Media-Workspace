@@ -51,6 +51,28 @@ const project = (opts: { locked?: boolean } = {}) =>
 
 const apply = (p: Project, ops: unknown[]) => applyOps(p, ops).project;
 
+function mainTrackWithDurations(durationsMs: number[]): Project {
+  const p = project();
+  const main = p.tracks.find((track) => track.kind === "video" && track.main);
+  if (!main || main.kind !== "video") throw new Error("main track fixture");
+  const template = main.items[0];
+  if (!template || !("type" in template) || template.type !== "clip")
+    throw new Error("main clip fixture");
+  let sourceMs = 0;
+  main.items = durationsMs.map((durationMs, index) => {
+    const item = {
+      ...template,
+      id: `c${index + 1}`,
+      inMs: sourceMs,
+      outMs: sourceMs + durationMs,
+    };
+    sourceMs += durationMs;
+    return item;
+  });
+  p.assets.a1!.probe!.durationMs = sourceMs;
+  return p;
+}
+
 describe("planDrag", () => {
   it("整体移动时长不变，位置改成绝对时间", () => {
     const r = planDrag(project(), { id: "i1", mode: "move", deltaMs: 300, snap: false });
@@ -107,6 +129,53 @@ describe("planDrag", () => {
     const e = planDrag(project(), { id: "c2", mode: "trimEnd", deltaMs: 9999, snap: false });
     // 出点不超过素材时长
     expect(e.ops).toEqual([{ op: "clip.trim", id: "c2", outMs: 10_000 }]);
+  });
+
+  it("主轨按指针落点换序，长短片段同一落点插入到目标之前", () => {
+    for (const durations of [
+      [12_000, 10_000],
+      [12_000, 21_876],
+    ]) {
+      const r = planDrag(mainTrackWithDurations(durations), {
+        id: "c2",
+        mode: "move",
+        deltaMs: -durations[0]!,
+        dropMs: 2_500,
+        snap: false,
+      });
+      expect(r.ops).toEqual([{ op: "item.move", id: "c2", index: 0 }]);
+    }
+  });
+
+  it("主轨落点在目标中点前后分槽，中点正好算在目标之前", () => {
+    const p = mainTrackWithDurations([2_000, 2_000, 2_000]);
+    const drag = (dropMs: number) =>
+      planDrag(p, { id: "c3", mode: "move", deltaMs: -4_000, dropMs, snap: false }).ops;
+
+    expect(drag(999)).toEqual([{ op: "item.move", id: "c3", index: 0 }]);
+    expect(drag(1_000)).toEqual([{ op: "item.move", id: "c3", index: 0 }]);
+    expect(drag(1_001)).toEqual([{ op: "item.move", id: "c3", index: 1 }]);
+  });
+
+  it("主轨落在目标之后会插入其后，落回原槽不生成 op", () => {
+    const p = mainTrackWithDurations([2_000, 2_000, 2_000]);
+    const afterFirst = planDrag(p, {
+      id: "c3",
+      mode: "move",
+      deltaMs: -4_000,
+      dropMs: 1_500,
+      snap: false,
+    });
+    expect(afterFirst.ops).toEqual([{ op: "item.move", id: "c3", index: 1 }]);
+
+    const originalSlot = planDrag(p, {
+      id: "c2",
+      mode: "move",
+      deltaMs: 0,
+      dropMs: 3_000,
+      snap: false,
+    });
+    expect(originalSlot.ops).toEqual([]);
   });
 
   it("字幕按源时间平移，逐字时间跟着移动", () => {
