@@ -711,6 +711,10 @@ textarea:focus-visible {
   display: none;
 }
 
+.asset-toggle {
+  display: inline-grid;
+}
+
 .left-panel .drawer-close {
   display: inline-grid;
 }
@@ -3715,11 +3719,20 @@ button.change-target:hover .change-name {
     display: inline-grid;
   }
 
-  .sidebar,
   .left-panel {
     left: 6px;
     right: 6px;
     width: auto;
+  }
+
+  .export-btn {
+    width: 30px;
+    padding-inline: 0;
+    gap: 0;
+  }
+
+  .export-label {
+    display: none;
   }
 
   .tl-tools:not(.end) .icon-btn:not(:first-child):not(:nth-child(2)):not(.annotation-tool) {

@@ -139,7 +139,7 @@ export function TopBar() {
       <div className="topbar-actions">
         <button
           type="button"
-          className="icon-btn drawer-toggle"
+          className="icon-btn asset-toggle"
           aria-label="素材"
           title="素材和样式"
           onClick={() => {
@@ -177,7 +177,9 @@ export function TopBar() {
         >
           <span className="export-fill" aria-hidden="true" />
           <Icon name="export" size={14} />
-          {exporting ? `导出中 ${Math.round(exportJob.progress * 100)}%` : "导出"}
+          <span className="export-label">
+            {exporting ? `导出中 ${Math.round(exportJob.progress * 100)}%` : "导出"}
+          </span>
         </button>
       </div>
       {switchTarget && (
