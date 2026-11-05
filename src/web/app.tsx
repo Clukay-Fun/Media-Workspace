@@ -1,5 +1,6 @@
 import type React from "react";
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { LeftPanel } from "./components/left-panel";
 import { ReviewSidebar } from "./components/review-sidebar";
 import { Splitter } from "./components/splitter";
 import { Stage } from "./components/stage";
@@ -52,6 +53,7 @@ export function App() {
         <TopBar />
         {/* 同一工程的一组视图要一起换 key；分别给四个兄弟加 key 会在切工程时留下旧的子树。 */}
         <Fragment key={projectId ?? "no-project"}>
+          <LeftPanel />
           <Stage />
           <Splitter
             axis="x"

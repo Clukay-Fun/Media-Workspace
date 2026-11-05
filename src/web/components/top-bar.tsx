@@ -18,8 +18,16 @@ export function TopBar() {
   const aiChange = useStore((s) => s.aiChange);
   const exportJob = useStore((s) => s.exportJob);
   const sideOpen = useStore((s) => s.sideOpen);
-  const { startExport, setSideTab, setSideOpen, select, undo, dismissAiChange } =
-    useStore.getState();
+  const {
+    startExport,
+    setSideTab,
+    setSideOpen,
+    setLeftTab,
+    setLeftOpen,
+    select,
+    undo,
+    dismissAiChange,
+  } = useStore.getState();
 
   const open = review?.comments.filter((c) => c.status === "open").length ?? 0;
   const exporting = exportJob !== null && !exportJob.done;
@@ -129,6 +137,18 @@ export function TopBar() {
       </div>
 
       <div className="topbar-actions">
+        <button
+          type="button"
+          className="icon-btn drawer-toggle"
+          aria-label="素材"
+          title="素材和样式"
+          onClick={() => {
+            setLeftTab("assets");
+            setLeftOpen(true);
+          }}
+        >
+          <Icon name="image" />
+        </button>
         <IssuesMenu />
         <button
           type="button"
