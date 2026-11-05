@@ -64,8 +64,39 @@ describe("compile：1029 样片的结构", () => {
   });
 
   it("片尾接在主轨后面", () => {
-    expect(tl.outro).toMatchObject({ from: 812, durationInFrames: 53 });
+    expect(tl.outro).toMatchObject({ kind: "video", from: 812, durationInFrames: 53 });
     expect(tl.durationInFrames).toBe(865);
+  });
+
+  it("静态图片片尾按 3 秒编译为正帧数", () => {
+    const imageProject = make({
+      assets: {
+        a1: { kind: "video", path: "/raw.mov", probe: { durationMs: 1000 } },
+        still: {
+          kind: "image",
+          path: "/still.png",
+          probe: { durationMs: 0, width: 1080, height: 1920 },
+        },
+      },
+      tracks: [
+        {
+          id: "main",
+          kind: "video",
+          main: true,
+          items: [{ id: "c1", type: "clip", asset: "a1", inMs: 0, outMs: 1000 }],
+        },
+      ],
+      outro: { asset: "still" },
+    });
+    const imageTimeline = compile(imageProject);
+
+    expect(imageTimeline.outro).toMatchObject({
+      asset: "still",
+      kind: "image",
+      from: 30,
+      durationInFrames: 90,
+    });
+    expect(imageTimeline.durationInFrames).toBe(120);
   });
 
   it("字幕按倍速换算到时间线", () => {

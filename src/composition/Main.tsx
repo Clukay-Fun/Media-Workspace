@@ -377,12 +377,16 @@ const OutroLayer: React.FC<{
       : undefined;
   return (
     <AbsoluteFill style={style}>
-      <Video
-        src={src}
-        volume={dbToGain(outro.gainDb)}
-        objectFit="contain"
-        style={{ width: "100%", height: "100%" }}
-      />
+      {outro.kind === "image" ? (
+        <Img src={src} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+      ) : (
+        <Video
+          src={src}
+          volume={dbToGain(outro.gainDb)}
+          objectFit="contain"
+          style={{ width: "100%", height: "100%" }}
+        />
+      )}
     </AbsoluteFill>
   );
 };

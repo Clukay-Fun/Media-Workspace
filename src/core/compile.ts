@@ -16,6 +16,8 @@ import {
 import type { Anim, Easing } from "./text-style";
 import { clipTimelineMs, frameToMs, msToFrame } from "./time";
 
+const DEFAULT_IMAGE_OUTRO_MS = 3000;
+
 // compile(project) → ResolvedTimeline：唯一的毫秒 → 帧换算入口（D7）。
 // 预览、导出、校验、时间线界面、吸附都只读它的结果。纯函数，不做 I/O。
 
@@ -124,6 +126,7 @@ export type FrameSpan = { from: number; to: number };
 
 export type ResolvedOutro = {
   asset: string;
+  kind: "video" | "image";
   from: number;
   durationInFrames: number;
   gainDb: number;
@@ -555,7 +558,14 @@ export function compile(project: Project): ResolvedTimeline {
   let outro: ResolvedOutro | null = null;
   if (project.outro) {
     const asset = project.assets[project.outro.asset];
-    const durationMs = asset?.probe?.durationMs;
+    const measuredDurationMs = asset?.probe?.durationMs;
+    // 图片素材的 probe 时长为 0；作为静态片尾时按图片素材常用默认时长显示 3 秒。
+    const durationMs =
+      asset?.kind === "image"
+        ? measuredDurationMs && measuredDurationMs > 0
+          ? measuredDurationMs
+          : DEFAULT_IMAGE_OUTRO_MS
+        : measuredDurationMs;
     if (durationMs === undefined) {
       warnings.push({
         code: "OUTRO_UNPROBED",
@@ -567,8 +577,9 @@ export function compile(project: Project): ResolvedTimeline {
       const overlap = mainEndFrame > 0 ? (trans?.durationInFrames ?? 0) : 0;
       outro = {
         asset: project.outro.asset,
+        kind: asset?.kind === "image" ? "image" : "video",
         from: mainEndFrame - overlap,
-        durationInFrames: f(durationMs),
+        durationInFrames: Math.max(1, f(durationMs)),
         gainDb: project.outro.gainDb,
         transitionIn: overlap > 0 ? trans : null,
       };
