@@ -7,6 +7,7 @@ import {
   rulerLabel,
   tickStep,
   timecode,
+  timelineDisplayFrames,
   timelineRows,
   trackInsertIndex,
   waveform,
@@ -152,6 +153,12 @@ describe("时间线概览", () => {
     expect(tickStep(130)).toBe(0.5);
     expect(tickStep(100)).toBe(1);
     expect(tickStep(10)).toBe(10);
+  });
+
+  it("标尺在成片时长后预留可编辑空白，但不改成片时长", () => {
+    expect(timelineDisplayFrames(900, 30)).toBe(1800);
+    expect(timelineDisplayFrames(900, 30, 10)).toBe(1200);
+    expect(timelineDisplayFrames(0, 30, 0)).toBe(1);
   });
 
   it("放大后每秒及半秒刻度标签保留十分秒", () => {

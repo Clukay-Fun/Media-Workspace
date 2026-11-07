@@ -136,6 +136,9 @@ export const TextBlock: React.FC<TextBlockProps> = ({
     lineHeight: font.lineHeight,
     letterSpacing: font.letterSpacing,
     whiteSpace: "pre-wrap",
+    // 文本框宽度固定，超过宽度时换行而不是缩小字号；样式的 maxLines 是显示边界。
+    maxHeight: font.size * font.lineHeight * layout.maxLines,
+    overflow: "hidden",
     // 多行时各行长短接近，避免最后一行只剩一两个字；断点只在词之间（keepTogether）
     textWrap: "balance",
     opacity: whole.opacity,

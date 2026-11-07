@@ -6,35 +6,16 @@ import { useStore } from "../store";
 
 // 预览画面上的构图辅助：安全区、可拖动的参考线、标尺。只存在 editor.json 里，不进导出。
 
-export type SafeAreaMode = "off" | "title" | "channels";
+export type SafeAreaMode = "off" | "channels";
 
-/** editor.json 里旧值是 "all"（当时只有开关，默认关），不认识的一律当不显示 */
+/** editor.json 里旧值是 "all"（当时只有开关，默认关）；旧的 title 值也统一到视频号安全区。 */
 export function safeAreaMode(editor: EditorState | null): SafeAreaMode {
   const v = editor?.showSafeArea;
-  return v === "title" || v === "channels" ? v : "off";
+  return v === "title" || v === "channels" ? "channels" : "off";
 }
 
 export function SafeAreaOverlay({ width, height, scale }: Dims) {
   const mode = useStore((s) => safeAreaMode(s.editor));
-  if (mode === "title") {
-    // 广电通用的两层框：外层操作安全区（四边各留 5%），内层字幕安全区（各留 10%）
-    return (
-      <>
-        {[0.05, 0.1].map((k) => (
-          <div
-            key={k}
-            className="safe-frame"
-            style={{
-              left: width * k * scale,
-              right: width * k * scale,
-              top: height * k * scale,
-              bottom: height * k * scale,
-            }}
-          />
-        ))}
-      </>
-    );
-  }
   if (mode === "channels") {
     const s = safeAreaFor(width, height);
     return (

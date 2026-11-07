@@ -1,4 +1,5 @@
 import type { ResolvedTimeline } from "./compile";
+import { safeAreaFor } from "./safe-area";
 
 // 吸附（F4）：纯函数，时间线和预览画面拖动时调用。界面只负责显示吸附线。
 
@@ -70,15 +71,20 @@ export function canvasTargets(
   height: number,
   extra: { axis: "h" | "v"; pos: number; kind: string }[] = [],
 ): { x: SnapTarget[]; y: SnapTarget[] } {
+  const safe = safeAreaFor(width, height);
   const x: SnapTarget[] = [
     { at: width / 2, kind: "center" },
     { at: 0, kind: "edge" },
     { at: width, kind: "edge" },
+    { at: safe.left, kind: "safe-area" },
+    { at: width - safe.right, kind: "safe-area" },
   ];
   const y: SnapTarget[] = [
     { at: height / 2, kind: "center" },
     { at: 0, kind: "edge" },
     { at: height, kind: "edge" },
+    { at: safe.top, kind: "safe-area" },
+    { at: height - safe.bottom, kind: "safe-area" },
   ];
   for (const e of extra) (e.axis === "v" ? x : y).push({ at: e.pos, kind: e.kind });
   return { x, y };
