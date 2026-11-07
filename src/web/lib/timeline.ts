@@ -164,6 +164,23 @@ export function timecode(frame: number, fps: number): string {
 export const frameOfMs = (ms: number, fps: number) => msToFrame(ms, fps);
 export const msOfFrame = (frame: number, fps: number) => Math.round(frameToMs(frame, fps));
 
+/** 时间线在成片时长之外预留的可编辑空白（问题 45）。 */
+export const TIMELINE_TAIL_SECONDS = 30;
+
+/**
+ * 标尺默认比成片多留一段空白。空白只属于工作台，不会改变 compile 的成片时长。
+ * 组件在用户滚到末端时再追加同样的一段，避免标尺到最后一帧就停住。
+ */
+export function timelineDisplayFrames(
+  contentFrames: number,
+  fps: number,
+  extraSeconds = TIMELINE_TAIL_SECONDS,
+): number {
+  const content = Math.max(1, Math.floor(contentFrames));
+  const tail = Math.max(0, Math.round(Math.max(0, extraSeconds) * Math.max(1, fps)));
+  return content + tail;
+}
+
 /**
  * 胶片格按素材自己的宽高比排，不拉成 16:9。
  * 格子总宽超过画面带时少画几格，由界面裁掉末尾或留白。

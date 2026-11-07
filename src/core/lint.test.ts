@@ -318,7 +318,7 @@ describe("质检：账号版式", () => {
     ).toEqual([]);
   });
 
-  it("有账号版式时安全区降为提示；字幕样式和版式不一致时提示", () => {
+  it("有账号版式时安全区仍是硬边界；字幕样式和版式不一致时提示", () => {
     const p = make([cap("s1", 0, "一句", "low")]);
     const plain = lintProject(p, { styles });
     expect(plain.find((i) => i.code === "TEXT_OUTSIDE_SAFE_AREA")?.level).toBeUndefined();
@@ -326,7 +326,7 @@ describe("质检：账号版式", () => {
       styles,
       layout: { face: null, captionStyle: "caption-word-yellow", titleStyle: null },
     });
-    expect(withLayout.find((i) => i.code === "TEXT_OUTSIDE_SAFE_AREA")?.level).toBe("hint");
+    expect(withLayout.find((i) => i.code === "TEXT_OUTSIDE_SAFE_AREA")?.level).toBeUndefined();
     expect(withLayout.find((i) => i.code === "STYLE_NOT_LAYOUT")).toMatchObject({
       id: "s1",
       level: "hint",

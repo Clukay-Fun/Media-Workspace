@@ -20,5 +20,7 @@ describe("snap", () => {
     const t = canvasTargets(1080, 1920, [{ axis: "h", pos: 1167, kind: "guide" }]);
     expect(snapValue(1163, t.y, 8).value).toBe(1167);
     expect(snapValue(536, t.x, 8).value).toBe(540);
+    expect(t.x.some((target) => target.kind === "safe-area" && target.at === 60)).toBe(true);
+    expect(t.y.some((target) => target.kind === "safe-area" && target.at === 170)).toBe(true);
   });
 });

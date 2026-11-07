@@ -891,7 +891,6 @@ function PreviewSettings({ width, height }: { width: number; height: number }) {
             {(
               [
                 ["off", "不显示"],
-                ["title", "字幕 / 操作安全区"],
                 ["channels", "视频号安全区"],
               ] as const
             ).map(([v, label]) => (

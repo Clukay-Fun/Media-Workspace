@@ -24,9 +24,11 @@ import {
   msOfFrame,
   type Row,
   rulerLabel,
+  TIMELINE_TAIL_SECONDS,
   type TrackRowBox,
   tickStep,
   timecode,
+  timelineDisplayFrames,
   timelineRows,
   trackInsertIndex,
   waveform,
@@ -64,6 +66,7 @@ export function Timeline() {
   const [ghost, setGhost] = useState<Ghost | null>(null);
   const [menu, setMenu] = useState<BlockMenu | null>(null);
   const [zoomPps, setZoomPps] = useState<number | null>(null);
+  const [extraTimelineSeconds, setExtraTimelineSeconds] = useState(TIMELINE_TAIL_SECONDS);
   const [openTransitionId, setOpenTransitionId] = useState<string | null>(null);
   const [openMarkerCluster, setOpenMarkerCluster] = useState<string | null>(null);
   const [markerClusterPosition, setMarkerClusterPosition] = useState<{
@@ -210,6 +213,7 @@ export function Timeline() {
   const tl = preview?.timeline;
   const fps = tl?.fps ?? 30;
   const total = Math.max(1, tl?.durationInFrames ?? 1);
+  const displayTotal = timelineDisplayFrames(total, fps, extraTimelineSeconds);
   useEffect(() => {
     if (!tl) return;
     const current = useStore.getState().frame;
@@ -217,9 +221,9 @@ export function Timeline() {
     if (clamped !== current) seek(clamped);
   }, [tl, total, seek]);
   const transitionCuts = useMemo(() => (tl ? transitionCutMarkers(tl.videos) : []), [tl]);
-  const fitPps = viewportWidth > 0 ? (viewportWidth * fps) / total : 40;
+  const fitPps = viewportWidth > 0 ? (viewportWidth * fps) / displayTotal : 40;
   const pps = zoomPps ?? fitPps;
-  const timelineWidth = Math.max(1, (total / fps) * pps);
+  const timelineWidth = Math.max(1, (displayTotal / fps) * pps);
   const minPps = Math.min(fitPps, Math.max(0.02, Math.min(8, fitPps * 0.2)));
   const maxPps = Math.max(320, fitPps * 6);
   const px = (f: number) => (f / fps) * pps;
@@ -230,6 +234,7 @@ export function Timeline() {
     zoomPpsRef.current = null;
     editorRef.current = null;
     setZoomPps(null);
+    setExtraTimelineSeconds(TIMELINE_TAIL_SECONDS);
     if (!name) return;
     let cancelled = false;
     void api
@@ -271,7 +276,7 @@ export function Timeline() {
       return r ? [{ id, ...r }] : [];
     });
 
-  const totalSeconds = total / fps;
+  const totalSeconds = displayTotal / fps;
   let step = tickStep(pps);
   while (totalSeconds / step > 500) step *= 2;
   const subdivisions = Math.ceil(totalSeconds / (step / 4));
@@ -299,11 +304,12 @@ export function Timeline() {
     const r = root.current?.getBoundingClientRect();
     if (!r || pps <= 0) return 0;
     const contentX = clientX - r.left - HEAD + (root.current?.scrollLeft ?? 0);
-    return Math.max(0, Math.min(total - 1, (contentX / pps) * fps));
+    return Math.max(0, Math.min(displayTotal - 1, (contentX / pps) * fps));
   };
   const scrub = (e: React.PointerEvent<HTMLDivElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
-    seek(frameAt(e.clientX));
+    // 空白区可放元素，但播放头仍停在成片最后一帧；compile 的时长不被工作台空白改写。
+    seek(Math.min(total - 1, frameAt(e.clientX)));
   };
   const dragPlayhead = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
@@ -367,6 +373,11 @@ export function Timeline() {
     const current = root.current;
     const existing = editorRef.current;
     if (!current || !existing || pps <= 0) return;
+    const visibleEnd = current.scrollLeft + current.clientWidth - HEAD;
+    const tailPx = TIMELINE_TAIL_SECONDS * pps;
+    if (visibleEnd >= timelineWidth - Math.max(48, tailPx * 0.2)) {
+      setExtraTimelineSeconds((seconds) => seconds + TIMELINE_TAIL_SECONDS);
+    }
     scheduleEditorSave({
       ...existing,
       timeline: {
@@ -439,7 +450,7 @@ export function Timeline() {
         plan = planDrag(s.project, {
           id: b.id,
           mode,
-          deltaMs: msOfFrame((dx / timelineWidth) * total, fps),
+          deltaMs: msOfFrame((dx / timelineWidth) * displayTotal, fps),
           dropMs: msOfFrame(frameAt(ev.clientX), fps),
           snap: s.snap && !ev.metaKey,
           playheadMs: msOfFrame(s.frame, fps),
@@ -524,7 +535,7 @@ export function Timeline() {
         <div
           className="tl-ruler"
           onPointerDown={scrub}
-          onPointerMove={(e) => e.buttons === 1 && seek(frameAt(e.clientX))}
+          onPointerMove={(e) => e.buttons === 1 && seek(Math.min(total - 1, frameAt(e.clientX)))}
         >
           {ticks.map((tick) => (
             <Fragment key={tick.frame}>

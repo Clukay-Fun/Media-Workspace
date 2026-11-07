@@ -94,6 +94,27 @@ describe("TextBlock 逐字入场时长（inSlot）", () => {
 });
 
 describe("TextBlock 换行", () => {
+  it("保持固定宽度和字号，并按样式的 maxLines 截住文本框高度", () => {
+    const out = renderToStaticMarkup(
+      <TextBlock
+        text="这是一个很长的标题，应该在固定宽度内换行"
+        style={TextStyle.parse({
+          ...base,
+          font: { ...base.font, size: 80 },
+          layout: { ...base.layout, maxWidth: 320, maxLines: 2 },
+        })}
+        highlights={[]}
+        frame={59}
+        durationInFrames={60}
+        fps={30}
+      />,
+    );
+    expect(out).toContain("width:320px");
+    expect(out).toContain("font-size:80px");
+    expect(out).toContain("max-height:200px");
+    expect(out).toContain("overflow:hidden");
+  });
+
   it("同一个词的字包在一个不换行的 span 里，收尾标点跟着前一个字", () => {
     const out = renderToStaticMarkup(
       <TextBlock

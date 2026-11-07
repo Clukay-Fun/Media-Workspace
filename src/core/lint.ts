@@ -36,7 +36,7 @@ export type LintIssue = {
     | "FACE_OFF_LAYOUT"
     | "STYLE_NOT_LAYOUT"
     | "SPEED_NOT_LAYOUT";
-  /** hint = 只是提示（有账号版式时，通用安全区以版式为准）；不写 = 警告 */
+  /** hint = 只是提示；安全区越界不再降级为 hint */
   level?: "hint";
   /** 有问题的条目 */
   id: string;
@@ -257,11 +257,7 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
         code: "TEXT_OUTSIDE_SAFE_AREA",
         id: p.id,
         atMs: ms(p.from),
-        message: opts.layout
-          ? `文字超出了视频号安全区（${out.join("、")}）；位置按账号版式，只作参考，不用改`
-          : `文字超出了视频号安全区（${out.join("、")}），可能被平台的按钮或标题挡住`,
-        // 有账号版式时位置以版式为准，通用安全区只作参考（0025）
-        ...(opts.layout ? { level: "hint" as const } : {}),
+        message: `文字超出了视频号安全区（${out.join("、")}），可能被平台的按钮或标题挡住`,
       });
     }
   }
