@@ -18,6 +18,7 @@ import { addGuide, CanvasGuides, RULER_BAND, SafeAreaOverlay, safeAreaMode } fro
 import { CropOverlay, CropToolbar } from "./crop-editor";
 import { Icon } from "./icons";
 import { AccountGuides, LayoutEditorCard } from "./layout-editor";
+import { PlayerChromeV7 } from "./player-chrome-v7";
 
 const KIND: Record<HitBox["kind"], string> = {
   caption: "字幕",
@@ -71,6 +72,8 @@ export function Stage() {
   const st = useStore.getState();
 
   const player = useRef<PlayerRef>(null);
+  const shell = useRef<HTMLElement>(null);
+  const [loop, setLoop] = useState(false);
   const area = useRef<HTMLDivElement>(null);
   const hitLayer = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -371,7 +374,7 @@ export function Stage() {
   });
 
   return (
-    <main className="stage panel" aria-label={name || "预览"}>
+    <main className="stage panel mw-player-v7" aria-label={name || "预览"} ref={shell}>
       <div className="stage-area" ref={area}>
         <PreviewSettings width={W} height={H} />
         {layoutEditing && !isLandscape(W, H) && <LayoutEditorCard />}
@@ -397,6 +400,7 @@ export function Stage() {
                 compositionWidth={W}
                 compositionHeight={H}
                 fps={fps}
+                loop={loop}
                 style={{ width: "100%", height: "100%" }}
                 clickToPlay={false}
                 doubleClickToFullscreen={false}
@@ -569,7 +573,23 @@ export function Stage() {
           </form>
         )}
       </div>
-      <PlayerFooter frame={frame} fps={fps} total={total} width={W} height={H} playing={playing} />
+      <PlayerChromeV7
+        frame={frame}
+        fps={fps}
+        total={total}
+        width={W}
+        height={H}
+        playing={playing}
+        loop={loop}
+        comments={review?.comments ?? []}
+        onLoopChange={setLoop}
+        onFullscreen={() => {
+          const el = shell.current;
+          if (!el) return;
+          if (document.fullscreenElement === el) void document.exitFullscreen();
+          else void el.requestFullscreen();
+        }}
+      />
     </main>
   );
 }
@@ -698,48 +718,6 @@ export function resizeFromEdge({
     x: Math.round(anchor.x + (center.x - anchor.x) * k),
     y: Math.round(anchor.y + (center.y - anchor.y) * k),
   };
-}
-
-function PlayerFooter({
-  frame,
-  fps,
-  total,
-  width,
-  height,
-  playing,
-}: {
-  frame: number;
-  fps: number;
-  total: number;
-  width: number;
-  height: number;
-  playing: boolean;
-}) {
-  const st = useStore.getState();
-  return (
-    <footer className="player-footer" aria-label="播放器控制">
-      <div className="player-time mono">
-        {timecode(frame, fps)}
-        <span className="timecode-total"> / {timecode(total, fps)}</span>
-      </div>
-      <div className="player-transport">
-        <button
-          type="button"
-          className="play-btn"
-          aria-label={playing ? "暂停" : "播放"}
-          title={playing ? "暂停（空格）" : "播放（空格）"}
-          onClick={() => st.setPlaying(!playing)}
-        >
-          <Icon name={playing ? "pause" : "play"} size={14} />
-        </button>
-      </div>
-      <div className="player-status">
-        <span className="player-resolution mono" aria-label={`画布 ${width}×${height}`}>
-          {width}×{height}
-        </span>
-      </div>
-    </footer>
-  );
 }
 
 /** 选中框上的名字：字幕取前几个字，标题 / 卡片取文字，片段取素材文件名；都没有时用 ID */
