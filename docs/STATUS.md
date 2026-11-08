@@ -5,7 +5,7 @@
 
 | 事项 | 谁在做 | 目录 / 分支 | 状态 | 下一步 / 卡在哪 |
 |---|---|---|---|---|
-| 字体发现与解析（前置实验 + runtime catalog） | GPT Sol | `media-workspace-font-audit` / `codex/font-authorization-clearance` | 进行中 | 已完成 Songti SC 预览/导出、fc-match/Chromium、.ttc 元数据实验；已实现项目+系统字体索引、缓存和 GET /api/fonts；待跑完整检查并提交，未处理缺字体非阻断与替代弹窗 |
+| 字体发现与解析（前置实验 + runtime catalog） | GPT Sol | `media-workspace-font-audit` / `codex/font-authorization-clearance` | 进行中 | 已完成 Songti SC 预览/导出、fc-match/Chromium、.ttc 元数据实验；已实现项目+系统字体索引、缓存和 GET /api/fonts；`pnpm check`、`pnpm test`、`pnpm test:e2e` 通过，commit `ca7748e` + `0c2a122` 已推送；待 GPT Sol 审核合并，未处理缺字体非阻断与替代弹窗 |
 | 审查、合并各分支，跑全部测试 | GPT Sol | `media-workspace` / dev | 持续 | 各分支做完后通知 |
 | 第三轮：用新样片走一遍全流程验收，验收通过后合并 dev → main（裁切、画幅已完成） | GPT Sol | `media-workspace` / dev | 进行中 | 画幅见 docs/decisions/0030 |
 | 阶段 G：MCP 可见制作流程、文字方案审定与 Codex/DS 验收 | GPT Sol | `media-workspace` / dev | 已合入 dev，待负责人决定是否进入 main | Codex revision 11、DS revision 10 均保留人工历史且未导出 MP4；Chrome 临时工程验证 MCP 提交后网页无需重载即更新。文字分支与 `caption.reflow` 修复已合入 dev，`pnpm check`、366 单测、16 e2e、`pnpm web:build` 通过；DS 工作树与分支已清理，本地验收笔记已保留。字体 33 家族清单已入 dev，22 家族仍有未知授权项，不能当作商用结论。记录见本地 `2026-11-03-g-codex-mcp-test/`、`2026-11-03-g-dsh-mcp-test/` |
