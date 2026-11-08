@@ -11,6 +11,8 @@ export type FontSource = "project" | "system";
 
 /** 运行时字体索引；path 只留在 Node 进程内，不会写入工程或 API 响应。 */
 export type FontCatalogItem = {
+  /** 新目录标识：字体族名 + 来源；id 保留旧 registry ID 兼容。 */
+  key: string;
   id: string;
   family: string;
   style: string;
@@ -70,6 +72,7 @@ export function parseFontconfigList(output: string): FontCatalogItem[] {
     if (!path || !family) continue;
     const readable = existsSync(path);
     items.push({
+      key: `system:${firstFamily(family)}`,
       id: `system:${firstFamily(family)}`,
       family: firstFamily(family),
       style: style?.trim() || "Regular",
@@ -90,6 +93,7 @@ function projectItems(): FontCatalogItem[] {
       const path = join(fontsDir(), family.dir, file);
       const available = existsSync(path);
       return {
+        key: `project:${family.css}`,
         id,
         family: family.css,
         style: WEIGHT_LABEL[weight] ?? `Weight ${weight}`,

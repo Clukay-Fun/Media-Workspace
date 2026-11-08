@@ -26,6 +26,7 @@ describe("runtime font catalog", () => {
       warnings: [],
       items: [
         {
+          key: "system:Songti SC",
           id: "system:Songti SC",
           family: "Songti SC",
           style: "Regular",

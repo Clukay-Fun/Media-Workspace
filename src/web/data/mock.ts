@@ -253,6 +253,7 @@ export function createMockApi(): Api {
       warnings: [],
       fonts: Object.entries(FONT_FAMILIES).flatMap(([id, family]) =>
         Object.keys(family.faces).map((rawWeight) => ({
+          key: `project:${family.css}`,
           id,
           family: family.css,
           style: "Regular",

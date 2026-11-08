@@ -133,6 +133,7 @@ export type FontCatalogResponse = {
   scannedAt: string;
   warnings: { code: string; message: string }[];
   fonts: {
+    key: string;
     id: string;
     family: string;
     style: string;
