@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { TextBlock } from "../../../composition/TextBlock";
+import type { FontCatalogResponse } from "../../../core/api";
 import { builtinStyles } from "../../../core/aspect";
 import { FONT_FAMILIES } from "../../../core/fonts";
 import type { Caption, Project } from "../../../core/schema";
@@ -187,6 +188,7 @@ export function TextStyleEditor({
   );
   const animIn = style.animation.in;
   const [fontQuery, setFontQuery] = useState("");
+  const fontCatalog = useStore((s) => s.fontCatalog);
   const tl = useStore((s) => s.preview?.timeline);
   const fps = tl?.fps ?? 30;
   const range = tl ? itemFrames(tl, id) : null;
@@ -198,13 +200,61 @@ export function TextStyleEditor({
   const previewHighlights =
     "highlights" in ref_.item ? ((ref_.item as Caption).highlights ?? []) : [];
   const presets = PRESETS.filter((p) => (isCaption ? p.caption : p.title));
-  const fonts = Object.entries(FONT_FAMILIES).filter(([fid, font]) => {
+  const fonts: {
+    value: string;
+    family: string;
+    group: string;
+    source: "project" | "system";
+    available: boolean;
+    status: FontCatalogResponse["fonts"][number]["license"]["status"];
+    weights: number[];
+  }[] = Object.entries(FONT_FAMILIES).map(([id, font]) => ({
+    value: id,
+    family: font.css,
+    group: font.group,
+    source: "project" as const,
+    available: fontCatalog.some((entry) => entry.id === id && entry.available),
+    status: fontCatalog.find((entry) => entry.id === id)?.license.status ?? ("未登记" as const),
+    weights: Object.keys(font.faces).map(Number),
+  }));
+  const systemFonts = new Map<string, (typeof fonts)[number]>();
+  for (const entry of fontCatalog) {
+    if (entry.source !== "system" || systemFonts.has(entry.family)) continue;
+    systemFonts.set(entry.family, {
+      value: entry.family,
+      family: entry.family,
+      group: "本机系统字体",
+      source: "system",
+      available: fontCatalog.some(
+        (candidate) =>
+          candidate.source === "system" && candidate.family === entry.family && candidate.available,
+      ),
+      status: entry.license.status,
+      weights: fontCatalog
+        .filter((candidate) => candidate.source === "system" && candidate.family === entry.family)
+        .map((candidate) => candidate.weight),
+    });
+  }
+  fonts.push(...systemFonts.values());
+  const currentIsListed = fonts.some((font) => font.value === style.font.family);
+  if (!currentIsListed && style.font.family) {
+    fonts.push({
+      value: style.font.family,
+      family: style.font.family,
+      group: "当前工程字体",
+      source: "system",
+      available: false,
+      status: "未知",
+      weights: [style.font.weight],
+    });
+  }
+  const visibleFonts = fonts.filter((font) => {
     const q = fontQuery.trim().toLowerCase();
     return (
       !q ||
-      font.css.toLowerCase().includes(q) ||
+      font.family.toLowerCase().includes(q) ||
       font.group.toLowerCase().includes(q) ||
-      fid.toLowerCase().includes(q)
+      font.value.toLowerCase().includes(q)
     );
   });
 
@@ -215,12 +265,10 @@ export function TextStyleEditor({
     setFontQuery("");
   }, [id]);
 
-  const chooseFont = (fid: string) => {
-    const next = FONT_FAMILIES[fid];
+  const chooseFont = (value: string) => {
+    const next = fonts.find((font) => font.value === value);
     if (!next) return;
-    const available = Object.keys(next.faces)
-      .map(Number)
-      .sort((a, b) => a - b);
+    const available = next.weights.sort((a, b) => a - b);
     const weight = available.includes(style.font.weight)
       ? style.font.weight
       : available.reduce(
@@ -228,7 +276,7 @@ export function TextStyleEditor({
             Math.abs(w - style.font.weight) < Math.abs(best - style.font.weight) ? w : best,
           available[0] ?? style.font.weight,
         );
-    update({ font: { family: fid, weight } });
+    update({ font: { family: value, weight } });
   };
 
   const applyPreset = (presetId: string, label: string) => {
@@ -379,7 +427,7 @@ export function TextStyleEditor({
       )}
 
       {page === "text" && (
-        <Field label="字体" note={`${fonts.length} 个`}>
+        <Field label="字体" note={`${visibleFonts.length} 个`}>
           <label className="search">
             <input
               type="search"
@@ -390,21 +438,23 @@ export function TextStyleEditor({
             />
           </label>
           <div className="font-list">
-            {fonts.map(([fid, font]) => (
+            {visibleFonts.map((font) => (
               <button
-                key={fid}
+                key={`${font.source}:${font.value}`}
                 type="button"
-                className={style.font.family === fid ? "font-option on" : "font-option"}
+                className={style.font.family === font.value ? "font-option on" : "font-option"}
                 disabled={locked}
-                aria-pressed={style.font.family === fid}
-                onClick={() => chooseFont(fid)}
+                aria-pressed={style.font.family === font.value}
+                onClick={() => chooseFont(font.value)}
               >
-                <span>{font.css}</span>
-                <small>{font.group}</small>
+                <span>{font.family}</span>
+                <small>
+                  {font.group} · {font.available ? font.status : `只能回退 · ${font.status}`}
+                </small>
               </button>
             ))}
           </div>
-          {fonts.length === 0 && <p className="hint style-empty">没有匹配的字体</p>}
+          {visibleFonts.length === 0 && <p className="hint style-empty">没有匹配的字体</p>}
         </Field>
       )}
 

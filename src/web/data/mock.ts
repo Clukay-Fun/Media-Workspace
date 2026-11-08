@@ -1,5 +1,6 @@
 import {
   EditorState,
+  type FontWarning,
   type HistoryEntry,
   type LibraryStyle,
   type ServerEvent,
@@ -152,6 +153,29 @@ export function createMockApi(): Api {
   ];
   let review = Review.parse({});
   let editor = EditorState.parse({});
+  const mockFontWarnings = (): FontWarning[] => {
+    const project = current();
+    const affected: string[] = [];
+    for (const track of project.tracks) {
+      if (track.kind !== "caption" && track.kind !== "overlay") continue;
+      for (const item of track.items) {
+        affected.push(item.id);
+        if (affected.length >= 2) break;
+      }
+      if (affected.length >= 2) break;
+    }
+    return [
+      {
+        code: "FONT_FALLBACK",
+        requested: "PingFang SC",
+        actual: "Noto Sans SC",
+        weight: 700,
+        source: "system",
+        elements: affected,
+        message: "字体「PingFang SC」缺失，已回退到「Noto Sans SC」；布局以预览和导出为准",
+      },
+    ];
+  };
   // 示例账号版式：人物中线、头顶、下巴三条参考线
   let layout: Layout | null = Layout.parse({
     guides: [
@@ -245,6 +269,7 @@ export function createMockApi(): Api {
     preview: async () => ({
       ok: true,
       props: { timeline: compile(current()), styles: current().styles, srcs: {}, fonts: [] },
+      fontWarnings: mockFontWarnings(),
     }),
     fonts: async () => ({
       ok: true,
@@ -261,6 +286,7 @@ export function createMockApi(): Api {
           source: "project" as const,
           available: true,
           exportable: true,
+          license: { status: "未登记" as const, source: "docs/font-licenses.md" as const },
         })),
       ),
     }),

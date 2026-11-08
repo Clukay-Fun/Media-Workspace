@@ -1,5 +1,6 @@
 import type React from "react";
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { FontWarningModal } from "./components/font-warning-modal";
 import { LeftPanel } from "./components/left-panel";
 import { ReviewSidebar } from "./components/review-sidebar";
 import { Splitter } from "./components/splitter";
@@ -75,6 +76,7 @@ export function App() {
           />
           <Timeline />
         </Fragment>
+        <FontWarningModal />
         <Toasts />
       </div>
     </div>

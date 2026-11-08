@@ -38,7 +38,9 @@
 
 **已确认**：网页与 AI 同时改同一工程时，谁先成功取锁并写入不固定；后到者若携带旧 `baseRevision`，被拒绝为 `CONFLICT`：“工程已经被修改：当前是第 N 版，你基于第 M 版”，并提示重新 `mw inspect` 再提交。网页提示“工程刚被其他地方修改过，已刷新到最新版本，请再操作一次”。被拒绝的操作未写入，先提交的修改不会被覆盖；若等锁超过 5 秒，返回 `CONFLICT` 并提示“稍后重试”。依据：`src/node/store.ts` 的 `withLock`、`checkRevision`、`commit`，`src/web/store.ts` 的 `fail`、`submit`。
 
-**已确认（字体运行时）**：`GET /api/fonts` 返回项目/系统字体的族名、来源、字重、可用性和可导出标记；默认使用进程缓存，查询参数 `refresh=1` 手动刷新。响应不包含绝对路径，工程样式仍通过 `font.family` 保存旧注册 ID 或 CSS 字族名。依据：`src/node/fonts.ts`、`src/server/app.ts`、`src/core/api.ts`。
+**已确认（字体运行时）**：`GET /api/fonts` 返回项目/系统字体的族名、来源、字重、可用性、可导出标记和授权状态；授权状态只从 `docs/font-licenses.md` 的表格解析，系统字体无记录时为“未登记”。默认使用进程缓存，查询参数 `refresh=1` 手动刷新。响应不包含绝对路径，工程样式仍通过 `font.family` 保存旧注册 ID 或 CSS 字族名。依据：`src/node/fonts.ts`、`src/server/app.ts`、`src/core/api.ts`、`docs/font-licenses.md`。
+
+**已确认（网页字体体验）**：`src/web/components/font-warning-modal.tsx` 消费预览 `fontWarnings`，列出受影响字幕/标题，替换通过 `styleEditOps` 支持 item/shared 范围并沿用 undo/redo；“不再提醒”只写 `editor.json` 的 `fontWarningsDismissed`。字体选择器显示项目/系统来源和授权状态，导出完成在 `src/web/components/top-bar.tsx` 汇总 `X→Y`。未知授权只提示，不阻断预览、编辑或导出。
 
 **已确认（实测范围：字幕文本）**：在独立测试工程的网页输入“网页草稿未提交”，保持焦点不失焦；终端用 `mw apply` 将同一句改成“终端已提交”。网页收到更新后，输入框立即变为终端文本；点击外部失焦后工程仍是终端文本、版本号仍为 3。未提交的字幕草稿没有保留，也没有覆盖已提交数据。其他控件是否同样处理仍**未知**。依据：本次临时工程 `/tmp/mw-draft-conflict.dw9cw6/Test.mwproj` 的网页操作与 `mw inspect` 结果、`src/web/components/inspector/caption.tsx` 的状态同步。**已确认**：原始素材只读，生成媒体放 `cache/`。依据：`AGENTS.md` §3、`src/node/paths.ts`。
 

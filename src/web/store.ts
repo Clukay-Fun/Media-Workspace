@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type {
   AvailableProject,
   EditorState,
+  FontCatalogResponse,
   FontWarning,
   HistoryResponse,
   LintResponse,
@@ -81,8 +82,9 @@ type State = {
   live: boolean;
   /** 工程或预览加载失败的原因（例如缺字体），一直显示在画面区域，直到下次加载成功 */
   loadError: string | null;
-  /** 字体缺失/回退提示；不阻断预览或导出，第三步再接入替代字体 UI */
+  /** 字体缺失/回退提示；不阻断预览或导出，字体提示弹窗消费它。 */
   fontWarnings: FontWarning[];
+  fontCatalog: FontCatalogResponse["fonts"];
 
   selected: string | null;
   /** 在画面、时间线上主动选中时加一（从列表跳过去时不加） */
@@ -348,6 +350,7 @@ export function createWorkbenchStore(initialApi: Api = httpApi) {
         live: false,
         loadError: null,
         fontWarnings: [],
+        fontCatalog: [],
         selected: null,
         frame: 0,
         seekNonce: 0,
@@ -468,6 +471,7 @@ export function createWorkbenchStore(initialApi: Api = httpApi) {
       live: false,
       loadError: null,
       fontWarnings: [],
+      fontCatalog: [],
       selected: null,
       frame: 0,
       seekNonce: 0,
@@ -537,12 +541,31 @@ export function createWorkbenchStore(initialApi: Api = httpApi) {
         const generation = requestGeneration;
         if (!projectId) return;
         try {
-          const [p, v, h, l, r] = await Promise.all([
+          const [p, v, h, l, r, f] = await Promise.all([
             api.project(),
             api.preview(),
             api.history(),
             api.lint(),
             api.review(),
+            (typeof api.fonts === "function"
+              ? api.fonts()
+              : Promise.resolve({
+                  ok: true,
+                  platform: "unknown",
+                  scannedAt: new Date(0).toISOString(),
+                  warnings: [],
+                  fonts: [],
+                } satisfies FontCatalogResponse)
+            ).catch(
+              () =>
+                ({
+                  ok: true,
+                  platform: "unknown",
+                  scannedAt: new Date(0).toISOString(),
+                  warnings: [],
+                  fonts: [],
+                }) satisfies FontCatalogResponse,
+            ),
           ]);
           if (generation !== requestGeneration || get().projectId !== projectId) return;
           if ((p.id && p.id !== projectId) || (v.projectId && v.projectId !== projectId))
@@ -553,6 +576,7 @@ export function createWorkbenchStore(initialApi: Api = httpApi) {
             project: p.project,
             preview: v.props,
             fontWarnings: v.fontWarnings ?? [],
+            fontCatalog: f.fonts,
             history: h,
             lint: l,
             review: r.review,

@@ -33,6 +33,8 @@ export const EditorState = z.strictObject({
     })
     .default({ enabled: true, thresholdPx: 8 }),
   showSafeArea: z.string().default("all"),
+  /** 已明确选择“不要再次提醒”的字体 warning key；只保存在 editor.json。 */
+  fontWarningsDismissed: z.array(z.string().min(1)).default([]),
   timeline: z
     .strictObject({
       pxPerSecond: z.number().positive().default(80),
@@ -60,6 +62,11 @@ export type FontWarning = {
   source: "project" | "system" | "css-fallback" | "missing";
   elements: string[];
   message: string;
+  license?: {
+    level?: "A" | "B" | "C";
+    status: "已确认" | "未知" | "需付费" | "未登记";
+    source: "docs/font-licenses.md";
+  };
 };
 
 // ---- 请求 ----
@@ -157,6 +164,12 @@ export type FontCatalogResponse = {
     source: "project" | "system";
     available: boolean;
     exportable: boolean;
+    license: {
+      level?: "A" | "B" | "C";
+      status: "已确认" | "未知" | "需付费" | "未登记";
+      source: "docs/font-licenses.md";
+      note?: string;
+    };
   }[];
 };
 export type EditorResponse = { ok: true; editor: EditorState };

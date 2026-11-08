@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import type { FontWarning } from "../core/api";
@@ -10,6 +11,13 @@ import type { TextStyle } from "../core/text-style";
 const execFileAsync = promisify(execFile);
 
 export type FontSource = "project" | "system";
+
+export type FontLicenseInfo = {
+  level?: "A" | "B" | "C";
+  status: "已确认" | "未知" | "需付费" | "未登记";
+  source: "docs/font-licenses.md";
+  note?: string;
+};
 
 /** 运行时字体索引；path 只留在 Node 进程内，不会写入工程或 API 响应。 */
 export type FontCatalogItem = {
@@ -22,6 +30,7 @@ export type FontCatalogItem = {
   source: FontSource;
   available: boolean;
   exportable: boolean;
+  license?: FontLicenseInfo;
   path?: string;
 };
 
@@ -50,6 +59,7 @@ export type SoftFontResolution = {
 
 type FontCache = { catalog: FontCatalog; at: number };
 let cache: FontCache | null = null;
+let licenseCache: Map<string, FontLicenseInfo> | null = null;
 
 const WEIGHT_LABEL: Record<number, string> = {
   100: "Thin",
@@ -143,6 +153,50 @@ async function systemItems(): Promise<{ items: FontCatalogItem[]; warning?: stri
   }
 }
 
+function parseLicenseTable(markdown: string): Map<string, FontLicenseInfo> {
+  const licenses = new Map<string, FontLicenseInfo>();
+  for (const line of markdown.split(/\r?\n/)) {
+    if (!line.startsWith("| **")) continue;
+    const cells = line
+      .slice(1, line.endsWith("|") ? -1 : undefined)
+      .split("|")
+      .map((cell) => cell.trim());
+    if (cells.length < 7) continue;
+    const id = cells[0]?.replace(/^\*\*|\*\*$/g, "");
+    const level = cells[1]?.replace(/^\*\*|\*\*$/g, "") as "A" | "B" | "C" | undefined;
+    if (!id || !level || !["A", "B", "C"].includes(level)) continue;
+    const video = cells[4] ?? "";
+    const status = video.includes("需付费")
+      ? "需付费"
+      : video.startsWith("允许")
+        ? "已确认"
+        : video.includes("未知")
+          ? "未知"
+          : "未登记";
+    licenses.set(id, {
+      level,
+      status,
+      source: "docs/font-licenses.md",
+      note: `${video}；证据：${cells[6] ?? "未登记"}`,
+    });
+  }
+  return licenses;
+}
+
+async function getFontLicenses(): Promise<Map<string, FontLicenseInfo>> {
+  if (licenseCache) return licenseCache;
+  try {
+    const markdown = await readFile(
+      resolve(import.meta.dirname, "..", "..", "docs", "font-licenses.md"),
+      "utf8",
+    );
+    licenseCache = parseLicenseTable(markdown);
+  } catch {
+    licenseCache = new Map();
+  }
+  return licenseCache;
+}
+
 /** 清空运行时缓存；下次 getFontCatalog 会重新扫描。 */
 export function refreshFontCatalog(): void {
   cache = null;
@@ -152,10 +206,16 @@ export function refreshFontCatalog(): void {
 export async function getFontCatalog(refresh = false): Promise<FontCatalog> {
   if (!refresh && cache) return cache.catalog;
   const system = await systemItems();
+  const licenses = await getFontLicenses();
   const warnings = system.warning
     ? [{ code: "SYSTEM_SCAN_UNAVAILABLE", message: system.warning }]
     : [];
-  const items = [...projectItems(), ...system.items];
+  const items = [...projectItems(), ...system.items].map((item) => ({
+    ...item,
+    license:
+      licenses.get(item.id) ??
+      ({ status: "未登记", source: "docs/font-licenses.md" } satisfies FontLicenseInfo),
+  }));
   const catalog: FontCatalog = {
     platform: process.platform,
     scannedAt: new Date().toISOString(),
@@ -172,7 +232,13 @@ export function publicFontCatalog(catalog: FontCatalog) {
     platform: catalog.platform,
     scannedAt: catalog.scannedAt,
     warnings: catalog.warnings,
-    fonts: catalog.items.map(({ path: _path, ...item }) => item),
+    fonts: catalog.items.map(({ path: _path, ...item }) => ({
+      ...item,
+      license: item.license ?? {
+        status: "未登记" as const,
+        source: "docs/font-licenses.md" as const,
+      },
+    })),
   };
 }
 
@@ -184,6 +250,10 @@ function systemMatch(catalog: FontCatalog, family: string, weight: number): Font
     candidates.toSorted((a, b) => Math.abs(a.weight - weight) - Math.abs(b.weight - weight))[0] ??
     null
   );
+}
+
+function licenseForFamily(catalog: FontCatalog, family: string) {
+  return catalog.items.find((item) => item.family === family && item.license)?.license;
 }
 
 /** 解析一个样式的项目/系统字体。严格 resolveFaces 保留给 fonts:check。 */
@@ -235,6 +305,7 @@ export function resolveStyleFaces(
       weight: style.font.weight,
       source: firstAvailable?.source ?? "missing",
       elements: [],
+      license: licenseForFamily(catalog, actual ?? primary.css),
       message: actual
         ? `字体「${primary.css}」缺失，已回退到「${actual}」；布局以预览和导出为准`
         : `字体「${primary.css}」及其后备字体均不可用；将使用 CSS 系统回退，布局以预览和导出为准`,
