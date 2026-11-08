@@ -3,6 +3,7 @@ import { mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
+import type { FontWarning } from "../core/api";
 import { type AspectName, builtinStyles, planAspect, scaleGuides } from "../core/aspect";
 import { compile, type ResolvedTimeline } from "../core/compile";
 import { coverView } from "../core/cover";
@@ -24,6 +25,7 @@ import { PROJECT_FORMAT_VERSION } from "../core/version";
 import { overlayAssets, overlayBounds, TEMPLATE_NAMES, TEMPLATES } from "../templates";
 import { alignCaptions, transcribeFile } from "./asr";
 import { detectFaces, readFaces } from "./faces";
+import { fontWarningsForStyles, getFontCatalog } from "./fonts";
 import { getDefaultOutro, getLayout } from "./library";
 import { decodeAudioSamples, importMedia, probeMedia } from "./media";
 import { projectFiles, resolveProjectDir } from "./paths";
@@ -415,13 +417,48 @@ export async function lintDir(dir: string) {
     const f = a.cache?.faces ? await readFaces(join(dir, a.cache.faces)) : null;
     if (f) faces[id] = f;
   }
-  const issues = lintProject(p, {
-    styles: { ...builtinStyles(p.canvas), ...p.styles },
-    faces,
-    layout: await getLayout().catch(() => null),
-    overlayBounds: (o, style) => overlayBounds(o, style, p.canvas.width, p.canvas.height),
-    overlayStyle: (t) => TEMPLATES[t]?.meta.defaultStyle,
-  });
+  const styles = { ...builtinStyles(p.canvas), ...p.styles };
+  const uses = new Map<string, { styleId: string; style: TextStyle; elements: string[] }>();
+  const use = (styleId: string, element: string) => {
+    const style = styles[styleId];
+    if (!style) return;
+    const current = uses.get(styleId) ?? { styleId, style, elements: [] };
+    current.elements.push(element);
+    uses.set(styleId, current);
+  };
+  for (const track of p.tracks) {
+    for (const item of track.items) {
+      const itemStyle = "style" in item ? item.style : undefined;
+      const trackStyle = "style" in track ? track.style : undefined;
+      if (track.kind === "caption") {
+        use(itemStyle ?? trackStyle ?? "caption-word-yellow", item.id);
+      } else if ("template" in item) {
+        use(
+          itemStyle ??
+            trackStyle ??
+            TEMPLATES[item.template]?.meta.defaultStyle ??
+            "title-bar-yellow",
+          item.id,
+        );
+      }
+    }
+  }
+  const fontWarnings = fontWarningsForStyles([...uses.values()], await getFontCatalog());
+  const issues = [
+    ...lintProject(p, {
+      styles,
+      faces,
+      layout: await getLayout().catch(() => null),
+      overlayBounds: (o, style) => overlayBounds(o, style, p.canvas.width, p.canvas.height),
+      overlayStyle: (t) => TEMPLATES[t]?.meta.defaultStyle,
+    }),
+    ...fontWarnings.map((warning) => ({
+      code: warning.code,
+      id: warning.elements[0] ?? `font-${warning.requested}`,
+      atMs: 0,
+      message: `${warning.message}（基于估算字宽，以预览和导出为准）`,
+    })),
+  ];
   const videos = Object.entries(p.assets).filter(([, a]) => a.kind === "video");
   return {
     ok: true as const,
@@ -429,6 +466,7 @@ export async function lintDir(dir: string) {
     issues,
     // 没有人脸数据的视频素材：挡脸检查没有覆盖到
     noFaceData: videos.filter(([id]) => !faces[id]).map(([id]) => id),
+    fontWarnings,
   };
 }
 
@@ -896,7 +934,10 @@ export async function previewProject(dir: string, o: PreviewOptions) {
     throw new MwError("USAGE", "需要 at、frame 或 sheet 之一");
   }
   const tmp = join(stills, `tmp-${process.pid}-${Date.now()}`);
-  const pngs = await renderStills(dir, p, frames, tmp, o.onLog);
+  let fontWarnings: FontWarning[] = [];
+  const pngs = await renderStills(dir, p, frames, tmp, o.onLog, (warnings) => {
+    fontWarnings = warnings;
+  });
   const editor = await loadEditor(dir);
   // 参考线：账号版式的（所有工程共用）加上这个工程自己的
   const layout = o.guides ? await getLayout() : null;
@@ -941,6 +982,7 @@ export async function previewProject(dir: string, o: PreviewOptions) {
     file: outFile,
     frames: frames.map((f) => ({ frame: f, ms: Math.round((f * 1000) / tl.fps) })),
     warnings: tl.warnings,
+    fontWarnings,
   };
 }
 
@@ -975,6 +1017,7 @@ export async function exportProject(dir: string, o: ExportOptions = {}) {
     /** 渲染用了多久（不是成片时长） */
     renderSeconds: (Date.now() - t0) / 1000,
     warnings: v.warnings,
+    fontWarnings: r.fontWarnings,
   };
 }
 

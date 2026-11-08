@@ -270,6 +270,7 @@ describe("本地服务接口", () => {
       revision: 1,
       issues: [],
       noFaceData: ["a1"],
+      fontWarnings: [],
       projectId: "demo",
     });
   });
@@ -427,6 +428,7 @@ describe("推送", () => {
         durationMs: 667,
         renderSeconds: 1,
         warnings: [],
+        fontWarnings: [],
       };
     });
     const r = await (await req("/api/export", { body: {} })).json();

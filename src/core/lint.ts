@@ -35,7 +35,9 @@ export type LintIssue = {
     | "TOO_MANY_CARDS"
     | "FACE_OFF_LAYOUT"
     | "STYLE_NOT_LAYOUT"
-    | "SPEED_NOT_LAYOUT";
+    | "SPEED_NOT_LAYOUT"
+    | "FONT_MISSING"
+    | "FONT_FALLBACK";
   /** hint = 只是提示（有账号版式时，通用安全区以版式为准）；不写 = 警告 */
   level?: "hint";
   /** 有问题的条目 */

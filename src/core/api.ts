@@ -33,6 +33,8 @@ export const EditorState = z.strictObject({
     })
     .default({ enabled: true, thresholdPx: 8 }),
   showSafeArea: z.string().default("all"),
+  /** 已明确选择“不要再次提醒”的字体 warning key；只保存在 editor.json。 */
+  fontWarningsDismissed: z.array(z.string().min(1)).default([]),
   timeline: z
     .strictObject({
       pxPerSecond: z.number().positive().default(80),
@@ -49,6 +51,22 @@ export type PreviewProps = {
   /** 素材 ID → 媒体 URL（预览给代理文件，导出给标准化文件） */
   srcs: Record<string, string>;
   fonts: { css: string; weight: number; url: string }[];
+};
+
+/** 字体缺失/回退提示；只影响可见效果，不作为工程写入错误。 */
+export type FontWarning = {
+  code: "FONT_MISSING" | "FONT_FALLBACK";
+  requested: string;
+  actual: string | null;
+  weight: number;
+  source: "project" | "system" | "css-fallback" | "missing";
+  elements: string[];
+  message: string;
+  license?: {
+    level?: "A" | "B" | "C";
+    status: "已确认" | "未知" | "需付费" | "未登记";
+    source: "docs/font-licenses.md";
+  };
 };
 
 // ---- 请求 ----
@@ -125,7 +143,35 @@ export type ProjectResponse = {
 };
 export type AvailableProject = { id: string; name: string; revision: number };
 export type ProjectsResponse = { ok: true; projects: AvailableProject[] };
-export type PreviewResponse = { ok: true; projectId?: string; props: PreviewProps };
+export type PreviewResponse = {
+  ok: true;
+  projectId?: string;
+  props: PreviewProps;
+  fontWarnings?: FontWarning[];
+};
+/** 运行时字体目录；path 不返回，工程只保存 family/registry ID。 */
+export type FontCatalogResponse = {
+  ok: true;
+  platform: string;
+  scannedAt: string;
+  warnings: { code: string; message: string }[];
+  fonts: {
+    key: string;
+    id: string;
+    family: string;
+    style: string;
+    weight: number;
+    source: "project" | "system";
+    available: boolean;
+    exportable: boolean;
+    license: {
+      level?: "A" | "B" | "C";
+      status: "已确认" | "未知" | "需付费" | "未登记";
+      source: "docs/font-licenses.md";
+      note?: string;
+    };
+  }[];
+};
 export type EditorResponse = { ok: true; editor: EditorState };
 export type OpsResponse = {
   ok: true;
@@ -198,6 +244,7 @@ export type LintResponse = {
   issues: LintIssue[];
   /** 没有人脸数据的视频素材（挡脸检查没覆盖到） */
   noFaceData: string[];
+  fontWarnings: FontWarning[];
 };
 
 /** 批注列表（GET /api/comments）：全部批注，界面自己按状态筛选 */
@@ -225,6 +272,7 @@ export type ServerEvent =
       done: boolean;
       file?: string;
       error?: { code: string; message: string };
+      fontWarnings?: FontWarning[];
     }
   /** 批注有变化（任何来源），重新拉 GET /api/comments */
   | { type: "review" };
@@ -235,6 +283,7 @@ export const ROUTES = {
   projects: "/api/projects",
   project: "/api/project",
   preview: "/api/preview",
+  fonts: "/api/fonts",
   editor: "/api/editor",
   ops: "/api/ops",
   history: "/api/history",

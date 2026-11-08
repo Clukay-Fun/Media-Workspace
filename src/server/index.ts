@@ -5,6 +5,7 @@ import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { API_PORT } from "../core/api";
 import { MwError } from "../core/errors";
+import { getFontCatalog } from "../node/fonts";
 import { startMediaServer } from "../node/media-server";
 import { projectsDir } from "../node/paths";
 import { loadProject } from "../node/store";
@@ -23,6 +24,8 @@ export async function startServer(
   dir?: string,
   opts: { port?: number; onLog?: (s: string) => void } = {},
 ): Promise<RunningServer> {
+  // 预热字体目录；扫描失败只体现在 /api/fonts 的 warning，不阻止工作台启动。
+  void getFontCatalog().catch((e) => opts.onLog?.(`字体目录扫描失败：${String(e)}`));
   // 传入工程时保持旧的单工程服务；不传时仅允许浏览 projectsDir() 下的工程。
   if (dir) await loadProject(dir);
   const media = await startMediaServer(null);

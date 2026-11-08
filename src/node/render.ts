@@ -6,14 +6,14 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import { bundle } from "@remotion/bundler";
 import { renderMedia, renderStill, selectComposition } from "@remotion/renderer";
 import type { MainProps } from "../composition/Main";
+import type { FontWarning } from "../core/api";
 import { builtinStyles } from "../core/aspect";
 import { compile, type ResolvedTimeline } from "../core/compile";
 import { MwError } from "../core/errors";
-import { facesFor } from "../core/fonts";
 import type { Project } from "../core/schema";
 import type { TextStyle } from "../core/text-style";
 import { overlayAssets, TEMPLATES } from "../templates";
-import { resolveFaces } from "./fonts";
+import { fontWarningsForStyles, getFontCatalog, resolveStyleFaces } from "./fonts";
 import { type MediaServer, startMediaServer } from "./media-server";
 
 // 渲染（PLAN 9）：compile → 准备 props（媒体 URL、字体）→ Remotion 渲染。
@@ -73,6 +73,7 @@ export type PreparedRender = {
   props: MainProps;
   timeline: ResolvedTimeline;
   server: MediaServer;
+  fontWarnings: FontWarning[];
 };
 
 /**
@@ -84,7 +85,7 @@ export async function buildProps(
   project: Project,
   register: (absPath: string) => string,
   variant: "mez" | "proxy" = "mez",
-): Promise<{ props: MainProps; timeline: ResolvedTimeline }> {
+): Promise<{ props: MainProps; timeline: ResolvedTimeline; fontWarnings: FontWarning[] }> {
   const timeline = compile(project);
   const srcs: Record<string, string> = {};
   const used = new Set<string>([
@@ -110,22 +111,32 @@ export async function buildProps(
 
   // 字体：只加载实际用到的样式（没写样式的字幕 / 叠加层用内置默认样式）
   const styles: Record<string, TextStyle> = { ...builtinStyles(project.canvas), ...project.styles };
-  const usedStyles = new Set<string>([
-    ...timeline.captions.map((c) => c.style ?? "caption-word-yellow"),
-    ...timeline.overlays.map(
-      (o) => o.style ?? TEMPLATES[o.template]?.meta.defaultStyle ?? "title-bar-yellow",
-    ),
-  ]);
-  const faces = new Map<string, ReturnType<typeof facesFor>[number]>();
-  for (const id of usedStyles) {
-    const st = styles[id];
-    if (st) for (const f of facesFor(st)) faces.set(`${f.id}|${f.weight}`, f);
+  const uses = new Map<string, { styleId: string; style: TextStyle; elements: string[] }>();
+  const use = (styleId: string, element: string) => {
+    const style = styles[styleId];
+    if (!style) return;
+    const current = uses.get(styleId) ?? { styleId, style, elements: [] };
+    current.elements.push(element);
+    uses.set(styleId, current);
+  };
+  for (const c of timeline.captions) use(c.style ?? "caption-word-yellow", c.id);
+  for (const o of timeline.overlays)
+    use(o.style ?? TEMPLATES[o.template]?.meta.defaultStyle ?? "title-bar-yellow", o.id);
+
+  const catalog = await getFontCatalog();
+  const faces = new Map<string, ReturnType<typeof resolveStyleFaces>["faces"][number]>();
+  for (const entry of uses.values()) {
+    // 系统字体由 Chromium 按 CSS family 解析；不把机器绝对路径注册为 @font-face，
+    // 尤其避免 .ttc 集合在不同 Remotion/Chromium 版本中的 MIME 和格式差异。
+    for (const f of resolveStyleFaces(entry.style, catalog).faces)
+      if (f.source === "project") faces.set(`${f.css}|${f.weight}|${f.path}`, f);
   }
-  const fonts = resolveFaces([...faces.values()]).map((f) => ({
+  const fonts = [...faces.values()].map((f) => ({
     css: f.css,
     weight: f.weight,
     url: register(f.path),
   }));
+  const fontWarnings = fontWarningsForStyles([...uses.values()], catalog);
 
   // 模板参数在这里先校验，出错时给出结构化错误，而不是渲染到一半才失败
   for (const o of timeline.overlays) {
@@ -150,15 +161,17 @@ export async function buildProps(
       });
     }
   }
-  return { props: { timeline, styles: project.styles, srcs, fonts }, timeline };
+  return { props: { timeline, styles: project.styles, srcs, fonts }, timeline, fontWarnings };
 }
 
 /** 准备渲染输入：起一个临时媒体服务，把用到的素材和字体换成 URL */
 export async function prepare(dir: string, project: Project): Promise<PreparedRender> {
   const server = await startMediaServer(null);
   try {
-    const { props, timeline } = await buildProps(dir, project, (abs) => server.register(abs));
-    return { props, timeline, server };
+    const { props, timeline, fontWarnings } = await buildProps(dir, project, (abs) =>
+      server.register(abs),
+    );
+    return { props, timeline, server, fontWarnings };
   } catch (e) {
     await server.close();
     throw e;
@@ -183,9 +196,9 @@ export async function exportVideo(
   dir: string,
   project: Project,
   opts: ExportOptions,
-): Promise<{ out: string; frames: number }> {
+): Promise<{ out: string; frames: number; fontWarnings: FontWarning[] }> {
   const serveUrl = await getBundle(opts.onLog);
-  const { props, timeline, server } = await prepare(dir, project);
+  const { props, timeline, server, fontWarnings } = await prepare(dir, project);
   try {
     const inputProps = props as unknown as Record<string, unknown>;
     const composition = await selectComposition({ serveUrl, id: "Main", inputProps });
@@ -206,7 +219,7 @@ export async function exportVideo(
       onProgress: ({ progress, renderedFrames }) => opts.onProgress?.({ progress, renderedFrames }),
     });
     await rename(tmp, opts.out);
-    return { out: opts.out, frames: timeline.durationInFrames };
+    return { out: opts.out, frames: timeline.durationInFrames, fontWarnings };
   } catch (e) {
     await rm(`${opts.out}.part.mp4`, { force: true });
     renderError(e);
@@ -222,9 +235,11 @@ export async function renderStills(
   frames: number[],
   outDir: string,
   onLog?: (s: string) => void,
+  onFontWarnings?: (warnings: FontWarning[]) => void,
 ): Promise<string[]> {
   const serveUrl = await getBundle(onLog);
-  const { props, timeline, server } = await prepare(dir, project);
+  const { props, timeline, server, fontWarnings } = await prepare(dir, project);
+  onFontWarnings?.(fontWarnings);
   try {
     const inputProps = props as unknown as Record<string, unknown>;
     const composition = await selectComposition({ serveUrl, id: "Main", inputProps });

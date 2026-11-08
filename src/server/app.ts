@@ -22,6 +22,7 @@ import { MwError } from "../core/errors";
 import { Layout } from "../core/layout";
 import { zodIssues } from "../core/validate";
 import { coverProject, lintDir, restoreCut, templateOpts } from "../node/actions";
+import { getFontCatalog, publicFontCatalog } from "../node/fonts";
 import { getLayout, listStyles, saveStyle, setLayout } from "../node/library";
 import { buildProps } from "../node/render";
 import {
@@ -162,8 +163,13 @@ export function createApp(ctx: AppContext): Hono {
   app.get(ROUTES.preview, async (c) => {
     const p = await projectContext(c);
     const project = await loadProject(p.dir);
-    const { props } = await buildProps(p.dir, project, p.register, "proxy");
-    return c.json({ ok: true, projectId: p.id, props });
+    const { props, fontWarnings } = await buildProps(p.dir, project, p.register, "proxy");
+    return c.json({ ok: true, projectId: p.id, props, fontWarnings });
+  });
+
+  app.get(ROUTES.fonts, async (c) => {
+    const refresh = c.req.query("refresh") === "1" || c.req.query("refresh") === "true";
+    return c.json({ ok: true, ...publicFontCatalog(await getFontCatalog(refresh)) });
   });
 
   app.get(ROUTES.editor, async (c) => {

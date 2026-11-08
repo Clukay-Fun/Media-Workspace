@@ -96,6 +96,14 @@ startup_timeout_sec = 60
 
 ### 字体
 
+项目字体仍放在 `assets/fonts/`（不进 Git），可运行 `pnpm fonts:check` 做严格文件检查。工作台运行时会通过 `/api/fonts` 索引项目字体和本机系统字体；`?refresh=1` 可手动刷新目录。目录项包含字体族名、来源（`project` / `system`）、字重、可用和可导出标记，不返回本机绝对路径。
+
+工程样式保存字体族名或旧注册 ID，不保存系统字体路径。旧注册 ID 优先解析；`Songti SC` 这类系统族名在当前机器可直接交给预览/导出环境解析。授权 A/B/C 只作为证据提示，未知项不会被写成商用批准；策略记录见 [`docs/decisions/0033-runtime-font-discovery.md`](docs/decisions/0033-runtime-font-discovery.md)。
+
+预览、导出和 lint 使用非阻断字体解析：找不到主字体时按项目字体、系统字体和 CSS 后备栈继续渲染，并在 `fontWarnings` 中返回请求字体、实际回退字体和受影响元素。lint 的字体提示不会阻止导出；文字宽度仍是估算值，以预览和导出结果为准。严格的 `pnpm fonts:check` 继续在缺文件时失败。
+
+网页收到 warning 后会显示缺字体弹窗，可按元素范围替换、继续使用回退或稍后处理；替换走现有样式操作，因此支持撤销/重做。选择器和导出完成提示显示 `docs/font-licenses.md` 解析出的授权状态（已确认、未知、需付费、未登记），并注明“仅供参考，非法律意见”；未知授权不会阻止工作流。只能回退的字体会持续显示 warning。
+
 将阿里巴巴普惠体 3.0 放入 `assets/fonts/alibaba-puhuiti-3/` 后运行 `pnpm fonts:check`。测试字体可通过 `pnpm fonts:fetch-test` 下载；它不替代产品默认字体。
 
 ## 当前边界
@@ -148,4 +156,4 @@ pnpm test:e2e
 - 本仓库代码采用 [MIT 协议](LICENSE)。
 - 视频渲染依赖 [Remotion](https://www.remotion.dev)，其授权条款独立于本仓库的 MIT 协议；使用前请阅读 [Remotion License](https://www.remotion.dev/license)。
 - 识音使用 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) 与 SenseVoice 模型；模型不包含在仓库中，下载和使用时请遵守各自协议。
-- 阿里巴巴普惠体字体文件不包含在仓库中，请从官方渠道获取并遵守其使用协议。
+- 项目字体二进制不包含在仓库中，请从官方渠道获取并遵守其使用协议；系统字体只在本机运行时使用，不随工程分发。

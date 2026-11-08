@@ -31,6 +31,15 @@ export function TopBar() {
 
   const open = review?.comments.filter((c) => c.status === "open").length ?? 0;
   const exporting = exportJob !== null && !exportJob.done;
+  const exportFontSummary = exportJob?.done
+    ? [
+        ...new Set(
+          (exportJob.fontWarnings ?? [])
+            .filter((w) => w.actual)
+            .map((w) => `${w.requested}→${w.actual}（${w.license?.status ?? "未登记"}）`),
+        ),
+      ]
+    : [];
   const canUndoAi = aiChange && aiChange.revision === project?.revision && history?.undo;
 
   const [switchOpen, setSwitchOpen] = useState(false);
@@ -181,6 +190,11 @@ export function TopBar() {
             {exporting ? `导出中 ${Math.round(exportJob.progress * 100)}%` : "导出"}
           </span>
         </button>
+        {exportFontSummary.length > 0 && (
+          <span className="font-export-summary" role="status" title="导出使用了字体回退">
+            回退：{exportFontSummary.join("、")}
+          </span>
+        )}
       </div>
       {switchTarget && (
         <div className="project-switcher-backdrop" role="presentation">

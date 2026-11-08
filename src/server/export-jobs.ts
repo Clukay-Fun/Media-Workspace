@@ -36,7 +36,16 @@ export function createExportJobs(
           bus.emit({ type: "export", jobId, progress, done: false });
         },
       })
-        .then((r) => bus.emit({ type: "export", jobId, progress: 1, done: true, file: r.file }))
+        .then((r) =>
+          bus.emit({
+            type: "export",
+            jobId,
+            progress: 1,
+            done: true,
+            file: r.file,
+            fontWarnings: r.fontWarnings,
+          }),
+        )
         .catch((e: unknown) =>
           bus.emit({
             type: "export",
