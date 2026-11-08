@@ -17,7 +17,7 @@
 | 目录 | 负责什么；改动容易影响哪里 |
 |---|---|
 | `src/core/` | **已确认**：工程格式、操作、时间换算、校验；影响所有入口和成片。依据：`AGENTS.md` §2、`src/core/schema.ts`、`ops.ts`、`compile.ts`。 |
-| `src/node/` | **已确认**：存储、素材、识音、渲染；影响数据安全和媒体结果。依据：`src/node/store.ts`、`render.ts`。 |
+| `src/node/` | **已确认**：存储、素材、识音、渲染和运行时字体目录；影响数据安全、字体解析和媒体结果。`src/node/fonts.ts` 扫描项目注册字体与本机 `fc-list` 字体，缓存路径只留在进程内。依据：`src/node/store.ts`、`render.ts`、`fonts.ts`。 |
 | `src/cli/`、`src/mcp/` | **已确认**：`mw` 命令和 AI 工具；影响参数与返回信息。依据：`src/cli/index.ts`、`src/mcp/server.ts`。 |
 | `src/server/`、`src/web/` | **已确认**：本地服务和网页；影响操作、审片、批注。依据：`src/server/app.ts`、`src/web/app.tsx`。 |
 | `src/templates/`、`src/composition/` | **已确认**：模板和 Remotion（逐帧合成视频的工具）；影响预览与导出画面。依据：`AGENTS.md` §2、`src/composition/Main.tsx`。 |
@@ -37,6 +37,8 @@
 | `history/` | **已确认**：提交前的旧版工程快照供回退，最多保留 200 版。依据：`src/node/store.ts`。 | **已确认**：store 在提交时写入、清理。依据：`src/node/store.ts`。 | **已确认**：不要手改，否则可能破坏回退。依据：`src/node/store.ts` 的 `commit`、`readHistory`。 |
 
 **已确认**：网页与 AI 同时改同一工程时，谁先成功取锁并写入不固定；后到者若携带旧 `baseRevision`，被拒绝为 `CONFLICT`：“工程已经被修改：当前是第 N 版，你基于第 M 版”，并提示重新 `mw inspect` 再提交。网页提示“工程刚被其他地方修改过，已刷新到最新版本，请再操作一次”。被拒绝的操作未写入，先提交的修改不会被覆盖；若等锁超过 5 秒，返回 `CONFLICT` 并提示“稍后重试”。依据：`src/node/store.ts` 的 `withLock`、`checkRevision`、`commit`，`src/web/store.ts` 的 `fail`、`submit`。
+
+**已确认（字体运行时）**：`GET /api/fonts` 返回项目/系统字体的族名、来源、字重、可用性和可导出标记；默认使用进程缓存，查询参数 `refresh=1` 手动刷新。响应不包含绝对路径，工程样式仍通过 `font.family` 保存旧注册 ID 或 CSS 字族名。依据：`src/node/fonts.ts`、`src/server/app.ts`、`src/core/api.ts`。
 
 **已确认（实测范围：字幕文本）**：在独立测试工程的网页输入“网页草稿未提交”，保持焦点不失焦；终端用 `mw apply` 将同一句改成“终端已提交”。网页收到更新后，输入框立即变为终端文本；点击外部失焦后工程仍是终端文本、版本号仍为 3。未提交的字幕草稿没有保留，也没有覆盖已提交数据。其他控件是否同样处理仍**未知**。依据：本次临时工程 `/tmp/mw-draft-conflict.dw9cw6/Test.mwproj` 的网页操作与 `mw inspect` 结果、`src/web/components/inspector/caption.tsx` 的状态同步。**已确认**：原始素材只读，生成媒体放 `cache/`。依据：`AGENTS.md` §3、`src/node/paths.ts`。
 

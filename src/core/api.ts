@@ -126,6 +126,22 @@ export type ProjectResponse = {
 export type AvailableProject = { id: string; name: string; revision: number };
 export type ProjectsResponse = { ok: true; projects: AvailableProject[] };
 export type PreviewResponse = { ok: true; projectId?: string; props: PreviewProps };
+/** 运行时字体目录；path 不返回，工程只保存 family/registry ID。 */
+export type FontCatalogResponse = {
+  ok: true;
+  platform: string;
+  scannedAt: string;
+  warnings: { code: string; message: string }[];
+  fonts: {
+    id: string;
+    family: string;
+    style: string;
+    weight: number;
+    source: "project" | "system";
+    available: boolean;
+    exportable: boolean;
+  }[];
+};
 export type EditorResponse = { ok: true; editor: EditorState };
 export type OpsResponse = {
   ok: true;
@@ -235,6 +251,7 @@ export const ROUTES = {
   projects: "/api/projects",
   project: "/api/project",
   preview: "/api/preview",
+  fonts: "/api/fonts",
   editor: "/api/editor",
   ops: "/api/ops",
   history: "/api/history",

@@ -7,6 +7,7 @@ import {
   type EditorResponse,
   type EditorState,
   type ExportStarted,
+  type FontCatalogResponse,
   type HistoryResponse,
   type LayoutResponse,
   type LibraryStylesResponse,
@@ -35,6 +36,7 @@ export type Api = {
   forProject(id: string): Api;
   project(): Promise<ProjectResponse>;
   preview(): Promise<PreviewResponse>;
+  fonts(refresh?: boolean): Promise<FontCatalogResponse>;
   history(): Promise<HistoryResponse>;
   revision(rev: number): Promise<RevisionDiffResponse>;
   lint(): Promise<LintResponse>;
@@ -112,6 +114,7 @@ function createHttpApi(projectId: string | null): Api {
     forProject: (id) => createHttpApi(id),
     project: () => req(ROUTES.project),
     preview: () => req(ROUTES.preview),
+    fonts: (refresh = false) => req(`${ROUTES.fonts}${refresh ? "?refresh=1" : ""}`),
     history: () => req(ROUTES.history),
     revision: (rev) => req(ROUTES.revision(rev)),
     lint: () => req(ROUTES.lint),

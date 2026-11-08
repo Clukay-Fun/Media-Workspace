@@ -7,6 +7,7 @@ import {
 import { compile } from "../../core/compile";
 import { diffProjects } from "../../core/diff";
 import { MwError } from "../../core/errors";
+import { FONT_FAMILIES } from "../../core/fonts";
 import { Layout } from "../../core/layout";
 import { lintProject } from "../../core/lint";
 import { applyOps } from "../../core/ops";
@@ -244,6 +245,23 @@ export function createMockApi(): Api {
     preview: async () => ({
       ok: true,
       props: { timeline: compile(current()), styles: current().styles, srcs: {}, fonts: [] },
+    }),
+    fonts: async () => ({
+      ok: true,
+      platform: "mock",
+      scannedAt: new Date(0).toISOString(),
+      warnings: [],
+      fonts: Object.entries(FONT_FAMILIES).flatMap(([id, family]) =>
+        Object.keys(family.faces).map((rawWeight) => ({
+          id,
+          family: family.css,
+          style: "Regular",
+          weight: Number(rawWeight),
+          source: "project" as const,
+          available: true,
+          exportable: true,
+        })),
+      ),
     }),
     history: async () => {
       const logs = entries.map((e) => e.log);
