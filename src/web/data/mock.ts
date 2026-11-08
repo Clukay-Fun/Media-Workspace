@@ -289,6 +289,7 @@ export function createMockApi(): Api {
         overlayStyle: (t) => TEMPLATES[t]?.meta.defaultStyle,
       }),
       noFaceData: ["outro"],
+      fontWarnings: [],
     }),
     review: async () => ({ ok: true, review }),
     editor: async () => ({ ok: true, editor }),

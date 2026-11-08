@@ -100,6 +100,8 @@ startup_timeout_sec = 60
 
 工程样式保存字体族名或旧注册 ID，不保存系统字体路径。旧注册 ID 优先解析；`Songti SC` 这类系统族名在当前机器可直接交给预览/导出环境解析。授权 A/B/C 只作为证据提示，未知项不会被写成商用批准；策略记录见 [`docs/decisions/0033-runtime-font-discovery.md`](docs/decisions/0033-runtime-font-discovery.md)。
 
+预览、导出和 lint 使用非阻断字体解析：找不到主字体时按项目字体、系统字体和 CSS 后备栈继续渲染，并在 `fontWarnings` 中返回请求字体、实际回退字体和受影响元素。lint 的字体提示不会阻止导出；文字宽度仍是估算值，以预览和导出结果为准。严格的 `pnpm fonts:check` 继续在缺文件时失败。
+
 将阿里巴巴普惠体 3.0 放入 `assets/fonts/alibaba-puhuiti-3/` 后运行 `pnpm fonts:check`。测试字体可通过 `pnpm fonts:fetch-test` 下载；它不替代产品默认字体。
 
 ## 当前边界

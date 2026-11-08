@@ -1,6 +1,6 @@
 # D33：运行时字体发现与降级策略
 
-状态：方案已定，第一阶段（目录索引与前置实验）进行中。本文只规定运行时行为，不改变现有工程格式。
+状态：第一阶段（目录索引与前置实验）和第二阶段（非阻断回退）已在本分支实现；第三阶段 UI 与授权信息仍待后续。本文只规定运行时行为，不改变现有工程格式。
 
 ## 决定
 
@@ -19,11 +19,12 @@
 - 保留严格 `resolveFaces()`，不改变缺字体错误语义。
 - 前置实验：Songti SC 预览/导出、Chromium 系统族名解析、macOS `.ttc` 元数据识别。
 
-### 第二阶段：非阻断回退（后续）
+### 第二阶段：非阻断回退（本分支）
 
-- 新增 soft resolver，返回 `{ faces, warnings }`，缺失字体变为结构化 warning。
-- 预览和导出继续使用同一 `Main` props；网页 `loadError` 与字体 warning 分离。
-- 缺字体提示允许用户选择替代字体，写入现有 `font.family` / `font.fallback` 和 `style.update` ops，不写机器绝对路径。
+- soft resolver 返回 `{ faces, warnings }`，缺失字体变为 `FONT_MISSING` / `FONT_FALLBACK` 结构化 warning；严格 `resolveFaces()` 仍供 `fonts:check` 使用。
+- 预览、导出和 lint 继续运行；网页 `loadError` 与字体 warning 分离。lint 追加非阻断提示，并保留“基于估算字宽，以预览和导出为准”。
+- CLI、MCP、网页 API 和导出 SSE 共用 `FontWarning` 结构，包含请求字体、实际回退、字重和受影响元素；导出完成返回完整回退清单。
+- 第三阶段才提供替代字体选择 UI；本阶段不写 `font.family` / `font.fallback`，不写机器绝对路径。
 
 ### 第三阶段：体验与授权信息（后续）
 
@@ -36,6 +37,6 @@
 - 新工程和含旧注册 ID 的旧工程都能从 `/api/fonts` 看到项目字体；系统字体目录可刷新，API 项不含绝对路径。
 - `Songti SC` 这类未注册 CSS 字族在本机预览和 Remotion 导出均能渲染；不同机器缺失时产生可定位 warning，不伪造确定性。
 - `.ttc` 先完成系统元数据识别；通过 URL 作为项目字体加载前，必须补做 Chromium `@font-face` 实验并确认 MIME/格式支持。
-- 第一阶段不改变 `FONT_MISSING`、模板 schema、导出退出码或 lint 行为。
+- 第一、二阶段不改变模板 schema、参数错误和导出退出码；严格 `fonts:check` 仍报告 `FONT_MISSING`，渲染链路改为非阻断 warning。
 
 前置实验详细结果：`local/notes/2026-11-08-font-runtime-experiments/README.md`（只读笔记，不进 Git）。

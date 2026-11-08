@@ -163,8 +163,8 @@ export function createApp(ctx: AppContext): Hono {
   app.get(ROUTES.preview, async (c) => {
     const p = await projectContext(c);
     const project = await loadProject(p.dir);
-    const { props } = await buildProps(p.dir, project, p.register, "proxy");
-    return c.json({ ok: true, projectId: p.id, props });
+    const { props, fontWarnings } = await buildProps(p.dir, project, p.register, "proxy");
+    return c.json({ ok: true, projectId: p.id, props, fontWarnings });
   });
 
   app.get(ROUTES.fonts, async (c) => {

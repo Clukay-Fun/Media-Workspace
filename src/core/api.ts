@@ -51,6 +51,17 @@ export type PreviewProps = {
   fonts: { css: string; weight: number; url: string }[];
 };
 
+/** 字体缺失/回退提示；只影响可见效果，不作为工程写入错误。 */
+export type FontWarning = {
+  code: "FONT_MISSING" | "FONT_FALLBACK";
+  requested: string;
+  actual: string | null;
+  weight: number;
+  source: "project" | "system" | "css-fallback" | "missing";
+  elements: string[];
+  message: string;
+};
+
 // ---- 请求 ----
 
 export const OpsRequest = z.strictObject({
@@ -125,7 +136,12 @@ export type ProjectResponse = {
 };
 export type AvailableProject = { id: string; name: string; revision: number };
 export type ProjectsResponse = { ok: true; projects: AvailableProject[] };
-export type PreviewResponse = { ok: true; projectId?: string; props: PreviewProps };
+export type PreviewResponse = {
+  ok: true;
+  projectId?: string;
+  props: PreviewProps;
+  fontWarnings?: FontWarning[];
+};
 /** 运行时字体目录；path 不返回，工程只保存 family/registry ID。 */
 export type FontCatalogResponse = {
   ok: true;
@@ -215,6 +231,7 @@ export type LintResponse = {
   issues: LintIssue[];
   /** 没有人脸数据的视频素材（挡脸检查没覆盖到） */
   noFaceData: string[];
+  fontWarnings: FontWarning[];
 };
 
 /** 批注列表（GET /api/comments）：全部批注，界面自己按状态筛选 */
@@ -242,6 +259,7 @@ export type ServerEvent =
       done: boolean;
       file?: string;
       error?: { code: string; message: string };
+      fontWarnings?: FontWarning[];
     }
   /** 批注有变化（任何来源），重新拉 GET /api/comments */
   | { type: "review" };

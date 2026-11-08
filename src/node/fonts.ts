@@ -2,8 +2,10 @@ import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
+import type { FontWarning } from "../core/api";
 import { MwError } from "../core/errors";
-import { FONT_FAMILIES, type FontFace } from "../core/fonts";
+import { FONT_FAMILIES, type FontFace, nearestWeight } from "../core/fonts";
+import type { TextStyle } from "../core/text-style";
 
 const execFileAsync = promisify(execFile);
 
@@ -28,6 +30,22 @@ export type FontCatalog = {
   scannedAt: string;
   items: FontCatalogItem[];
   warnings: { code: string; message: string }[];
+};
+
+export type FontStyleUse = {
+  styleId: string;
+  style: Pick<TextStyle, "font">;
+  elements: string[];
+};
+
+export type SoftFontFace = FontFace & {
+  path: string;
+  source: "project" | "system";
+};
+
+export type SoftFontResolution = {
+  faces: SoftFontFace[];
+  warnings: FontWarning[];
 };
 
 type FontCache = { catalog: FontCatalog; at: number };
@@ -156,6 +174,83 @@ export function publicFontCatalog(catalog: FontCatalog) {
     warnings: catalog.warnings,
     fonts: catalog.items.map(({ path: _path, ...item }) => item),
   };
+}
+
+function systemMatch(catalog: FontCatalog, family: string, weight: number): FontCatalogItem | null {
+  const candidates = catalog.items.filter(
+    (item) => item.source === "system" && item.available && item.family === family,
+  );
+  return (
+    candidates.toSorted((a, b) => Math.abs(a.weight - weight) - Math.abs(b.weight - weight))[0] ??
+    null
+  );
+}
+
+/** 解析一个样式的项目/系统字体。严格 resolveFaces 保留给 fonts:check。 */
+export function resolveStyleFaces(
+  style: Pick<TextStyle, "font">,
+  catalog: FontCatalog,
+): SoftFontResolution {
+  const ids = [style.font.family, ...style.font.fallback];
+  const faces: SoftFontFace[] = [];
+  const warnings: FontWarning[] = [];
+  let primary: {
+    css: string;
+    available: boolean;
+    source: "project" | "system" | "missing";
+  } | null = null;
+  let firstAvailable: { css: string; source: "project" | "system" } | null = null;
+
+  for (const id of ids) {
+    const family = FONT_FAMILIES[id];
+    const css = family?.css ?? id;
+    const weight = family ? nearestWeight(family, style.font.weight) : style.font.weight;
+    const file = family ? `${family.dir}/${family.faces[weight]}` : null;
+    const projectPath = file ? join(fontsDir(), file) : null;
+    const projectAvailable = projectPath ? existsSync(projectPath) : false;
+    const machine = projectAvailable ? null : systemMatch(catalog, css, weight);
+    const source = projectAvailable ? "project" : machine ? "system" : "missing";
+    if (id === style.font.family) primary = { css, available: source !== "missing", source };
+    if (source !== "missing" && !firstAvailable) firstAvailable = { css, source };
+    if (source === "project" && projectPath) {
+      faces.push({ id, css, weight, file: file!, path: projectPath, source: "project" });
+    } else if (source === "system" && machine?.path) {
+      faces.push({
+        id,
+        css: machine.family,
+        weight: machine.weight,
+        file: machine.path,
+        path: machine.path,
+        source: "system",
+      });
+    }
+  }
+
+  if (primary && !primary.available) {
+    const actual = firstAvailable?.css ?? null;
+    warnings.push({
+      code: actual ? "FONT_FALLBACK" : "FONT_MISSING",
+      requested: primary.css,
+      actual,
+      weight: style.font.weight,
+      source: firstAvailable?.source ?? "missing",
+      elements: [],
+      message: actual
+        ? `字体「${primary.css}」缺失，已回退到「${actual}」；布局以预览和导出为准`
+        : `字体「${primary.css}」及其后备字体均不可用；将使用 CSS 系统回退，布局以预览和导出为准`,
+    });
+  }
+  return { faces, warnings };
+}
+
+/** 按样式使用位置附加元素 ID，供预览、导出、lint、CLI/MCP 复用。 */
+export function fontWarningsForStyles(uses: FontStyleUse[], catalog: FontCatalog): FontWarning[] {
+  return uses.flatMap(({ style, elements }) =>
+    resolveStyleFaces(style, catalog).warnings.map((warning) => ({
+      ...warning,
+      elements: [...elements],
+    })),
+  );
 }
 
 /** 字体根目录：仓库里的 assets/fonts/（不进 git），可以用 MW_FONTS_DIR 修改 */

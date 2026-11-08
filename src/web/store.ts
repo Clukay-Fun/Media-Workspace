@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type {
   AvailableProject,
   EditorState,
+  FontWarning,
   HistoryResponse,
   LintResponse,
   PreviewProps,
@@ -49,7 +50,13 @@ export type AiChange = { actor: string; revision: number; changed: string[] };
 
 export type Toast = { id: number; text: string; tone: "info" | "error" };
 
-export type ExportJob = { progress: number; done: boolean; file?: string; error?: string };
+export type ExportJob = {
+  progress: number;
+  done: boolean;
+  file?: string;
+  error?: string;
+  fontWarnings?: FontWarning[];
+};
 
 type State = {
   api: Api;
@@ -74,6 +81,8 @@ type State = {
   live: boolean;
   /** 工程或预览加载失败的原因（例如缺字体），一直显示在画面区域，直到下次加载成功 */
   loadError: string | null;
+  /** 字体缺失/回退提示；不阻断预览或导出，第三步再接入替代字体 UI */
+  fontWarnings: FontWarning[];
 
   selected: string | null;
   /** 在画面、时间线上主动选中时加一（从列表跳过去时不加） */
@@ -246,6 +255,7 @@ export function createWorkbenchStore(initialApi: Api = httpApi) {
             done: e.done,
             file: e.file,
             error: e.error?.message,
+            fontWarnings: e.fontWarnings,
           },
         });
         if (e.done)
@@ -337,6 +347,7 @@ export function createWorkbenchStore(initialApi: Api = httpApi) {
         peaks: {},
         live: false,
         loadError: null,
+        fontWarnings: [],
         selected: null,
         frame: 0,
         seekNonce: 0,
@@ -456,6 +467,7 @@ export function createWorkbenchStore(initialApi: Api = httpApi) {
       peaks: {},
       live: false,
       loadError: null,
+      fontWarnings: [],
       selected: null,
       frame: 0,
       seekNonce: 0,
@@ -540,6 +552,7 @@ export function createWorkbenchStore(initialApi: Api = httpApi) {
             dir: p.dir ?? null,
             project: p.project,
             preview: v.props,
+            fontWarnings: v.fontWarnings ?? [],
             history: h,
             lint: l,
             review: r.review,
