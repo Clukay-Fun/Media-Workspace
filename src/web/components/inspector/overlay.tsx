@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { builtinStyles } from "../../../core/aspect";
 import type { Overlay, Project } from "../../../core/schema";
 import { TEMPLATES } from "../../../templates";
@@ -378,6 +378,7 @@ function DraftText({
   onCommit: (value: string) => boolean;
 }) {
   const [draft, setDraft] = useState(value);
+  const cancelOnBlur = useRef(false);
   useEffect(() => setDraft(value), [value]);
   const save = () => {
     if (draft === value) return;
@@ -393,7 +394,16 @@ function DraftText({
         maxLength={max}
         aria-label={label}
         onChange={(event) => setDraft(event.target.value)}
-        onBlur={save}
+        onFocus={() => {
+          cancelOnBlur.current = false;
+        }}
+        onBlur={() => {
+          if (cancelOnBlur.current) {
+            cancelOnBlur.current = false;
+            return;
+          }
+          save();
+        }}
         onKeyDown={(event) => {
           if (isImeComposing(event)) return;
           if (event.key === "Enter" && !event.shiftKey && rows === 2) {
@@ -401,6 +411,7 @@ function DraftText({
             event.currentTarget.blur();
           }
           if (event.key === "Escape") {
+            cancelOnBlur.current = true;
             setDraft(value);
             event.currentTarget.blur();
           }

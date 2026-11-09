@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Caption } from "../../../core/schema";
 import { useStore } from "../../store";
 import { CAPTION_INSPECTOR_TABS } from "./caption-batch";
@@ -65,6 +65,7 @@ export function CaptionInspector(props: InspectorProps) {
 
 function CaptionEditor({ caption, locked }: { caption: Caption; locked: boolean }) {
   const [text, setText] = useState(caption.text);
+  const cancelOnBlur = useRef(false);
   useEffect(() => setText(caption.text), [caption.text]);
   const save = () => {
     const t = text.trim();
@@ -87,7 +88,16 @@ function CaptionEditor({ caption, locked }: { caption: Caption; locked: boolean 
         disabled={locked}
         rows={2}
         onChange={(e) => setText(e.target.value)}
-        onBlur={save}
+        onFocus={() => {
+          cancelOnBlur.current = false;
+        }}
+        onBlur={() => {
+          if (cancelOnBlur.current) {
+            cancelOnBlur.current = false;
+            return;
+          }
+          save();
+        }}
         onKeyDown={(e) => {
           if (isImeComposing(e)) return;
           if (e.key === "Enter" && !e.shiftKey) {
@@ -95,6 +105,7 @@ function CaptionEditor({ caption, locked }: { caption: Caption; locked: boolean 
             e.currentTarget.blur();
           }
           if (e.key === "Escape") {
+            cancelOnBlur.current = true;
             setText(caption.text);
             e.currentTarget.blur();
           }
