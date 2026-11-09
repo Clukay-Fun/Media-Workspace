@@ -26,12 +26,14 @@ beforeEach(async () => {
   const api = createMockApi();
   const response = await api.project();
   const preview = await api.preview();
+  const editor = await api.editor();
   useStore.setState({
     api,
     project: response.project,
     name: response.name,
     dir: response.dir,
     preview: preview.props,
+    editor: editor.editor,
     selected: null,
     leftOpen: false,
     sideOpen: false,
@@ -71,9 +73,9 @@ describe("五份 HTML 对应的工作台外壳", () => {
       "展开素材栏",
       "暂不可用",
       "账号版式",
-      "视频号安全区",
     ])
       expect(html).not.toContain(old);
+    expect(html).toContain("显示视频号安全区");
   });
   it("属性在窄屏可从顶栏打开，并能点画面外收起", async () => {
     await render(
@@ -202,6 +204,19 @@ describe("五份 HTML 对应的工作台外壳", () => {
     expect(menu.open).toBe(false);
     expect(useStore.getState().selected).toBe(caption.id);
     expect(document.activeElement).toBe(trigger);
+  });
+  it("参考线菜单可以显示和隐藏当前工程安全区", async () => {
+    await render(<App />);
+    const menu = host.querySelector<HTMLDetailsElement>(".preview-settings");
+    const safeArea = [...(menu?.querySelectorAll("button") ?? [])].find((button) =>
+      button.textContent?.includes("视频号安全区"),
+    );
+    if (!menu || !safeArea) throw new Error("安全区开关缺失");
+    expect(useStore.getState().editor?.showSafeArea).not.toBe("channels");
+    await act(async () => safeArea.click());
+    expect(useStore.getState().editor?.showSafeArea).toBe("channels");
+    await act(async () => safeArea.click());
+    expect(useStore.getState().editor?.showSafeArea).toBe("off");
   });
   it("批注详情的 Escape 关闭弹层并返回对应标记", async () => {
     await render(

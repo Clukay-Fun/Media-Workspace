@@ -13,7 +13,7 @@ import { type HitBox, hitBoxes, pick } from "../lib/geometry";
 import { findItem } from "../lib/project";
 import { frameOfMs, msOfFrame, timecode } from "../lib/timeline";
 import { useStore } from "../store";
-import { addGuide, CanvasGuides, RULER_BAND } from "./canvas-guides";
+import { addGuide, CanvasGuides, RULER_BAND, SafeAreaOverlay, safeAreaMode } from "./canvas-guides";
 import { CropOverlay, CropToolbar } from "./crop-editor";
 import { Icon } from "./icons";
 import { PlayerChromeV7 } from "./player-chrome-v7";
@@ -420,6 +420,7 @@ export function Stage() {
                 spaceKeyToPlayOrPause={false}
                 moveToBeginningWhenEnded={false}
               />
+              <SafeAreaOverlay width={W} height={H} scale={scale} />
               <div
                 ref={hitLayer}
                 className={
@@ -831,6 +832,22 @@ function PreviewSettings({ width, height }: { width: number; height: number }) {
           onClick={() => setGuides({ items: [] })}
         >
           清除参考线
+        </button>
+        <div className="preview-settings-divider" />
+        <button
+          type="button"
+          className="preview-settings-entry"
+          role="menuitemcheckbox"
+          aria-checked={safeAreaMode(editor) === "channels"}
+          disabled={!editor}
+          onClick={() =>
+            editor &&
+            useStore.getState().updateEditor({
+              showSafeArea: safeAreaMode(editor) === "channels" ? "off" : "channels",
+            })
+          }
+        >
+          {safeAreaMode(editor) === "channels" ? "隐藏视频号安全区" : "显示视频号安全区"}
         </button>
         <div className="preview-settings-divider" />
         <button
