@@ -5605,6 +5605,49 @@ button.change-target:hover .change-name {
   min-width: 0;
   accent-color: #e9a33c;
 }
+.parameter-slider {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+}
+.parameter-slider-control {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 22px;
+  touch-action: none;
+}
+.parameter-slider-track {
+  position: relative;
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: #d5d5d7;
+}
+.parameter-slider-indicator {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--mw-inspector-accent, #e9a33c);
+}
+.parameter-slider-thumb {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--mw-inspector-accent, #e9a33c);
+  box-shadow: 0 0 0 1px var(--mw-inspector-accent, #e9a33c);
+  cursor: grab;
+}
+.parameter-slider-thumb:active {
+  cursor: grabbing;
+}
+.parameter-slider-thumb:focus-visible {
+  outline: 2px solid var(--mw-inspector-accent, #e9a33c);
+  outline-offset: 3px;
+}
+.parameter-slider[data-disabled] {
+  opacity: 0.45;
+}
 .design-number-slider > .select {
   width: 67px;
   flex: 0 0 auto;
@@ -5768,6 +5811,9 @@ button.change-target:hover .change-name {
   height: 4px;
   margin: 11px 0 0;
   accent-color: #e9a33c;
+}
+.design-scale > .parameter-slider {
+  margin-top: 2px;
 }
 .design-value-input {
   display: flex;
@@ -6216,7 +6262,9 @@ button.change-target:hover .change-name {
 }
 
 .review-root .mw-inspector-video,
-.review-root .mw-inspector-project {
+.review-root .mw-inspector-project,
+.review-root .mw-inspector-caption,
+.review-root .mw-inspector-overlay {
   --mw-inspector-accent: #ad94ff;
 }
 

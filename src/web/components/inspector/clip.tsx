@@ -6,6 +6,7 @@ import { Field, type InspectorProps } from "./common";
 import { CropField } from "./crop";
 import { commitGainDb, commitSpeed, gainSliderValue, speedDurationLabel } from "./media-fields";
 import { numberInputWidth, useNumberDraft } from "./number-draft";
+import { ParameterSlider } from "./parameter-slider";
 
 /** 选中视频 / 音频片段：主轨片段、画中画、音频轨上的片段 */
 export function ClipInspector(props: InspectorProps) {
@@ -68,7 +69,6 @@ function SpeedField({
 }) {
   const num = useNumberDraft(speed);
   const lastSent = useRef<number | null>(null);
-  const sliderChanged = useRef(false);
 
   useEffect(() => {
     lastSent.current = null;
@@ -104,36 +104,15 @@ function SpeedField({
     <Field label="变速">
       <div className="design-slider-row">
         <div className="design-scale">
-          <input
-            type="range"
+          <ParameterSlider
             min={0.5}
             max={2}
             step={0.05}
-            value={Math.min(2, Math.max(0.5, shown))}
+            value={shown}
             disabled={locked}
-            aria-label="速度滑块"
-            onChange={(e) => {
-              sliderChanged.current = true;
-              num.change(e.target.value);
-            }}
-            onPointerUp={(e) => {
-              if (sliderChanged.current) {
-                sliderChanged.current = false;
-                commit(e.currentTarget.value);
-              }
-            }}
-            onKeyUp={(e) => {
-              if (sliderChanged.current) {
-                sliderChanged.current = false;
-                commit(e.currentTarget.value);
-              }
-            }}
-            onBlur={(e) => {
-              if (sliderChanged.current) {
-                sliderChanged.current = false;
-                commit(e.currentTarget.value);
-              }
-            }}
+            label="速度滑块"
+            onChange={(next) => num.change(formatSpeed(next))}
+            onCommit={(next) => commit(String(next))}
           />
           <ScaleMarks labels={["0.5×", "1×", "1.5×", "2×"]} />
         </div>
@@ -167,7 +146,6 @@ function SpeedField({
 function VolumeField({ id, gainDb, locked }: { id: string; gainDb: number; locked: boolean }) {
   const num = useNumberDraft(gainDb);
   const lastSent = useRef<number | null>(null);
-  const sliderChanged = useRef(false);
 
   useEffect(() => {
     lastSent.current = null;
@@ -202,36 +180,15 @@ function VolumeField({ id, gainDb, locked }: { id: string; gainDb: number; locke
     <Field label="音量">
       <div className="design-slider-row">
         <div className="design-scale">
-          <input
-            type="range"
+          <ParameterSlider
             min={-60}
             max={12}
             step={1}
-            value={Math.min(12, sliderValue)}
+            value={sliderValue}
             disabled={locked}
-            aria-label="音量"
-            onChange={(e) => {
-              sliderChanged.current = true;
-              num.change(e.target.value);
-            }}
-            onPointerUp={(e) => {
-              if (sliderChanged.current) {
-                sliderChanged.current = false;
-                commit(Number(e.currentTarget.value));
-              }
-            }}
-            onKeyUp={(e) => {
-              if (sliderChanged.current) {
-                sliderChanged.current = false;
-                commit(Number(e.currentTarget.value));
-              }
-            }}
-            onBlur={(e) => {
-              if (sliderChanged.current) {
-                sliderChanged.current = false;
-                commit(Number(e.currentTarget.value));
-              }
-            }}
+            label="音量"
+            onChange={(next) => num.change(String(next))}
+            onCommit={commit}
           />
           <ScaleMarks
             labels={["−60", "−30", "−15", "0", "+12"]}

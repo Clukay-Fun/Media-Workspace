@@ -16,6 +16,7 @@ import { editStyle, Field, isImeComposing } from "./common";
 import { type FontCatalogEntry, fontChoices } from "./font-choice";
 import { numberInputWidth } from "./number-draft";
 import { allTitleStyleOps, titleStyleTargets } from "./overlay-fields";
+import { ParameterSlider } from "./parameter-slider";
 
 type TextStyleSection = "edit" | "style" | "motion";
 
@@ -278,8 +279,6 @@ export function TextStyleEditor({
   const range = tl ? itemFrames(tl, id) : null;
   const duration = Math.max(1, Math.min(range ? range.to - range.from : 60, 300));
   const isCaption = ref_.track.kind === "caption";
-  const template = "template" in ref_.item ? String(ref_.item.template) : "";
-  const isTitle = template === "title-bar";
   const previewText = textForPreview(ref_);
   const previewHighlights =
     "highlights" in ref_.item ? ((ref_.item as Caption).highlights ?? []) : [];
@@ -677,6 +676,7 @@ export function TextStyleEditor({
           <NumberControl
             label="字号"
             slider={section === "edit"}
+            parameterSlider
             value={style.font.size}
             min={1}
             max={400}
@@ -1217,6 +1217,7 @@ function NumberControl({
   max,
   step = 1,
   slider = false,
+  parameterSlider = false,
   disabled,
   onCommit,
 }: {
@@ -1226,6 +1227,7 @@ function NumberControl({
   max?: number;
   step?: number;
   slider?: boolean;
+  parameterSlider?: boolean;
   disabled: boolean;
   onCommit: (value: number) => void;
 }) {
@@ -1238,10 +1240,10 @@ function NumberControl({
     committed.current = value;
   }, [value]);
 
-  const commit = () => {
-    const next = Number(draft);
+  const commit = (raw = draft) => {
+    const next = Number(raw);
     if (
-      draft.trim() === "" ||
+      raw.trim() === "" ||
       !Number.isFinite(next) ||
       (min !== undefined && next < min) ||
       (max !== undefined && next > max)
@@ -1259,7 +1261,19 @@ function NumberControl({
     <label className="insp-control">
       <span>{label}</span>
       <div className={slider ? "design-number-slider" : "design-number-only"}>
-        {slider && (
+        {slider && parameterSlider && (
+          <ParameterSlider
+            min={min ?? 0}
+            max={max ?? 100}
+            step={step}
+            disabled={disabled}
+            label={`${label}滑块`}
+            value={Number(draft)}
+            onChange={(next) => setDraft(String(next))}
+            onCommit={(next) => commit(String(next))}
+          />
+        )}
+        {slider && !parameterSlider && (
           <input
             type="range"
             min={min ?? 0}
@@ -1269,9 +1283,9 @@ function NumberControl({
             aria-label={`${label}滑块`}
             value={Number(draft) || 0}
             onChange={(e) => setDraft(e.currentTarget.value)}
-            onPointerUp={commit}
-            onKeyUp={commit}
-            onBlur={commit}
+            onPointerUp={() => commit()}
+            onKeyUp={() => commit()}
+            onBlur={() => commit()}
           />
         )}
         <input

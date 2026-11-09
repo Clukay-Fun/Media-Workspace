@@ -292,4 +292,184 @@ describe("五份 HTML 对应的工作台外壳", () => {
     }
     expect(submit).not.toHaveBeenCalled();
   });
+
+  it("轨道锁定时禁用视频参数的滑杆和数字框", async () => {
+    const project = structuredClone(useStore.getState().project!);
+    const track = project.tracks.find((item) => item.kind === "video" && item.main);
+    const clip = track?.items.find((item) => "type" in item && item.type === "clip");
+    if (!track || !clip) throw new Error("测试主视频缺失");
+    track.locked = true;
+    useStore.setState({ project, selected: clip.id });
+    await render(<ReviewSidebar />);
+    for (const label of ["速度滑块", "音量"]) {
+      expect(host.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)?.disabled).toBe(
+        true,
+      );
+    }
+    for (const label of ["变速倍数", "音量分贝"]) {
+      expect(host.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)?.disabled).toBe(
+        true,
+      );
+    }
+  });
+
+  it("视频音量数字框的 Escape 取消，Enter 提交取整值一次", async () => {
+    const project = structuredClone(useStore.getState().project!);
+    const track = project.tracks.find((item) => item.kind === "video" && item.main);
+    const clip = track?.items.find((item) => "type" in item && item.type === "clip");
+    if (!clip || !("gainDb" in clip)) throw new Error("测试主视频缺失");
+    clip.gainDb = 0;
+    const submit = vi.fn().mockResolvedValue(true);
+    useStore.setState({ project, selected: clip.id, submit });
+    await render(<ReviewSidebar />);
+    const input = host.querySelector<HTMLInputElement>('input[aria-label="音量分贝"]');
+    if (!input) throw new Error("音量数字框缺失");
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    if (!setter) throw new Error("读不到数字框的值");
+
+    await act(async () => {
+      input.focus();
+      setter.call(input, "3.6");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    expect(input.value).toBe("0");
+    expect(submit).not.toHaveBeenCalled();
+
+    await act(async () => {
+      input.focus();
+      setter.call(input, "3.6");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    expect(input.value).toBe("4");
+    expect(submit).toHaveBeenCalledTimes(1);
+    expect(submit).toHaveBeenCalledWith(
+      [{ op: "item.update", id: clip.id, set: { gainDb: 4 } }],
+      "音量调到 4 dB",
+    );
+  });
+
+  it("视频变速用键盘调整时只提交一次新倍速", async () => {
+    const project = structuredClone(useStore.getState().project!);
+    const track = project.tracks.find((item) => item.kind === "video" && item.main);
+    const clip = track?.items.find((item) => "type" in item && item.type === "clip");
+    if (!clip || !("speed" in clip)) throw new Error("测试主视频缺失");
+    const submit = vi.fn().mockResolvedValue(true);
+    useStore.setState({ project, selected: clip.id, submit });
+    await render(<ReviewSidebar />);
+    const slider = host.querySelector<HTMLInputElement>('input[aria-label="速度滑块"]');
+    expect(slider).not.toBeNull();
+    await act(async () => {
+      slider?.focus();
+      slider?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    });
+    expect(submit).toHaveBeenCalledTimes(1);
+    const nextSpeed = Math.round((clip.speed + 0.05) * 100) / 100;
+    expect(submit).toHaveBeenCalledWith(
+      [{ op: "item.update", id: clip.id, set: { speed: nextSpeed } }],
+      `变速改成 ${nextSpeed} 倍`,
+    );
+  });
+
+  it("视频音量用键盘调整时只在提交后写入一次", async () => {
+    const project = structuredClone(useStore.getState().project!);
+    const track = project.tracks.find((item) => item.kind === "video" && item.main);
+    const clip = track?.items.find((item) => "type" in item && item.type === "clip");
+    if (!clip || !("gainDb" in clip)) throw new Error("测试主视频缺失");
+    clip.gainDb = 0;
+    const submit = vi.fn().mockResolvedValue(true);
+    useStore.setState({ project, selected: clip.id, submit });
+    await render(<ReviewSidebar />);
+    const slider = host.querySelector<HTMLInputElement>('input[aria-label="音量"]');
+    expect(slider).not.toBeNull();
+    await act(async () => {
+      slider?.focus();
+      slider?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    });
+    expect(submit).toHaveBeenCalledTimes(1);
+    expect(submit).toHaveBeenCalledWith(
+      [{ op: "item.update", id: clip.id, set: { gainDb: 1 } }],
+      "音量调到 1 dB",
+    );
+  });
+
+  it("字幕字号沿用标题字号的范围和键盘提交方式", async () => {
+    const project = structuredClone(useStore.getState().project!);
+    const track = project.tracks.find((item) => item.kind === "caption");
+    const caption = track?.items[0];
+    if (!caption) throw new Error("测试字幕缺失");
+    const submit = vi.fn().mockResolvedValue(true);
+    useStore.setState({ project, selected: caption.id, captionTab: "edit", submit });
+    await render(<ReviewSidebar />);
+    const slider = host.querySelector<HTMLInputElement>('input[aria-label="字号滑块"]');
+    expect(slider?.min).toBe("1");
+    expect(slider?.max).toBe("400");
+    const current = Number(slider?.getAttribute("aria-valuenow"));
+    await act(async () => slider?.focus());
+    expect(submit).not.toHaveBeenCalled();
+    await act(async () => {
+      slider?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    });
+    expect(submit).toHaveBeenCalledTimes(1);
+    expect(slider?.getAttribute("aria-valuenow")).toBe(String(current + 1));
+    expect(JSON.stringify(submit.mock.calls[0]?.[0])).toContain(`"size":${current + 1}`);
+  });
+
+  it("文字数字框回车提交一次，Escape 恢复最后确认值", async () => {
+    const project = structuredClone(useStore.getState().project!);
+    const track = project.tracks.find((item) => item.kind === "caption");
+    const caption = track?.items[0];
+    if (!caption) throw new Error("测试字幕缺失");
+    const submit = vi.fn().mockResolvedValue(true);
+    useStore.setState({ project, selected: caption.id, captionTab: "edit", submit });
+    await render(<ReviewSidebar />);
+    const input = host.querySelector<HTMLInputElement>('input[aria-label="字间距"]');
+    if (!input) throw new Error("字间距输入框缺失");
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    if (!setter) throw new Error("读不到数字框的值");
+
+    await act(async () => {
+      input.focus();
+      setter.call(input, "2");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    expect(submit).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(submit.mock.calls[0]?.[0])).toContain('"letterSpacing":2');
+    expect(input.value).toBe("2");
+
+    await act(async () => {
+      input.focus();
+      setter.call(input, "3");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    expect(input.value).toBe("2");
+    expect(submit).toHaveBeenCalledTimes(1);
+  });
+
+  it("标题字号键盘调整走原有样式操作，聚焦本身不提交", async () => {
+    const project = structuredClone(useStore.getState().project!);
+    const submit = vi.fn().mockResolvedValue(true);
+    useStore.setState({ project, selected: "o1", submit });
+    await render(<ReviewSidebar />);
+    const slider = host.querySelector<HTMLInputElement>('input[aria-label="字号滑块"]');
+    expect(slider).not.toBeNull();
+    await act(async () => slider?.focus());
+    expect(submit).not.toHaveBeenCalled();
+    await act(async () => {
+      slider?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    });
+    expect(submit).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(submit.mock.calls[0]?.[0])).toContain('"size":93');
+  });
 });

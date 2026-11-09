@@ -26,6 +26,7 @@
     "web:build": "vite build --config vite.config.ts"
   },
   "dependencies": {
+    "@base-ui/react": "1.9.0",
     "@hono/node-server": "2.1.5",
     "@modelcontextprotocol/sdk": "1.32.2",
     "@remotion/bundler": "4.0.539",
