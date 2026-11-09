@@ -10,7 +10,7 @@ import { coverView } from "../core/cover";
 import { croppedSize } from "../core/crop";
 import { MwError } from "../core/errors";
 import { type FramePlan, planFrame, typicalFace } from "../core/frame";
-import { guidesInPx, type LayoutFace } from "../core/layout";
+import type { LayoutFace } from "../core/layout";
 import { lintProject } from "../core/lint";
 import { applyOps, Op } from "../core/ops";
 import { BUILTIN_STYLES } from "../core/presets";
@@ -939,13 +939,10 @@ export async function previewProject(dir: string, o: PreviewOptions) {
     fontWarnings = warnings;
   });
   const editor = await loadEditor(dir);
-  // 参考线：账号版式的（所有工程共用）加上这个工程自己的
-  const layout = o.guides ? await getLayout() : null;
+  // 预览只叠加当前工程的构图参考线，旧版账号参考线不再使用。
   const overlays = overlayFilters(tl, {
     safeArea: Boolean(o.safeArea),
-    guides: o.guides
-      ? [...(layout ? guidesInPx(layout, tl.width, tl.height) : []), ...editor.guides.items]
-      : [],
+    guides: o.guides ? editor.guides.items : [],
   });
   const outFile =
     o.out !== undefined
@@ -1088,7 +1085,7 @@ export function guideInfo() {
       "关键帧（keyframe.set，atMs 相对元素开始）：元素有关键帧后 transform 不再起作用，以关键帧为准；推近 1.5–2.5 秒、幅度 10–20%（4 秒以上显得拖）",
       "卡片：先看 templates 的 useFor / sizes / example 选模板；卡片必须写 size（v7）：small 金句 / 数字 / 人名 / 提示，half 要点 / 截图 / 长金句（主画面自动上移），full 只给整段原文（盖住标题条）；有卡时字幕自动隐藏；按内容需要才用，30 秒左右的短视频默认不加（没有值得停下来看的数字、清单、金句时建议人不加），加的话 30 秒 0–2 张、60 秒不超过 4 张；字数守住 schema 的上限",
       "主轨倍速默认用账号设置（mw layout 的 speed，用户习惯 1.1 倍整体加速）：import 自动放上主轨时已经用了；自己加的主轨片段要 item.update speed；人另有要求时听人的",
-      "人物位置一律用 frame（按账号版式把人脸摆到参考线上），不要自己估 transform；clamped 为 true 时告诉人脸会偏大或偏一点；看效果用 preview --guides",
+      "人物位置一律用 frame（按账号版式的人脸位置摆放），不要自己估 transform；clamped 为 true 时告诉人脸会偏大或偏一点；看效果用 preview 截图",
       "「第 N 个观点」按章节定位：开场之后的第 N 章（没分章先 chapters.set），卡片锚在亮出观点的那句字幕上，内容只从这一章的字幕里提炼",
       "片尾：人说接上默认片尾时用 outro（不给 file 用默认片尾，默认叠化 300ms，fadeMs: 0 硬切）；没设置默认片尾会报 NOT_FOUND，请人用 mw outro-default <视频文件> 设置",
       "封面：cover.update 写 atMs（1 秒以后、表情好的一帧）和 title: { template, style, props }，再跑 cover；封面只有主画面和封面标题",

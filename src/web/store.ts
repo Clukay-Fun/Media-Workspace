@@ -115,9 +115,7 @@ type State = {
   editor: EditorState | null;
   /** 账号版式（所有工程共用，docs/decisions/0027）；没设置过为 null */
   layout: Layout | null;
-  /** 画面上显示账号版式的参考线 */
-  accountGuides: boolean;
-  /** 正在编辑账号版式：参考线可以拖动，显示人脸位置 */
+  /** 正在编辑账号版式 */
   layoutEditing: boolean;
   /** 时间线拖动时吸附到字幕边界、播放头 */
   snap: boolean;
@@ -156,7 +154,6 @@ type State = {
   confirmAiChanges(): void;
   /** 改编辑器设置：本地立即生效，稍后合并进服务端最新的 editor.json（时间线也在写它） */
   updateEditor(patch: Partial<EditorState>): void;
-  toggleAccountGuides(): void;
   setLayoutEditing(on: boolean): void;
   /** 整份保存账号版式；界面先改本地，失败时提示并重新读取 */
   saveLayout(next: LayoutInput): Promise<void>;
@@ -488,7 +485,6 @@ export function createWorkbenchStore(initialApi: Api = httpApi) {
       reviewedRev: null,
       editor: null,
       layout: null,
-      accountGuides: true,
       layoutEditing: false,
       snap: true,
       captionTab: "edit",
@@ -766,9 +762,7 @@ export function createWorkbenchStore(initialApi: Api = httpApi) {
           void flushEditor().catch(() => get().toast("预览设置保存失败", "error"));
         }, 240);
       },
-      toggleAccountGuides: () => set((s) => ({ accountGuides: !s.accountGuides })),
-      setLayoutEditing: (layoutEditing) =>
-        set((s) => ({ layoutEditing, accountGuides: layoutEditing || s.accountGuides })),
+      setLayoutEditing: (layoutEditing) => set({ layoutEditing }),
       async saveLayout(next) {
         const { api } = get();
         const before = get().layout;

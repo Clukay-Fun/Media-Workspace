@@ -42,15 +42,3 @@ export const Layout = z.strictObject({
 });
 export type Layout = z.infer<typeof Layout>;
 export type LayoutInput = z.input<typeof Layout>;
-
-/** 参考线换成画面上的像素位置（工作台显示、导出参考线叠加图时用） */
-export function guidesInPx(
-  layout: Pick<Layout, "guides">,
-  width: number,
-  height: number,
-): { id: string; axis: "h" | "v"; pos: number; label: string }[] {
-  return layout.guides.map((g) => ({
-    ...g,
-    pos: Math.round(g.pos * (g.axis === "h" ? height : width)),
-  }));
-}

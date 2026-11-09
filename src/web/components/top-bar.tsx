@@ -18,6 +18,7 @@ export function TopBar() {
   const aiChange = useStore((s) => s.aiChange);
   const exportJob = useStore((s) => s.exportJob);
   const sideOpen = useStore((s) => s.sideOpen);
+  const leftOpen = useStore((s) => s.leftOpen);
   const {
     startExport,
     setSideTab,
@@ -148,12 +149,13 @@ export function TopBar() {
       <div className="topbar-actions">
         <button
           type="button"
-          className="icon-btn asset-toggle"
-          aria-label="素材"
-          title="素材和样式"
+          className="icon-btn asset-toggle left-toggle"
+          aria-label={leftOpen ? "收起素材栏" : "展开素材栏"}
+          aria-expanded={leftOpen}
+          title={leftOpen ? "收起素材和样式" : "展开素材和样式"}
           onClick={() => {
-            setLeftTab("assets");
-            setLeftOpen(true);
+            if (!leftOpen) setLeftTab("assets");
+            setLeftOpen(!leftOpen);
           }}
         >
           <Icon name="image" />

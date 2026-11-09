@@ -409,7 +409,7 @@ export function createMcpServer(): McpServer {
     "layout",
     {
       description:
-        "账号版式（所有工程共用）：参考线、人脸框该落在哪、标题和字幕用哪个样式、口播倍速（speed）、一条字幕最多几个字（captionMaxChars）。不给 layout 时读；给了整份替换。" +
+        "账号版式（所有工程共用）：人脸框该落在哪、标题和字幕用哪个样式、口播倍速（speed）、一条字幕最多几个字（captionMaxChars）。旧版 guides 字段仅用于兼容已有数据。不给 layout 时读；给了整份替换。" +
         "位置都是占画面宽 / 高的比例（0–1）",
       inputSchema: {
         layout: Layout.optional().describe("新的整份版式；不给时只读"),
@@ -500,7 +500,7 @@ export function createMcpServer(): McpServer {
           .optional()
           .describe("均匀抽取的帧数，拼成网格图"),
         safeArea: z.boolean().default(false).describe("叠加视频号安全区（红框）"),
-        guides: z.boolean().default(false).describe("叠加账号版式参考线"),
+        guides: z.boolean().default(false).describe("叠加当前工程的构图参考线"),
       },
     },
     ({ project: p, at, frame, sheet, safeArea, guides }) =>

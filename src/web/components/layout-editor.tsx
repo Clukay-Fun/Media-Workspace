@@ -1,86 +1,10 @@
-import { useRef, useState } from "react";
-import type { Layout, LayoutGuide } from "../../core/layout";
-import { isLandscape } from "../../core/safe-area";
+import type { Layout } from "../../core/layout";
 import { useStore } from "../store";
 
-// 账号版式（docs/decisions/0027）：画面上的参考线和人脸位置，所有工程共用。
-// 编辑时参考线可以拖动，松手保存；面板里改名字、精确数值、增删参考线和人脸位置。
-
+// 账号版式保留人脸位置、倍速和字幕字数；旧版参考线数据只为兼容读取。
 const pct = (v: number) => Math.round(v * 1000) / 10;
 
-/** 画面上的账号参考线；编辑时可以拖，并显示人脸该落在哪 */
-export function AccountGuides({ width, height }: { width: number; height: number }) {
-  const layout = useStore((s) => s.layout);
-  const show = useStore((s) => s.accountGuides);
-  const editing = useStore((s) => s.layoutEditing);
-  const [moving, setMoving] = useState<{ id: string; pos: number } | null>(null);
-  const box = useRef<HTMLDivElement>(null);
-  // 账号版式按竖屏定，横屏工程里比例对不上，不显示
-  if (!layout || !show || isLandscape(width, height)) return null;
-
-  const posOf = (g: LayoutGuide) => (moving?.id === g.id ? moving.pos : g.pos);
-  const fromPointer = (g: LayoutGuide, e: React.PointerEvent) => {
-    const r = box.current?.getBoundingClientRect();
-    if (!r) return g.pos;
-    const v = g.axis === "h" ? (e.clientY - r.top) / r.height : (e.clientX - r.left) / r.width;
-    return Math.round(Math.min(1, Math.max(0, v)) * 1000) / 1000;
-  };
-  const face = layout.face;
-
-  return (
-    <div ref={box} className={editing ? "account-guides editing" : "account-guides"}>
-      {layout.guides.map((g) => (
-        <div
-          key={g.id}
-          className={`account-guide ${g.axis}`}
-          style={g.axis === "h" ? { top: `${posOf(g) * 100}%` } : { left: `${posOf(g) * 100}%` }}
-          title={editing ? `${g.label || g.id}：拖动调整` : g.label}
-          onPointerDown={(e) => {
-            if (!editing) return;
-            e.stopPropagation();
-            e.currentTarget.setPointerCapture(e.pointerId);
-            setMoving({ id: g.id, pos: g.pos });
-          }}
-          onPointerMove={(e) => {
-            if (moving?.id !== g.id) return;
-            e.stopPropagation();
-            setMoving({ id: g.id, pos: fromPointer(g, e) });
-          }}
-          onPointerUp={(e) => {
-            if (moving?.id !== g.id) return;
-            e.stopPropagation();
-            const pos = fromPointer(g, e);
-            setMoving(null);
-            if (pos !== g.pos)
-              void saveGuides(layout, (gs) => gs.map((x) => (x.id === g.id ? { ...x, pos } : x)));
-          }}
-        >
-          {g.label ? <span>{g.label}</span> : null}
-        </div>
-      ))}
-      {editing && face ? (
-        <div
-          className="face-target"
-          style={{
-            top: `${face.top * 100}%`,
-            height: `${(face.bottom - face.top) * 100}%`,
-            // 人脸框大致是 3:4，宽度只用来示意
-            width: `${(((face.bottom - face.top) * height * 0.78) / width) * 100}%`,
-            left: `${face.cx * 100}%`,
-          }}
-        >
-          <span>人脸</span>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function saveGuides(layout: Layout, f: (gs: LayoutGuide[]) => LayoutGuide[]) {
-  return useStore.getState().saveLayout({ ...layout, guides: f(layout.guides) });
-}
-
-/** 编辑账号版式：浮在预览区右上角的卡片，打开时画面上的账号参考线可以拖 */
+/** 编辑账号版式：浮在预览区右上角的卡片。 */
 export function LayoutEditorCard() {
   const layout = useStore((s) => s.layout);
   const { setLayoutEditing, saveLayout } = useStore.getState();
@@ -93,14 +17,6 @@ export function LayoutEditorCard() {
     captionMaxChars: null,
     speed: 1,
     savedAt: "",
-  };
-  const add = (axis: "h" | "v") => {
-    let n = base.guides.length + 1;
-    while (base.guides.some((g) => g.id === `g${n}`)) n++;
-    void saveLayout({
-      ...base,
-      guides: [...base.guides, { id: `g${n}`, axis, pos: 0.5, label: "" }],
-    });
   };
   const setFace = (k: "cx" | "top" | "bottom", v: number) => {
     const face = base.face ?? { cx: 0.5, top: 0.36, bottom: 0.5 };
@@ -117,51 +33,8 @@ export function LayoutEditorCard() {
       </header>
       <div className="layout-fields">
         <p className="layout-hint">
-          所有工程共用，AI
-          出片按它摆人物、定倍速和字幕字数。拖画面上的线，或改下面的数值（占画面的百分比）
+          所有工程共用，AI 出片按它摆人物、定倍速和字幕字数。人脸位置用占画面的百分比填写。
         </p>
-        <strong>账号参考线</strong>
-        {base.guides.map((g) => (
-          <div key={g.id} className="layout-row">
-            <span className="layout-axis">{g.axis === "h" ? "横" : "竖"}</span>
-            <input
-              aria-label={`${g.id} 名字`}
-              defaultValue={g.label}
-              placeholder="名字"
-              maxLength={20}
-              onBlur={(e) => {
-                const label = e.currentTarget.value.trim();
-                if (label !== g.label)
-                  void saveGuides(base, (gs) =>
-                    gs.map((x) => (x.id === g.id ? { ...x, label } : x)),
-                  );
-              }}
-            />
-            <PctInput
-              label={`${g.id} 位置`}
-              value={g.pos}
-              onChange={(pos) =>
-                void saveGuides(base, (gs) => gs.map((x) => (x.id === g.id ? { ...x, pos } : x)))
-              }
-            />
-            <button
-              type="button"
-              className="icon-btn"
-              aria-label={`删除 ${g.label || g.id}`}
-              onClick={() => void saveGuides(base, (gs) => gs.filter((x) => x.id !== g.id))}
-            >
-              ×
-            </button>
-          </div>
-        ))}
-        <div className="layout-actions">
-          <button type="button" onClick={() => add("h")}>
-            加横线
-          </button>
-          <button type="button" onClick={() => add("v")}>
-            加竖线
-          </button>
-        </div>
         <strong>口播倍速</strong>
         <p className="layout-hint">AI 出片时主轨默认用这个倍速（整体加速，不剪句中停顿）</p>
         <div className="layout-row">

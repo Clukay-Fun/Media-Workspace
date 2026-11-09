@@ -1565,7 +1565,7 @@ textarea:focus-visible {
   color: rgb(255 255 255 / 0.7);
 }
 
-/* 构图参考线：青色实线，随时能拖；账号参考线改成紫色虚线带名字，两者一眼分得开 */
+/* 构图参考线：青色实线，可拖动。 */
 .canvas-guides {
   position: absolute;
   inset: 0;
@@ -2189,7 +2189,22 @@ textarea:focus-visible {
 .timeline {
   grid-area: tl;
   position: relative;
-  overflow: auto;
+  overflow-x: scroll;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+.timeline::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.timeline::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 5px;
+  background: var(--line-strong);
+  background-clip: padding-box;
 }
 
 .tl-grid {
@@ -2211,9 +2226,12 @@ textarea:focus-visible {
 .tl-toolbar {
   position: sticky;
   top: 0;
+  left: 0;
   z-index: 3;
   display: flex;
   align-items: center;
+  width: 100%;
+  min-width: 0;
   height: 26px;
   padding: 0 4px;
   border-bottom: 1px solid var(--line);
@@ -2538,11 +2556,6 @@ textarea:focus-visible {
 
 .tl-lane.main {
   min-height: 44px;
-}
-
-/* 有视频画面的轨道加高，容纳文件名、画面、波形三层。纯图片轨保持原高。 */
-.tl-lane.media-video {
-  min-height: 78px;
 }
 
 .tl-lane.markers {
@@ -2962,12 +2975,6 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
-.block-speed {
-  flex: none;
-  font-family: var(--mono);
-  font-size: 10px;
-}
-
 .block.clip .block-label {
   z-index: 1;
   align-self: flex-start;
@@ -2977,87 +2984,11 @@ textarea:focus-visible {
   color: var(--text-2);
 }
 
-.block.clip.video .block-label {
-  padding: 1px 4px;
-  border-radius: 5px;
-  color: #fff;
-  background: rgb(20 22 26 / 0.78);
-}
-
-/* 视频块：文件名单独一行，不再压在缩略图上。主视频和画中画同一套。 */
-.block.clip.video {
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: flex-start;
-  gap: 0;
-  padding: 0;
-}
-
-.block.clip.video .block-namebar {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 4px;
-  height: 16px;
-  min-width: 0;
-  padding: 0 6px;
-  overflow: hidden;
-  background: var(--clip);
-  font-family: var(--mono);
-  font-size: 10px;
-  line-height: 16px;
-}
-
-.block.clip.video:has(.cut-tag) .block-namebar {
-  padding-left: calc(2em + 14px);
-}
-
-.block.clip.video .block-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.block.clip.video .block-picture {
-  position: relative;
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: hidden;
-  background: #282b31;
-}
-
-.block.clip.video .block-waveband {
-  position: relative;
-  flex: none;
-  height: 16px;
-  background: rgb(0 0 0 / 0.28);
-}
-
 .block.clip.audio .block-label {
   padding: 1px 4px;
   border-radius: 5px;
   color: #315f85;
   background: rgb(255 255 255 / 0.8);
-}
-
-.filmstrip {
-  position: absolute;
-  z-index: 0;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-
-/* 按格子原始比例显示：更高时加宽，不把竖屏拉满整块 */
-.block.clip.video .filmstrip {
-  inset: auto;
-  top: 0;
-  left: 0;
-  width: auto;
-  height: 100%;
-  max-width: none;
 }
 
 .wave {
@@ -3078,12 +3009,6 @@ textarea:focus-visible {
 .block.clip.audio .wave {
   fill: #3f83be;
   opacity: 0.9;
-}
-
-.block.clip.video .block-waveband .wave {
-  inset: 1px 0;
-  width: auto;
-  height: calc(100% - 2px);
 }
 
 .block-flash {
@@ -4429,97 +4354,6 @@ button.change-target:hover .change-name {
 .facts dd.path {
   font-size: 11px;
   word-break: break-all;
-}
-
-/* 账号版式（docs/decisions/0027）：参考线是青色细线，和吸附线（粉色）、中心线（白色虚线）区分开 */
-.account-guides {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-}
-
-.account-guide {
-  position: absolute;
-  --guide: #c4a1ff;
-}
-
-.account-guide.h {
-  left: 0;
-  right: 0;
-  height: 0;
-  border-top: 1px dashed var(--guide);
-}
-
-.account-guide.v {
-  top: 0;
-  bottom: 0;
-  width: 0;
-  border-left: 1px dashed var(--guide);
-}
-
-.account-guide > span {
-  position: absolute;
-  padding: 0 4px;
-  border-radius: 5px;
-  font-size: 10px;
-  line-height: 16px;
-  white-space: nowrap;
-  color: #24113f;
-  background: var(--guide);
-}
-
-.account-guide.h > span {
-  left: 18px;
-  top: -17px;
-}
-
-.account-guide.v > span {
-  top: 18px;
-  left: 3px;
-}
-
-/* 编辑时线条加粗出一条看不见的抓取区，方便拖 */
-.account-guides.editing .account-guide {
-  pointer-events: auto;
-}
-
-.account-guides.editing .account-guide.h {
-  height: 12px;
-  margin-top: -6px;
-  border-top: 0;
-  background: linear-gradient(var(--guide), var(--guide)) center / 100% 1px no-repeat;
-  cursor: ns-resize;
-}
-
-.account-guides.editing .account-guide.v {
-  width: 12px;
-  margin-left: -6px;
-  border-left: 0;
-  background: linear-gradient(var(--guide), var(--guide)) center / 1px 100% no-repeat;
-  cursor: ew-resize;
-}
-
-.account-guides.editing .account-guide.h > span {
-  top: -11px;
-}
-
-.face-target {
-  position: absolute;
-  transform: translateX(-50%);
-  border: 1px dashed #c4a1ff;
-  border-radius: 40% 40% 45% 45%;
-  pointer-events: none;
-}
-
-.face-target > span {
-  position: absolute;
-  top: 2px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 10px;
-  color: #c4a1ff;
-  text-shadow: 0 0 2px rgb(0 0 0 / 0.9);
 }
 
 /* 编辑账号版式的卡片：盖在预览设置按钮的位置，点「完成」收起 */

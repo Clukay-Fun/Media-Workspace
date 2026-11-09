@@ -17,7 +17,7 @@ import { useStore } from "../store";
 import { addGuide, CanvasGuides, RULER_BAND, SafeAreaOverlay, safeAreaMode } from "./canvas-guides";
 import { CropOverlay, CropToolbar } from "./crop-editor";
 import { Icon } from "./icons";
-import { AccountGuides, LayoutEditorCard } from "./layout-editor";
+import { LayoutEditorCard } from "./layout-editor";
 import { PlayerChromeV7 } from "./player-chrome-v7";
 
 const KIND: Record<HitBox["kind"], string> = {
@@ -423,7 +423,6 @@ export function Stage() {
                 onLostPointerCapture={cancelDrag}
                 onPointerLeave={() => setHover(null)}
               >
-                <AccountGuides width={W} height={H} />
                 <SafeAreaOverlay width={W} height={H} scale={scale} />
                 {draft?.guides.map((g) => (
                   <div
@@ -458,7 +457,7 @@ export function Stage() {
                     <span className="box-tag">
                       {selectedHasIssue && <Icon name="warn" size={11} className="box-warning" />}
                       {selBox.locked && <Icon name="lock" size={11} />}
-                      {KIND[selBox.kind]} · {boxName(project, selBox.id)}
+                      {KIND[selBox.kind]}
                     </span>
                     {!selBox.locked && (selBox.kind === "image" || selBox.kind === "video") && (
                       <ResizeHandles onStart={startResize} />
@@ -720,32 +719,15 @@ export function resizeFromEdge({
   };
 }
 
-/** 选中框上的名字：字幕取前几个字，标题 / 卡片取文字，片段取素材文件名；都没有时用 ID */
-function boxName(project: Project | null, id: string): string {
-  const ref = project ? findItem(project, id) : null;
-  if (!ref) return id;
-  const short = (t: string) => ([...t].length > 10 ? `${[...t].slice(0, 10).join("")}…` : t);
-  const it = ref.item as Record<string, unknown>;
-  if (typeof it.text === "string") return short(it.text);
-  const props = it.props as Record<string, unknown> | undefined;
-  const lines = props?.lines ?? props?.text ?? props?.title;
-  if (Array.isArray(lines)) return short(lines.join(" "));
-  if (typeof lines === "string") return short(lines);
-  if (typeof it.asset === "string")
-    return short(project?.assets[it.asset]?.path.split("/").pop() ?? it.asset);
-  return id;
-}
-
 /** 显示着的构图参考线，拖动元素时吸附到它们 */
 function visibleGuides(editor: EditorState | null) {
   return editor && !editor.guides.hidden ? editor.guides.items : [];
 }
 
-/** 预览设置：构图参考线和标尺、安全区、账号版式三组分开（账号版式是所有工程共用的设置） */
+/** 预览设置：构图参考线和标尺、安全区、账号版式三组分开。 */
 function PreviewSettings({ width, height }: { width: number; height: number }) {
   const editor = useStore((s) => s.editor);
-  const accountGuides = useStore((s) => s.accountGuides);
-  const { updateEditor, toggleAccountGuides, setLayoutEditing } = useStore.getState();
+  const { updateEditor, setLayoutEditing } = useStore.getState();
   const box = useRef<HTMLDetailsElement>(null);
   const [submenu, setSubmenu] = useState<"guides" | "safe" | "account" | null>(null);
   // 点菜单外面或按 Esc 收起（details 本身不会自己关）
@@ -887,15 +869,6 @@ function PreviewSettings({ width, height }: { width: number; height: number }) {
         )}
         {submenu === "account" && (
           <>
-            <label className="preview-setting">
-              <input
-                type="checkbox"
-                disabled={landscape}
-                checked={accountGuides && !landscape}
-                onChange={toggleAccountGuides}
-              />
-              <span>显示账号参考线</span>
-            </label>
             <button
               type="button"
               className="preview-link"

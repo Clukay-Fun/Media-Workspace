@@ -515,7 +515,7 @@ cli
   .option("--frame <n>", "帧号")
   .option("--sheet [n]", "均匀截 n 帧拼成网格图（默认 12）")
   .option("--safe-area", "叠加视频号安全区")
-  .option("--guides", "叠加参考线（账号版式的和这个工程 editor.json 里的）")
+  .option("--guides", "叠加当前工程 editor.json 里的构图参考线")
   .option("--out <file>", "输出 PNG")
   .action(
     act(

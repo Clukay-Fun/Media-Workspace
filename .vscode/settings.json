@@ -1,0 +1,14 @@
+{
+  "files.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/.remotion": true,
+    "**/fixtures/out": true
+  },
+  "explorer.fileNesting.enabled": true,
+  "explorer.fileNesting.expand": false,
+  "explorer.fileNesting.patterns": {
+    "package.json": "pnpm-lock.yaml, .npmrc, .nvmrc, .editorconfig, .gitignore, biome.json, tsconfig.json, vite.config.ts, vitest.config.ts",
+    "AGENTS.md": "CLAUDE.md"
+  }
+}
