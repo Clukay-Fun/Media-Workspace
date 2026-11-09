@@ -19,6 +19,7 @@ import {
   underlineEditable,
 } from "./caption-batch";
 import { editStyle, Field, isImeComposing } from "./common";
+import { allTitleStyleOps, titleStyleTargets } from "./overlay-fields";
 
 type TextStyleSection = "edit" | "style" | "motion";
 
@@ -258,8 +259,10 @@ export function TextStyleEditor({
     builtins[fallback] ??
     builtins["caption-word-yellow"]!;
   const locked = ref_.track.locked;
-  const [target, setTarget] = useState<StyleScope | "all">("item");
+  const [target, setTarget] = useState<StyleScope | "all" | "titles">("item");
   const captionTargets = captionStyleTargets(project);
+  const titleTargets = titleStyleTargets(project);
+  const isOverlay = ref_.track.kind === "overlay";
   const family = FONT_FAMILIES[style.font.family] ?? FONT_FAMILIES["alibaba-puhuiti-3"]!;
   const weights = [...new Set([...Object.keys(family.faces).map(Number), style.font.weight])].sort(
     (a, b) => a - b,
@@ -344,18 +347,28 @@ export function TextStyleEditor({
   }, [id, section]);
 
   const commitStyle = (patch: Record<string, unknown>, label?: string) => {
-    if (target === "all") {
+    if (target === "all" || target === "titles") {
       const st = useStore.getState();
       if (!st.project) return;
       try {
-        const planned = allCaptionStyleOps(st.project, patch, fallback);
+        const planned =
+          target === "all"
+            ? allCaptionStyleOps(st.project, patch, fallback)
+            : allTitleStyleOps(st.project, patch, fallback);
         if (planned.ops.length === 0) {
-          st.toast(`没有可改的字幕，跳过锁定 ${planned.skipped} 句`);
+          st.toast(
+            target === "all"
+              ? `没有可改的字幕，跳过锁定 ${planned.skipped} 句`
+              : `没有可改的标题，跳过锁定 ${planned.skipped} 个`,
+          );
           return;
         }
         void st.submit(
           planned.ops,
-          label ?? `已改 ${planned.count} 句字幕，跳过锁定 ${planned.skipped} 句`,
+          label ??
+            (target === "all"
+              ? `已改 ${planned.count} 句字幕，跳过锁定 ${planned.skipped} 句`
+              : `已改 ${planned.count} 个标题，跳过锁定 ${planned.skipped} 个`),
         );
       } catch (e) {
         st.toast(e instanceof Error ? e.message : String(e), "error");
@@ -437,7 +450,7 @@ export function TextStyleEditor({
           value={target}
           disabled={locked}
           aria-label="样式修改范围"
-          onChange={(e) => setTarget(e.target.value as StyleScope | "all")}
+          onChange={(e) => setTarget(e.target.value as StyleScope | "all" | "titles")}
         >
           <option value="item">仅当前{elementLabel}</option>
           <option value="shared">应用到所有用这个样式的</option>
@@ -446,13 +459,20 @@ export function TextStyleEditor({
               全部字幕（{captionTargets.count} 句，跳过锁定 {captionTargets.skipped}）
             </option>
           )}
+          {isOverlay && (
+            <option value="titles">
+              全部标题（{titleTargets.count} 个，跳过锁定 {titleTargets.skipped}）
+            </option>
+          )}
         </select>
         <p className="hint">
           {target === "all"
             ? `一次提交 ${captionTargets.count} 句，锁定轨道上的 ${captionTargets.skipped} 句不动。这不是共用样式。`
-            : target === "item"
-              ? `后续调整只影响当前${elementLabel}`
-              : "后续调整会同步到使用当前样式的所有元素"}
+            : target === "titles"
+              ? `一次提交 ${titleTargets.count} 个标题，锁定的不动，不会改字幕样式。`
+              : target === "item"
+                ? `后续调整只影响当前${elementLabel}`
+                : "后续调整会同步到使用当前样式的所有元素"}
         </p>
       </Field>
 

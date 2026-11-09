@@ -5277,7 +5277,8 @@ button.change-target:hover .change-name {
   opacity: 0.72;
 }
 
-.mw-inspector-caption .sub-tabs button.on {
+.mw-inspector-caption .sub-tabs button.on,
+.mw-inspector-overlay .sub-tabs button.on {
   color: #3a2a10;
   background: #f6e2bf;
 }
