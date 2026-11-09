@@ -9,15 +9,15 @@ import {
   dragCrop,
   FULL_CROP,
   isFullCrop,
-  roundCrop,
   type Size,
 } from "../../core/crop";
-import { applyOps, type Op } from "../../core/ops";
+import { applyOps } from "../../core/ops";
 import type { CropRect, Project } from "../../core/schema";
 import { transformBox } from "../lib/geometry";
 import { findItem } from "../lib/project";
 import { itemFrames } from "../lib/timeline";
 import { useStore } from "../store";
+import { cropEditDecision } from "./inspector/media-fields";
 
 // 预览里调整裁切（问题 20）。调整时预览临时去掉这个元素的裁切，显示整张素材，
 // 框外压暗；拖动只改界面状态，按「完成」才提交一次 item.update。
@@ -67,8 +67,10 @@ export async function finishCrop() {
   const s = useStore.getState();
   const e = s.cropEditing;
   if (!e || !s.project) return;
-  const crop = isFullCrop(e.crop) ? null : roundCrop(e.crop);
-  const ops: Op[] = [{ op: "item.update", id: e.id, set: { crop } }];
+  const decision = cropEditDecision("finish", e.id, e.crop);
+  const { ops } = decision;
+  const crop = decision.stored;
+  if (ops.length !== 1) return;
   // 等服务端写完再撤掉草稿，中间先显示裁好的样子，免得闪回旧画面
   try {
     s.setDraft({ timeline: compile(applyOps(s.project, ops).project), guides: [] });
@@ -174,8 +176,11 @@ export function CropOverlay({
     if (!d) return;
     const dx = (e.clientX - d.x0) / scale / fw;
     const dy = (e.clientY - d.y0) / scale / fh;
-    const crop = dragCrop(d.start, d.handle, dx, dy, source, editing.aspect);
-    useStore.getState().setCropEditing({ ...editing, crop });
+    const moved = dragCrop(d.start, d.handle, dx, dy, source, editing.aspect);
+    const decision = cropEditDecision("drag", editing.id, moved);
+    if (decision.ops.length === 0) {
+      useStore.getState().setCropEditing({ ...editing, crop: decision.draft });
+    }
   };
   const onUp = () => {
     drag.current = null;

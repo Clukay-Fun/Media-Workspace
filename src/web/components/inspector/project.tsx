@@ -3,6 +3,7 @@ import { timecode } from "../../lib/timeline";
 import { useStore } from "../../store";
 import { Field } from "./common";
 import { CoverPanel } from "./cover";
+import { hasProxyCache, UNSUPPORTED_PROJECT_CONTROLS } from "./media-fields";
 
 /**
  * 未选中元素时的项目概览（docs/decisions/0015 第 7 条）：先让人确认在看哪个工程，
@@ -19,32 +20,56 @@ export function ProjectOverview() {
     (n, t) => n + (t.kind === "caption" ? t.items.length : 0),
     0,
   );
+  const named = aspectOf(project.canvas);
   return (
-    <section>
+    <section className="mw-inspector-project">
       <h3 className="panel-title">项目</h3>
       <dl className="facts">
         <dt>工程</dt>
         <dd>{name || "未命名"}</dd>
+        <dt>路径</dt>
+        <dd className="mono path" title={dir ?? "示例工程没有保存路径"}>
+          {dir ?? "（示例工程）"}
+        </dd>
         <dt>时长</dt>
         <dd className="mono">{timecode(timeline.durationInFrames, timeline.fps)}</dd>
         <dt>画布</dt>
         <dd>
-          {timeline.width} × {timeline.height} · {ratio(timeline.width, timeline.height)}
+          {timeline.width} × {timeline.height}
         </dd>
+        <dt>比例</dt>
+        <dd>{named ?? ratio(timeline.width, timeline.height)}</dd>
         <dt>帧率</dt>
         <dd>{timeline.fps} fps</dd>
         <dt>素材</dt>
         <dd>{Object.keys(project.assets).length} 个</dd>
         <dt>字幕</dt>
         <dd>{captionCount} 句</dd>
-        <dt>路径</dt>
-        <dd className="mono path" title={dir ?? "示例工程没有保存路径"}>
-          {dir ?? "（示例工程）"}
-        </dd>
+        <dt>代理缓存</dt>
+        <dd>{hasProxyCache(project) ? "有" : "没有"}</dd>
       </dl>
       <AspectField />
+      <UnsupportedProjectControls />
       <CoverPanel />
     </section>
+  );
+}
+
+/** 设计稿里的这些控件没有工程字段。显示原因并禁用，不提交。 */
+export function UnsupportedProjectControls() {
+  return (
+    <Field label="暂不可用" note="没有对应字段，不会写入工程">
+      <ul className="mw-inspector-unsupported">
+        {UNSUPPORTED_PROJECT_CONTROLS.map((item) => (
+          <li key={item.id}>
+            <button type="button" disabled title={item.reason}>
+              <span>{item.label}</span>
+              <span className="field-note">{item.reason}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </Field>
   );
 }
 
@@ -72,7 +97,10 @@ function AspectField() {
     }
   };
   return (
-    <Field label="画幅" note="字幕、标题、画中画跟着换位置">
+    <Field
+      label="画幅"
+      note={current ? "字幕、标题、画中画跟着换位置" : "当前比例只读，只能换成 9:16 或 16:9"}
+    >
       <div className="segmented" role="radiogroup" aria-label="画幅">
         {ASPECTS.map((a) => (
           <button

@@ -17,7 +17,8 @@ export function CropField({
   locked: boolean;
 }) {
   const source = cropSource(project, id);
-  const editing = useStore((s) => s.cropEditing?.id === id);
+  const editingState = useStore((s) => (s.cropEditing?.id === id ? s.cropEditing : null));
+  const editing = editingState !== null;
   if (!source)
     return (
       <Field label="裁切">
@@ -29,14 +30,30 @@ export function CropField({
   const h = Math.round(c.height * source.height);
   const submit = (next: CropRect | null, label: string) =>
     void useStore.getState().submit([{ op: "item.update", id, set: { crop: next } }], label);
-  // 只列有比例的几项，「自由」要在画面上拖
-  const presets = cropAspects(project.canvas).filter((a) => a.value !== null);
+  const presets = cropAspects(project.canvas);
   const current = w / h;
   return (
     <Field label="裁切" note={crop ? `保留 ${w} × ${h}` : "整张画面"}>
-      <div className="segmented" role="radiogroup" aria-label="按比例裁切">
+      <div className="segmented mw-crop-presets" role="radiogroup" aria-label="按比例裁切">
         {presets.map((a) => {
-          const value = a.value as number;
+          if (a.value === null) {
+            const on = editingState?.aspect === null;
+            return (
+              <button
+                key={a.label}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                className={on ? "on" : undefined}
+                disabled={locked || editing}
+                title="不锁比例，在画面上拖。拖动先不写入，完成后才提交一次"
+                onClick={() => startCrop(id)}
+              >
+                {a.label}
+              </button>
+            );
+          }
+          const value = a.value;
           const on = Boolean(crop) && Math.abs(current - value) < 0.01;
           return (
             <button
@@ -73,6 +90,7 @@ export function CropField({
             type="button"
             className="mini-btn"
             disabled={locked || editing}
+            title="重置裁切"
             onClick={() => submit(null, "已去掉裁切")}
           >
             去掉裁切

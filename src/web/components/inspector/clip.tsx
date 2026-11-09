@@ -7,6 +7,7 @@ import { VisualAnims } from "./anims";
 import { Field, InspectorHead, type InspectorProps } from "./common";
 import { CropField } from "./crop";
 import { KeyframesInspector } from "./keyframes";
+import { commitGainDb, commitSpeed, gainSliderValue, speedDurationLabel } from "./media-fields";
 import { useNumberDraft } from "./number-draft";
 import { PipInspector } from "./pip";
 
@@ -20,7 +21,7 @@ export function ClipInspector(props: InspectorProps) {
     track.kind === "video" && track.main ? transitionPairFor(project, id) : null;
   const cut = "cutBefore" in item ? (item.cutBefore as string | undefined) : undefined;
   return (
-    <div className="selection">
+    <div className="selection mw-inspector-video">
       <InspectorHead {...props} />
       {cut && (
         <p className="cut-note">
@@ -71,10 +72,20 @@ export function ClipInspector(props: InspectorProps) {
 
 const SPEEDS = [1, 1.1, 1.2, 1.25];
 
-const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const formatSpeed = (v: number) => String(Math.round(v * 100) / 100);
 
-/** 变速：常用倍速 + 自由输入；改完的时长（源长度 ÷ 倍速）跟着显示 */
+/** 没有保持音调字段。控件一直禁用，避免看起来像已经打开。 */
+export function PreservePitchControl() {
+  return (
+    <label className="mw-inspector-check">
+      <input type="checkbox" disabled aria-label="保持音调" />
+      <span>保持音调</span>
+      <span className="field-note">未支持</span>
+    </label>
+  );
+}
+
+/** 变速：常用倍速 + 自由输入。时长用当前看到的倍速，不把旧值夹进 0.1–10。 */
 function SpeedField({
   id,
   speed,
@@ -106,21 +117,21 @@ function SpeedField({
 
   const commit = (raw: string) => {
     const n = num.parse(raw);
-    if (n === null || n <= 0) {
+    const v = n === null ? null : commitSpeed(n);
+    if (v === null) {
       num.setDraft(formatSpeed(speed));
       return;
     }
-    const v = clamp(Math.round(n * 100) / 100, 0.1, 10);
     num.setDraft(formatSpeed(v));
     setSpeed(v);
   };
 
   const typed = Number(num.draft);
-  const shown = Number.isFinite(typed) && typed > 0 ? clamp(typed, 0.1, 10) : speed;
-  const seconds = (sourceMs / 1000 / shown).toFixed(1);
+  const shown = Number.isFinite(typed) && typed > 0 ? typed : speed;
+  const seconds = speedDurationLabel(sourceMs, shown);
 
   return (
-    <Field label="变速" note="保持音调">
+    <Field label="变速" note="新输入 0.1–10，已有数值按原样显示">
       <div className="segmented" role="radiogroup" aria-label="常用变速">
         {SPEEDS.map((v) => (
           <button
@@ -150,8 +161,9 @@ function SpeedField({
           onBlur={(e) => commit(e.currentTarget.value)}
           onKeyDown={num.keyDown}
         />
-        <span className="field-note">倍 · 变速后 {seconds} 秒</span>
+        <span className="field-note">倍 · 变速后 {seconds ?? "—"} 秒</span>
       </div>
+      <PreservePitchControl />
     </Field>
   );
 }
@@ -166,7 +178,11 @@ function VolumeField({ id, gainDb, locked }: { id: string; gainDb: number; locke
   }, [gainDb]);
 
   const commit = (raw: number) => {
-    const v = clamp(Math.round(raw), -60, 20);
+    const v = commitGainDb(raw);
+    if (v === null) {
+      num.setDraft(String(gainDb));
+      return;
+    }
     num.setDraft(String(v));
     if (v === gainDb || v === lastSent.current) return;
     lastSent.current = v;
@@ -184,11 +200,10 @@ function VolumeField({ id, gainDb, locked }: { id: string; gainDb: number; locke
     commit(n);
   };
 
-  const typed = Number(num.draft);
-  const sliderValue = Number.isFinite(typed) ? clamp(typed, -60, 20) : gainDb;
+  const sliderValue = gainSliderValue(Number(num.draft), gainDb);
 
   return (
-    <Field label="音量" note="0 dB 是原声">
+    <Field label="音量" note="−60 到 +20，0 dB 是原声">
       <div className="insp-row">
         <input
           type="range"
