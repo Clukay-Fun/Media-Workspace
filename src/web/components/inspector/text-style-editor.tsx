@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { TextBlock } from "../../../composition/TextBlock";
-import type { FontCatalogResponse } from "../../../core/api";
 import { builtinStyles } from "../../../core/aspect";
 import { FONT_FAMILIES } from "../../../core/fonts";
 import type { Caption, Project } from "../../../core/schema";
@@ -19,6 +18,12 @@ import {
   underlineEditable,
 } from "./caption-batch";
 import { editStyle, Field, isImeComposing } from "./common";
+import {
+  FONT_LICENSE_NOTE,
+  type FontCatalogEntry,
+  fontChoices,
+  fontPickerLine,
+} from "./font-choice";
 import { allTitleStyleOps, titleStyleTargets } from "./overlay-fields";
 
 type TextStyleSection = "edit" | "style" | "motion";
@@ -32,6 +37,8 @@ type TextStyleEditorProps = {
   elementLabel: string;
   /** 字幕四页里的一页。不传时保持原来的内部分页。 */
   section?: TextStyleSection;
+  /** 不传就用 store 里的字体目录。测试可以直接把目录传进来。 */
+  catalog?: readonly FontCatalogEntry[];
 };
 
 const ANIMATIONS: { value: Anim["preset"] | "none"; label: string; disabled?: boolean }[] = [
@@ -248,6 +255,7 @@ export function TextStyleEditor({
   showHighlight = false,
   elementLabel,
   section,
+  catalog,
 }: TextStyleEditorProps) {
   const [page, setPage] = useState<"home" | "text" | "layout" | "animation" | "advanced">("home");
   const [advancedEffect, setAdvancedEffect] = useState<AdvancedEffect | null>(null);
@@ -269,7 +277,8 @@ export function TextStyleEditor({
   );
   const animIn = style.animation.in;
   const [fontQuery, setFontQuery] = useState("");
-  const fontCatalog = useStore((s) => s.fontCatalog);
+  const storeCatalog = useStore((s) => s.fontCatalog);
+  const fontCatalog = catalog ?? storeCatalog;
   const tl = useStore((s) => s.preview?.timeline);
   const fps = tl?.fps ?? 30;
   const range = tl ? itemFrames(tl, id) : null;
@@ -281,54 +290,10 @@ export function TextStyleEditor({
   const previewHighlights =
     "highlights" in ref_.item ? ((ref_.item as Caption).highlights ?? []) : [];
   const presets = PRESETS.filter((p) => (isCaption ? p.caption : p.title));
-  const fonts: {
-    value: string;
-    family: string;
-    group: string;
-    source: "project" | "system";
-    available: boolean;
-    status: FontCatalogResponse["fonts"][number]["license"]["status"];
-    weights: number[];
-  }[] = Object.entries(FONT_FAMILIES).map(([id, font]) => ({
-    value: id,
-    family: font.css,
-    group: font.group,
-    source: "project" as const,
-    available: fontCatalog.some((entry) => entry.id === id && entry.available),
-    status: fontCatalog.find((entry) => entry.id === id)?.license.status ?? ("未登记" as const),
-    weights: Object.keys(font.faces).map(Number),
-  }));
-  const systemFonts = new Map<string, (typeof fonts)[number]>();
-  for (const entry of fontCatalog) {
-    if (entry.source !== "system" || systemFonts.has(entry.family)) continue;
-    systemFonts.set(entry.family, {
-      value: entry.family,
-      family: entry.family,
-      group: "本机系统字体",
-      source: "system",
-      available: fontCatalog.some(
-        (candidate) =>
-          candidate.source === "system" && candidate.family === entry.family && candidate.available,
-      ),
-      status: entry.license.status,
-      weights: fontCatalog
-        .filter((candidate) => candidate.source === "system" && candidate.family === entry.family)
-        .map((candidate) => candidate.weight),
-    });
-  }
-  fonts.push(...systemFonts.values());
-  const currentIsListed = fonts.some((font) => font.value === style.font.family);
-  if (!currentIsListed && style.font.family) {
-    fonts.push({
-      value: style.font.family,
-      family: style.font.family,
-      group: "当前工程字体",
-      source: "system",
-      available: false,
-      status: "未知",
-      weights: [style.font.weight],
-    });
-  }
+  const fonts = fontChoices(FONT_FAMILIES, fontCatalog, {
+    family: style.font.family,
+    weight: style.font.weight,
+  });
   const visibleFonts = fonts.filter((font) => {
     const q = fontQuery.trim().toLowerCase();
     return (
@@ -570,12 +535,19 @@ export function TextStyleEditor({
               >
                 <span>{font.family}</span>
                 <small>
-                  {font.group} · {font.available ? font.status : `只能回退 · ${font.status}`}
+                  {fontPickerLine({
+                    source: font.source,
+                    weights: font.weights,
+                    available: font.available,
+                    exportable: font.exportable,
+                    status: font.status,
+                  })}
                 </small>
               </button>
             ))}
           </div>
           {visibleFonts.length === 0 && <p className="hint style-empty">没有匹配的字体</p>}
+          <p className="hint">{FONT_LICENSE_NOTE}</p>
         </Field>
       )}
 
