@@ -37,6 +37,11 @@ export function CaptionList() {
           onChange={(e) => setQuery(e.target.value)}
         />
       </label>
+      {visible.length === 0 && (
+        <p className="caption-list-empty">
+          {captions.length === 0 ? "还没有字幕" : "没有匹配的字幕"}
+        </p>
+      )}
       {visible.map((c) => {
         const index = captions.findIndex((entry) => entry.id === c.id) + 1;
         const ref_ = findItem(project, c.id);

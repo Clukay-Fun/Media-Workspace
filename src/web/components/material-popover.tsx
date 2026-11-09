@@ -12,6 +12,10 @@ export function MaterialPopover() {
   const [path, setPath] = useState("");
   const [busy, setBusy] = useState(false);
   const box = useRef<HTMLElement>(null);
+  const pathInput = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (open) pathInput.current?.focus();
+  }, [open]);
   useEffect(() => {
     if (!open) return;
     const close = (event: PointerEvent) => {
@@ -22,6 +26,10 @@ export function MaterialPopover() {
     window.addEventListener("pointerdown", close);
     return () => window.removeEventListener("pointerdown", close);
   }, [open]);
+  const closePopover = () => {
+    useStore.getState().setLeftOpen(false);
+    document.querySelector<HTMLButtonElement>(".left-toggle")?.focus();
+  };
   if (!open) return null;
   const importFile = async (event: FormEvent) => {
     event.preventDefault();
@@ -46,15 +54,19 @@ export function MaterialPopover() {
     }
   };
   return (
-    <aside ref={box} className="material-popover" aria-label="素材库">
+    <aside
+      ref={box}
+      className="material-popover"
+      aria-label="素材库"
+      onKeyDown={(event) => {
+        if (event.key !== "Escape") return;
+        event.stopPropagation();
+        closePopover();
+      }}
+    >
       <header>
         <h2>素材库</h2>
-        <button
-          type="button"
-          className="icon-btn"
-          aria-label="关闭素材库"
-          onClick={() => useStore.getState().setLeftOpen(false)}
-        >
+        <button type="button" className="icon-btn" aria-label="关闭素材库" onClick={closePopover}>
           <Icon name="close" size={14} />
         </button>
       </header>
@@ -63,6 +75,7 @@ export function MaterialPopover() {
         <div>
           <input
             id="material-path"
+            ref={pathInput}
             value={path}
             onChange={(event) => setPath(event.target.value)}
             placeholder="粘贴视频、音频或图片的完整路径"

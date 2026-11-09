@@ -753,6 +753,13 @@ function PreviewSettings({ width, height }: { width: number; height: number }) {
     <details
       className={editor?.rulers ? "preview-settings has-rulers" : "preview-settings"}
       ref={box}
+      onKeyDown={(event) => {
+        if (event.key !== "Escape" || !event.currentTarget.open) return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.currentTarget.open = false;
+        event.currentTarget.querySelector("summary")?.focus();
+      }}
     >
       <summary
         className="icon-btn preview-settings-trigger"

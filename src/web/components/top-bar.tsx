@@ -1,5 +1,5 @@
 import type React from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../store";
 import { Icon } from "./icons";
 
@@ -21,6 +21,16 @@ export function TopBar() {
   const exportStatus = exporting ? `导出中 ${Math.round(exportJob.progress * 100)}%` : "导出";
   const [switchOpen, setSwitchOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const switcher = useRef<HTMLDivElement>(null);
+  const switchTrigger = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!switchOpen) return;
+    const close = (event: PointerEvent) => {
+      if (!switcher.current?.contains(event.target as Node)) setSwitchOpen(false);
+    };
+    window.addEventListener("pointerdown", close);
+    return () => window.removeEventListener("pointerdown", close);
+  }, [switchOpen]);
   const filtered = useMemo(
     () =>
       projects.filter((p) => p.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())),
@@ -39,10 +49,20 @@ export function TopBar() {
   return (
     <header className="topbar design-topbar">
       <div className="topbar-title">
-        <div className="project-switcher">
+        <div
+          className="project-switcher"
+          ref={switcher}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape" || !switchOpen) return;
+            event.stopPropagation();
+            setSwitchOpen(false);
+            switchTrigger.current?.focus();
+          }}
+        >
           <button
             type="button"
             className="project-switcher-trigger"
+            ref={switchTrigger}
             aria-label="切换工程"
             aria-expanded={switchOpen}
             onClick={(event) => {

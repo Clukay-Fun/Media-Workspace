@@ -7,6 +7,7 @@ import { App } from "../app";
 import { createMockApi } from "../data/mock";
 import { useStore } from "../store";
 import { MaterialPopover } from "./material-popover";
+import { PlayerChromeV7 } from "./player-chrome-v7";
 import { ReviewSidebar } from "./review-sidebar";
 import { TopBar } from "./top-bar";
 
@@ -96,6 +97,139 @@ describe("五份 HTML 对应的工作台外壳", () => {
     expect(html).toContain("导入");
     expect(html).toContain("放到画面");
     expect(html).not.toContain("样式模板");
+  });
+  it("工程切换菜单能在外点或 Escape 后收起", async () => {
+    await render(<TopBar />);
+    const trigger = host.querySelector<HTMLButtonElement>(".project-switcher-trigger");
+    await act(async () => trigger?.click());
+    expect(host.querySelector(".project-switcher-menu")).not.toBeNull();
+    await act(async () => document.body.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+    expect(host.querySelector(".project-switcher-menu")).toBeNull();
+    await act(async () => trigger?.click());
+    const search = host.querySelector<HTMLInputElement>(".project-switcher-search");
+    await act(async () => {
+      search?.focus();
+      search?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    expect(host.querySelector(".project-switcher-menu")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+  it("素材浮层打开后聚焦路径，Escape 返回入口", async () => {
+    await render(
+      <>
+        <TopBar />
+        <MaterialPopover />
+      </>,
+    );
+    await act(async () => useStore.setState({ leftOpen: true }));
+    const input = host.querySelector<HTMLInputElement>("#material-path");
+    expect(document.activeElement).toBe(input);
+    await act(async () =>
+      input?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })),
+    );
+    expect(host.querySelector(".material-popover")).toBeNull();
+    expect(document.activeElement).toBe(host.querySelector(".left-toggle"));
+  });
+  it("字幕搜索无结果时说明当前状态", async () => {
+    const caption = useStore.getState().project?.tracks.find((track) => track.kind === "caption")
+      ?.items[0];
+    if (!caption) throw new Error("测试字幕缺失");
+    useStore.setState({ selected: caption.id, captionTab: "list" });
+    await render(<ReviewSidebar />);
+    const input = host.querySelector<HTMLInputElement>('input[aria-label="搜索字幕"]');
+    await act(async () => {
+      if (!input) throw new Error("字幕搜索框缺失");
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      if (!setter) throw new Error("读不到 input 的值");
+      setter.call(input, "不存在的字幕");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(host.textContent).toContain("没有匹配的字幕");
+  });
+  it("批注输入打开时获得焦点，Escape 返回入口", async () => {
+    await render(
+      <PlayerChromeV7
+        frame={0}
+        fps={30}
+        total={300}
+        width={1080}
+        height={1920}
+        playing={false}
+        loop={false}
+        comments={[]}
+        onLoopChange={() => undefined}
+        onFullscreen={() => undefined}
+      />,
+    );
+    const entry = host.querySelector<HTMLButtonElement>(".comment-entry");
+    await act(async () => entry?.click());
+    const input = host.querySelector<HTMLTextAreaElement>('textarea[aria-label="批注内容"]');
+    expect(document.activeElement).toBe(input);
+    await act(async () =>
+      input?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })),
+    );
+    expect(host.querySelector(".mw-player-note")).toBeNull();
+    expect(document.activeElement).toBe(entry);
+  });
+  it("批注关闭按钮上的 Escape 也收起弹层并返回入口", async () => {
+    await render(<App />);
+    const entry = host.querySelector<HTMLButtonElement>(".comment-entry");
+    await act(async () => entry?.click());
+    const close = host.querySelector<HTMLButtonElement>(
+      '.mw-player-note button[aria-label="关闭"]',
+    );
+    if (!close) throw new Error("批注关闭按钮缺失");
+    await act(async () => {
+      close.focus();
+      close.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    expect(host.querySelector(".mw-player-note")).toBeNull();
+    expect(document.activeElement).toBe(entry);
+  });
+  it("参考线菜单内部的 Escape 关闭菜单但保留选中对象", async () => {
+    const caption = useStore.getState().project?.tracks.find((track) => track.kind === "caption")
+      ?.items[0];
+    if (!caption) throw new Error("测试字幕缺失");
+    useStore.setState({ selected: caption.id });
+    await render(<App />);
+    const menu = host.querySelector<HTMLDetailsElement>(".preview-settings");
+    const trigger = menu?.querySelector<HTMLElement>("summary");
+    const entry = menu?.querySelector<HTMLButtonElement>("button");
+    if (!menu || !entry || !trigger) throw new Error("参考线菜单缺失");
+    menu.open = true;
+    await act(async () => {
+      entry.focus();
+      entry.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    expect(menu.open).toBe(false);
+    expect(useStore.getState().selected).toBe(caption.id);
+    expect(document.activeElement).toBe(trigger);
+  });
+  it("批注详情的 Escape 关闭弹层并返回对应标记", async () => {
+    await render(
+      <PlayerChromeV7
+        frame={0}
+        fps={30}
+        total={300}
+        width={1080}
+        height={1920}
+        playing={false}
+        loop={false}
+        comments={[{ id: "k1", text: "核对开头", status: "open", atMs: 1000 }]}
+        onLoopChange={() => undefined}
+        onFullscreen={() => undefined}
+      />,
+    );
+    const marker = host.querySelector<HTMLButtonElement>(".mw-player-marker");
+    await act(async () => marker?.click());
+    const close = host.querySelector<HTMLButtonElement>('button[aria-label="关闭批注"]');
+    if (!close) throw new Error("批注详情关闭按钮缺失");
+    await act(async () => {
+      close.focus();
+      close.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    expect(host.querySelector(".mw-player-note.detail")).toBeNull();
+    expect(document.activeElement).toBe(marker);
   });
   it("选中主视频显示裁切、速度和音量，支持五个裁切比例", async () => {
     const track = useStore

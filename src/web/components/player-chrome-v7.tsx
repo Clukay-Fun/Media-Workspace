@@ -95,10 +95,28 @@ export function PlayerChromeV7({
   const [menu, setMenu] = useState<{ frame: number; x: number; y: number } | null>(null);
   const chrome = useRef<HTMLElement>(null);
   const detailNote = useRef<HTMLDivElement>(null);
+  const commentEntry = useRef<HTMLButtonElement>(null);
+  const commentInput = useRef<HTMLTextAreaElement>(null);
   const markers = comments.filter(isTimedOpen);
   const opened = markers.find((comment) => comment.id === openId);
   const last = Math.max(1, total - 1);
   const played = Math.min(100, Math.max(0, (Math.min(frame, last) / last) * 100));
+
+  useLayoutEffect(() => {
+    if (composer) commentInput.current?.focus();
+  }, [composer]);
+
+  const closeComposer = () => {
+    setComposer(false);
+    commentEntry.current?.focus();
+  };
+
+  const closeDetail = () => {
+    chrome.current?.querySelector<HTMLButtonElement>(".mw-player-marker.is-on")?.focus();
+    setOpenId(null);
+    setMarkerAnchor(null);
+    setNotePosition(null);
+  };
 
   useLayoutEffect(() => {
     if (!opened || !markerAnchor || !chrome.current || !detailNote.current) {
@@ -172,7 +190,7 @@ export function PlayerChromeV7({
     setBusy(false);
     if (!saved) return;
     setDraft("");
-    setComposer(false);
+    closeComposer();
   };
 
   return (
@@ -257,6 +275,7 @@ export function PlayerChromeV7({
           <button
             type="button"
             className="mw-player-icon comment-entry"
+            ref={commentEntry}
             aria-label="添加批注"
             title="在当前时间添加批注"
             onClick={() => {
@@ -289,25 +308,26 @@ export function PlayerChromeV7({
           className="mw-player-note"
           aria-label="添加批注"
           onSubmit={(e) => void submitComment(e)}
+          onKeyDown={(e) => {
+            if (e.key !== "Escape") return;
+            e.preventDefault();
+            e.stopPropagation();
+            closeComposer();
+          }}
         >
           <div className="mw-player-note-head">
             <span>添加批注 · {timecode(frame, fps)}</span>
-            <button type="button" aria-label="关闭" onClick={() => setComposer(false)}>
+            <button type="button" aria-label="关闭" onClick={closeComposer}>
               <Icon name="close" size={12} />
             </button>
           </div>
           <textarea
+            ref={commentInput}
             aria-label="批注内容"
             value={draft}
             placeholder="输入批注内容…"
             rows={3}
             onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key !== "Escape") return;
-              e.preventDefault();
-              e.stopPropagation();
-              setComposer(false);
-            }}
           />
           <button type="submit" disabled={!draft.trim() || busy}>
             添加批注
@@ -321,18 +341,16 @@ export function PlayerChromeV7({
           role="dialog"
           aria-label="批注"
           style={notePosition ?? { left: 8, top: -80 }}
+          onKeyDown={(e) => {
+            if (e.key !== "Escape") return;
+            e.preventDefault();
+            e.stopPropagation();
+            closeDetail();
+          }}
         >
           <div className="mw-player-note-head">
             <span className="mono">{timecode(frameOfMs(opened.atMs, fps), fps)}</span>
-            <button
-              type="button"
-              aria-label="关闭批注"
-              onClick={() => {
-                setOpenId(null);
-                setMarkerAnchor(null);
-                setNotePosition(null);
-              }}
-            >
+            <button type="button" aria-label="关闭批注" onClick={closeDetail}>
               <Icon name="close" size={12} />
             </button>
           </div>

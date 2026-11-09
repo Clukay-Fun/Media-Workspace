@@ -3267,6 +3267,12 @@ textarea:focus-visible {
   flex-direction: column;
 }
 
+.caption-list-empty {
+  margin: 4px 10px;
+  color: #62656a;
+  font-size: 13px;
+}
+
 .caption-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
@@ -5239,7 +5245,7 @@ button.change-target:hover .change-name {
   position: relative;
   height: 53px;
   border-radius: 0;
-  color: #8e9093;
+  color: #62656a;
   font-size: 14px;
   font-weight: 500;
   background: none;
@@ -5355,7 +5361,7 @@ button.change-target:hover .change-name {
   position: absolute;
   z-index: 40;
   top: 54px;
-  right: 480px;
+  right: 66px;
   display: flex;
   flex-direction: column;
   width: min(420px, calc(100vw - 32px));
@@ -5403,6 +5409,10 @@ button.change-target:hover .change-name {
   border-radius: 6px;
   background: #fafafa;
 }
+.material-import input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
 .material-import button,
 .material-row button {
   padding: 0 12px;
@@ -5446,9 +5456,6 @@ button.change-target:hover .change-name {
 @container (max-width: 1120px) {
   .review-root .app {
     grid-template-columns: minmax(0, 1fr) min(42vw, 420px);
-  }
-  .material-popover {
-    right: 16px;
   }
 }
 
@@ -6140,6 +6147,7 @@ button.change-target:hover .change-name {
   padding-inline: 9px;
   border-right: 1px solid #e9e9e6;
   border-left: 1px solid #e9e9e6;
+  color: #62656a;
 }
 
 .review-root .mw-player-note {
@@ -6323,6 +6331,30 @@ button.change-target:hover .change-name {
   background: rgb(173 148 255 / 0.16);
 }
 
+.review-root .design-inspector .caption-row .mono {
+  color: #62656a;
+}
+
+.review-root .material-import button {
+  color: var(--accent-ink);
+  background: var(--accent);
+}
+
+.review-root .design-project-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  background: #fff;
+}
+
+@media (max-height: 740px) {
+  .design-inspector .project-attribute-group dt,
+  .design-inspector .project-attribute-group dd {
+    min-height: 35px;
+    padding-block: 7px;
+  }
+}
+
 .inspector-backdrop {
   display: none;
 }
@@ -6432,5 +6464,11 @@ button.change-target:hover .change-name {
   .review-root .mw-player-resolution {
     padding-inline: 4px;
     font-size: 10px;
+  }
+}
+
+@container (max-width: 360px) {
+  .design-crop-stage {
+    transform: scale(0.75);
   }
 }
