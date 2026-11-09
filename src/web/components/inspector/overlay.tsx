@@ -49,6 +49,14 @@ export function OverlayInspector(props: InspectorProps) {
             locked={ref_.track.locked}
           />
           <SlotPicker id={id} ref_={ref_} />
+          <TextStyleEditor
+            project={project}
+            id={id}
+            ref_={ref_}
+            fallback={fallback}
+            elementLabel="标题"
+            section="edit"
+          />
         </>
       )}
       {page === "templates" && (
