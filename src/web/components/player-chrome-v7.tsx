@@ -1,5 +1,5 @@
 import type React from "react";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { Comment } from "../../core/review";
 import { frameOfMs, msOfFrame, timecode } from "../lib/timeline";
 import { useStore } from "../store";
@@ -21,6 +21,21 @@ export function markerLeftPercent(atMs: number, fps: number, durationInFrames: n
   const last = Math.max(1, Math.max(1, Math.floor(durationInFrames)) - 1);
   const frame = frameOfMs(atMs, fps);
   return Math.min(100, Math.max(0, (frame / last) * 100));
+}
+
+/** 把批注弹层放到所点标记附近，并限制在播放器外框内。 */
+export function markerNotePosition(
+  anchor: { x: number; y: number },
+  bounds: { width: number; height: number; minTop: number },
+  popup: { width: number; height: number },
+): { left: number; top: number } {
+  const maxLeft = Math.max(8, bounds.width - popup.width - 8);
+  const left = Math.max(8, Math.min(maxLeft, anchor.x - popup.width / 2));
+  const maxTop = Math.max(bounds.minTop, bounds.height - popup.height - 8);
+  const above = anchor.y - popup.height - 8;
+  const below = anchor.y + 8;
+  const preferred = above >= bounds.minTop || below > maxTop ? above : below;
+  return { left, top: Math.max(bounds.minTop, Math.min(maxTop, preferred)) };
 }
 
 function ratioFromClientX(el: HTMLElement, clientX: number): number {
@@ -75,11 +90,48 @@ export function PlayerChromeV7({
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [markerAnchor, setMarkerAnchor] = useState<{ x: number; y: number } | null>(null);
+  const [notePosition, setNotePosition] = useState<{ left: number; top: number } | null>(null);
   const [menu, setMenu] = useState<{ frame: number; x: number; y: number } | null>(null);
+  const chrome = useRef<HTMLElement>(null);
+  const detailNote = useRef<HTMLDivElement>(null);
   const markers = comments.filter(isTimedOpen);
   const opened = markers.find((comment) => comment.id === openId);
   const last = Math.max(1, total - 1);
   const played = Math.min(100, Math.max(0, (Math.min(frame, last) / last) * 100));
+
+  useLayoutEffect(() => {
+    if (!opened || !markerAnchor || !chrome.current || !detailNote.current) {
+      setNotePosition(null);
+      return;
+    }
+    const measure = () => {
+      const footer = chrome.current;
+      const note = detailNote.current;
+      if (!footer || !note) return;
+      const footerRect = footer.getBoundingClientRect();
+      const playerRect = footer.closest(".mw-player-v7")?.getBoundingClientRect();
+      const minTop = playerRect ? playerRect.top - footerRect.top + 8 : 8;
+      setNotePosition(
+        markerNotePosition(
+          markerAnchor,
+          { width: footer.clientWidth, height: footer.clientHeight, minTop },
+          { width: note.offsetWidth, height: note.offsetHeight },
+        ),
+      );
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    if (observer) {
+      observer.observe(chrome.current);
+      observer.observe(detailNote.current);
+    }
+    return () => {
+      window.removeEventListener("resize", measure);
+      observer?.disconnect();
+    };
+  }, [opened, markerAnchor]);
 
   const seekAt = (el: HTMLElement, clientX: number) => {
     useStore.getState().seek(frameAtRatio(ratioFromClientX(el, clientX), total));
@@ -124,7 +176,7 @@ export function PlayerChromeV7({
   };
 
   return (
-    <footer className="mw-player-chrome" aria-label="播放器控制">
+    <footer className="mw-player-chrome" aria-label="播放器控制" ref={chrome}>
       <div className="mw-player-track-wrap">
         <div
           className="mw-player-track"
@@ -153,13 +205,23 @@ export function PlayerChromeV7({
               style={{ left: `${markerLeftPercent(comment.atMs, fps, total)}%` }}
               title={comment.text}
               aria-label={`批注 ${comment.id} ${timecode(frameOfMs(comment.atMs, fps), fps)}`}
-              onClick={() => {
+              onClick={(event) => {
                 const st = useStore.getState();
                 st.seek(frameOfMs(comment.atMs, fps));
                 if (comment.target) st.select(comment.target, { reveal: false });
                 st.setSideTab("comments");
                 setComposer(false);
                 setOpenId(comment.id);
+                const footerRect = chrome.current?.getBoundingClientRect();
+                const markerRect = event.currentTarget.getBoundingClientRect();
+                setMarkerAnchor(
+                  footerRect
+                    ? {
+                        x: markerRect.left + markerRect.width / 2 - footerRect.left,
+                        y: markerRect.top + markerRect.height / 2 - footerRect.top,
+                      }
+                    : null,
+                );
               }}
             />
           ))}
@@ -194,12 +256,14 @@ export function PlayerChromeV7({
         <div className="mw-player-controls-side end">
           <button
             type="button"
-            className="mw-player-icon pin"
+            className="mw-player-icon comment-entry"
             aria-label="添加批注"
             title="在当前时间添加批注"
             onClick={() => {
               useStore.getState().setPlaying(false);
               setOpenId(null);
+              setMarkerAnchor(null);
+              setNotePosition(null);
               setMenu(null);
               setComposer(true);
             }}
@@ -251,10 +315,24 @@ export function PlayerChromeV7({
         </form>
       )}
       {opened && (
-        <div className="mw-player-note detail" role="dialog" aria-label="批注">
+        <div
+          ref={detailNote}
+          className="mw-player-note detail"
+          role="dialog"
+          aria-label="批注"
+          style={notePosition ?? { left: 8, top: -80 }}
+        >
           <div className="mw-player-note-head">
             <span className="mono">{timecode(frameOfMs(opened.atMs, fps), fps)}</span>
-            <button type="button" aria-label="关闭批注" onClick={() => setOpenId(null)}>
+            <button
+              type="button"
+              aria-label="关闭批注"
+              onClick={() => {
+                setOpenId(null);
+                setMarkerAnchor(null);
+                setNotePosition(null);
+              }}
+            >
               <Icon name="close" size={12} />
             </button>
           </div>

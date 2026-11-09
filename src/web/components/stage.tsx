@@ -7,17 +7,15 @@ import type { EditorState } from "../../core/api";
 import { compile } from "../../core/compile";
 import { planTransform } from "../../core/edit";
 import { applyOps, type Op } from "../../core/ops";
-import { isLandscape } from "../../core/safe-area";
 import type { Project } from "../../core/schema";
 import { type HitBox, hitBoxes, pick } from "../lib/geometry";
 
 import { findItem } from "../lib/project";
 import { frameOfMs, msOfFrame, timecode } from "../lib/timeline";
 import { useStore } from "../store";
-import { addGuide, CanvasGuides, RULER_BAND, SafeAreaOverlay, safeAreaMode } from "./canvas-guides";
+import { addGuide, CanvasGuides, RULER_BAND } from "./canvas-guides";
 import { CropOverlay, CropToolbar } from "./crop-editor";
 import { Icon } from "./icons";
-import { LayoutEditorCard } from "./layout-editor";
 import { PlayerChromeV7 } from "./player-chrome-v7";
 
 const KIND: Record<HitBox["kind"], string> = {
@@ -62,7 +60,6 @@ export function Stage() {
   const playing = useStore((s) => s.playing);
   const annotating = useStore((s) => s.annotating);
   const selected = useStore((s) => s.selected);
-  const layoutEditing = useStore((s) => s.layoutEditing);
   const cropping = useStore((s) => s.cropEditing !== null);
   const flash = useStore((s) => s.flash);
   const review = useStore((s) => s.review);
@@ -364,6 +361,11 @@ export function Stage() {
   );
   const flashing = flash && Date.now() - flash.at < 2400 ? flash : null;
   const selectedHasIssue = selBox && (lint?.issues ?? []).some((issue) => issue.id === selBox.id);
+  const selectedTagLabel =
+    selBox?.kind === "image" || selBox?.kind === "video" ? KIND[selBox.kind] : "";
+  const showSelectedTag = Boolean(
+    selBox && (selectedTagLabel || selectedHasIssue || selBox.locked),
+  );
   const hoverBox = hover && hover !== selected ? boxes.find((b) => b.id === hover) : undefined;
 
   const rect = (b: HitBox["box"]): React.CSSProperties => ({
@@ -377,7 +379,6 @@ export function Stage() {
     <main className="stage panel mw-player-v7" aria-label={name || "预览"} ref={shell}>
       <div className="stage-area" ref={area}>
         <PreviewSettings width={W} height={H} />
-        {layoutEditing && !isLandscape(W, H) && <LayoutEditorCard />}
         {inputProps && scale > 0 ? (
           <div
             className="preview-frame"
@@ -423,7 +424,6 @@ export function Stage() {
                 onLostPointerCapture={cancelDrag}
                 onPointerLeave={() => setHover(null)}
               >
-                <SafeAreaOverlay width={W} height={H} scale={scale} />
                 {draft?.guides.map((g) => (
                   <div
                     key={`${g.axis}-${g.pos}`}
@@ -454,11 +454,13 @@ export function Stage() {
                     ].join(" ")}
                     style={rect(selBox.box)}
                   >
-                    <span className="box-tag">
-                      {selectedHasIssue && <Icon name="warn" size={11} className="box-warning" />}
-                      {selBox.locked && <Icon name="lock" size={11} />}
-                      {KIND[selBox.kind]}
-                    </span>
+                    {showSelectedTag && (
+                      <span className="box-tag">
+                        {selectedHasIssue && <Icon name="warn" size={11} className="box-warning" />}
+                        {selBox.locked && <Icon name="lock" size={11} />}
+                        {selectedTagLabel}
+                      </span>
+                    )}
                     {!selBox.locked && (selBox.kind === "image" || selBox.kind === "video") && (
                       <ResizeHandles onStart={startResize} />
                     )}
@@ -724,18 +726,20 @@ function visibleGuides(editor: EditorState | null) {
   return editor && !editor.guides.hidden ? editor.guides.items : [];
 }
 
-/** 预览设置：构图参考线和标尺、安全区、账号版式三组分开。 */
+/** 设计稿之外只保留参考线与标尺的入口。 */
 function PreviewSettings({ width, height }: { width: number; height: number }) {
   const editor = useStore((s) => s.editor);
-  const { updateEditor, setLayoutEditing } = useStore.getState();
   const box = useRef<HTMLDetailsElement>(null);
-  const [submenu, setSubmenu] = useState<"guides" | "safe" | "account" | null>(null);
-  // 点菜单外面或按 Esc 收起（details 本身不会自己关）
+  const guides = editor?.guides;
+  const setGuides = (patch: Partial<EditorState["guides"]>) =>
+    guides && useStore.getState().updateEditor({ guides: { ...guides, ...patch } });
   useEffect(() => {
-    const close = (e: Event) => {
+    const close = (event: Event) => {
       const el = box.current;
       if (!el?.open) return;
-      if (e instanceof KeyboardEvent ? e.key === "Escape" : !el.contains(e.target as Node))
+      if (
+        event instanceof KeyboardEvent ? event.key === "Escape" : !el.contains(event.target as Node)
+      )
         el.open = false;
     };
     window.addEventListener("pointerdown", close);
@@ -745,143 +749,80 @@ function PreviewSettings({ width, height }: { width: number; height: number }) {
       window.removeEventListener("keydown", close);
     };
   }, []);
-  const guides = editor?.guides;
-  const count = guides?.items.length ?? 0;
-  const mode = safeAreaMode(editor);
-  const landscape = isLandscape(width, height);
-  const setGuides = (patch: Partial<EditorState["guides"]>) =>
-    guides && updateEditor({ guides: { ...guides, ...patch } });
-
   return (
-    <details className="preview-settings" ref={box}>
-      <summary className="icon-btn preview-settings-trigger" aria-label="预览设置" title="预览设置">
+    <details
+      className={editor?.rulers ? "preview-settings has-rulers" : "preview-settings"}
+      ref={box}
+    >
+      <summary
+        className="icon-btn preview-settings-trigger"
+        aria-label="参考线与标尺"
+        title="参考线与标尺"
+      >
         <Icon name="menu" />
       </summary>
-      <div className="preview-settings-panel">
-        {submenu ? (
-          <>
-            <button
-              type="button"
-              className="preview-settings-back"
-              onClick={() => setSubmenu(null)}
-            >
-              <Icon name="prev" size={13} /> 设置
-            </button>
-            <strong>
-              {submenu === "guides" ? "参考线与标尺" : submenu === "safe" ? "安全区" : "账号版式"}
-            </strong>
-          </>
-        ) : (
-          <>
-            <button
-              type="button"
-              className="preview-settings-entry"
-              onClick={() => setSubmenu("guides")}
-            >
-              <span>参考线与标尺</span>
-              <Icon name="next" size={13} />
-            </button>
-            <button
-              type="button"
-              className="preview-settings-entry"
-              onClick={() => setSubmenu("safe")}
-            >
-              <span>安全区</span>
-              <Icon name="next" size={13} />
-            </button>
-            <button
-              type="button"
-              className="preview-settings-entry"
-              onClick={() => setSubmenu("account")}
-            >
-              <span>账号版式</span>
-              <Icon name="next" size={13} />
-            </button>
-          </>
-        )}
-        {submenu === "guides" && (
-          <>
-            <div className="preview-actions">
-              <button type="button" disabled={!editor} onClick={() => addGuide("h", width, height)}>
-                加水平线
-              </button>
-              <button type="button" disabled={!editor} onClick={() => addGuide("v", width, height)}>
-                加垂直线
-              </button>
-            </div>
-            <label className="preview-setting">
-              <input
-                type="checkbox"
-                disabled={!guides}
-                checked={!!guides && !guides.hidden}
-                onChange={() => setGuides({ hidden: !guides?.hidden })}
-              />
-              <span>显示参考线</span>
-            </label>
-            <label className="preview-setting">
-              <input
-                type="checkbox"
-                disabled={!guides}
-                checked={!!guides?.locked}
-                onChange={() => setGuides({ locked: !guides?.locked })}
-              />
-              <span>锁定参考线</span>
-            </label>
-            <label className="preview-setting">
-              <input
-                type="checkbox"
-                disabled={!editor}
-                checked={!!editor?.rulers}
-                onChange={() => updateEditor({ rulers: !editor?.rulers })}
-              />
-              <span>显示标尺</span>
-            </label>
-            <button
-              type="button"
-              className="preview-link"
-              disabled={count === 0}
-              onClick={() => setGuides({ items: [] })}
-            >
-              清除参考线{count ? `（${count}）` : ""}
-            </button>
-          </>
-        )}
-        {submenu === "safe" && (
-          <>
-            {(
-              [
-                ["off", "不显示"],
-                ["channels", "视频号安全区"],
-              ] as const
-            ).map(([v, label]) => (
-              <label key={v} className="preview-setting">
-                <input
-                  type="radio"
-                  name="safe-area"
-                  disabled={!editor}
-                  checked={mode === v}
-                  onChange={() => updateEditor({ showSafeArea: v })}
-                />
-                <span>{label}</span>
-              </label>
-            ))}
-          </>
-        )}
-        {submenu === "account" && (
-          <>
-            <button
-              type="button"
-              className="preview-link"
-              disabled={landscape}
-              onClick={() => {
-                if (box.current) box.current.open = false;
-                setLayoutEditing(true);
-              }}
-            >
-              编辑账号版式…
-            </button>
-          </>
-        )}
+      <div className="preview-settings-panel" role="menu" aria-label="参考线与标尺">
+        <strong>参考线与标尺</strong>
+        <button
+          type="button"
+          className="preview-settings-entry"
+          role="menuitem"
+          disabled={!editor}
+          onClick={() => addGuide("h", width, height)}
+        >
+          添加水平参考线
+        </button>
+        <button
+          type="button"
+          className="preview-settings-entry"
+          role="menuitem"
+          disabled={!editor}
+          onClick={() => addGuide("v", width, height)}
+        >
+          添加垂直参考线
+        </button>
+        <div className="preview-settings-divider" />
+        <button
+          type="button"
+          className="preview-settings-entry"
+          role="menuitemcheckbox"
+          aria-checked={!!guides?.locked}
+          disabled={!guides}
+          onClick={() => setGuides({ locked: !guides?.locked })}
+        >
+          {guides?.locked ? "取消锁定参考线" : "锁定参考线"}
+        </button>
+        <button
+          type="button"
+          className="preview-settings-entry"
+          role="menuitemcheckbox"
+          aria-checked={!!guides && !guides.hidden}
+          disabled={!guides}
+          onClick={() => setGuides({ hidden: !guides?.hidden })}
+        >
+          {guides?.hidden ? "显示参考线" : "隐藏参考线"}
+        </button>
+        <button
+          type="button"
+          className="preview-settings-entry"
+          role="menuitem"
+          disabled={!guides?.items.length}
+          onClick={() => setGuides({ items: [] })}
+        >
+          清除参考线
+        </button>
+        <div className="preview-settings-divider" />
+        <button
+          type="button"
+          className="preview-settings-entry"
+          role="menuitemcheckbox"
+          aria-checked={!!editor?.rulers}
+          disabled={!editor}
+          onClick={() => useStore.getState().updateEditor({ rulers: !editor?.rulers })}
+        >
+          {editor?.rulers ? "隐藏标尺" : "显示标尺"}
+          <kbd>Ctrl Alt R</kbd>
+        </button>
       </div>
     </details>
   );

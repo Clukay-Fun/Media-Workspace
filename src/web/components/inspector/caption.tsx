@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { Caption } from "../../../core/schema";
 import { useStore } from "../../store";
+import { Icon } from "../icons";
 import { CAPTION_INSPECTOR_TABS } from "./caption-batch";
 import { CaptionList } from "./caption-list";
-import { InspectorHead, type InspectorProps, isImeComposing, StylePicker, Tabs } from "./common";
+import { type InspectorProps, isImeComposing, Tabs } from "./common";
 import { TextStyleEditor } from "./text-style-editor";
 
 /** 选中一句字幕：这一句的文字和样式、整套换样式、全部字幕三页（问题 12） */
@@ -12,17 +13,25 @@ export function CaptionInspector(props: InspectorProps) {
   const tab = useStore((s) => s.captionTab);
   return (
     <div className="selection mw-inspector-caption">
-      <InspectorHead {...props} />
-      <Tabs
-        label="字幕属性"
-        value={tab}
-        onChange={useStore.getState().setCaptionTab}
-        items={CAPTION_INSPECTOR_TABS.map((item) => ({ id: item.id, label: item.label }))}
-      />
+      <div className="design-tab-head">
+        <Tabs
+          label="字幕属性"
+          value={tab}
+          onChange={useStore.getState().setCaptionTab}
+          items={CAPTION_INSPECTOR_TABS.map((item) => ({ id: item.id, label: item.label }))}
+        />
+        <button
+          type="button"
+          className="design-panel-close"
+          aria-label="关闭属性"
+          onClick={() => useStore.getState().select(null)}
+        >
+          <Icon name="close" size={14} />
+        </button>
+      </div>
       {tab === "list" && <CaptionList />}
       {tab === "edit" && (
         <>
-          <CaptionEditor caption={ref_.item as Caption} locked={ref_.track.locked} />
           <TextStyleEditor
             project={project}
             id={id}
@@ -31,12 +40,12 @@ export function CaptionInspector(props: InspectorProps) {
             showHighlight
             elementLabel="字幕"
             section="edit"
+            content={<CaptionEditor caption={ref_.item as Caption} locked={ref_.track.locked} />}
           />
         </>
       )}
       {tab === "style" && (
         <>
-          <StylePicker project={project} id={id} ref_={ref_} sample="字幕" />
           <TextStyleEditor
             project={project}
             id={id}
@@ -81,9 +90,10 @@ function CaptionEditor({ caption, locked }: { caption: Caption; locked: boolean 
   };
   return (
     <section className="field">
-      <h3>字幕文字</h3>
+      <h3>编辑字幕</h3>
       <textarea
         className="caption-text"
+        aria-label="编辑当前字幕"
         value={text}
         disabled={locked}
         rows={2}
@@ -122,11 +132,6 @@ function CaptionEditor({ caption, locked }: { caption: Caption; locked: boolean 
         >
           {caption.charStartMs ? "已对齐" : "估算"}
         </span>
-        {caption.highlights.map((h) => (
-          <span key={`${h.text}-${h.nth ?? 0}`} className="tag">
-            {h.text}
-          </span>
-        ))}
       </div>
     </section>
   );

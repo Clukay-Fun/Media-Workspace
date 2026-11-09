@@ -11,6 +11,7 @@ import {
   EditorState,
   ExportRequest,
   httpStatus,
+  ImportAssetRequest,
   OpsRequest,
   RestoreCutRequest,
   ROUTES,
@@ -21,7 +22,7 @@ import {
 import { MwError } from "../core/errors";
 import { Layout } from "../core/layout";
 import { zodIssues } from "../core/validate";
-import { coverProject, lintDir, restoreCut, templateOpts } from "../node/actions";
+import { coverProject, importAsset, lintDir, restoreCut, templateOpts } from "../node/actions";
 import { getFontCatalog, publicFontCatalog } from "../node/fonts";
 import { getLayout, listStyles, saveStyle, setLayout } from "../node/library";
 import { buildProps } from "../node/render";
@@ -194,6 +195,17 @@ export function createApp(ctx: AppContext): Hono {
       ...templateOpts,
     });
     return c.json({ ...r, projectId: p.id });
+  });
+
+  app.post(ROUTES.importAsset, async (c) => {
+    const p = await projectContext(c);
+    const req = await body(c, ImportAssetRequest);
+    const result = await importAsset(p.dir, req.file, {
+      baseRevision: req.baseRevision,
+      source: "ui",
+      actor: "工作台",
+    });
+    return c.json({ ...result, projectId: p.id });
   });
 
   app.get(ROUTES.libraryStyles, async (c) => c.json({ ok: true, ...(await listStyles()) }));

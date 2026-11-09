@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { builtinStyles } from "../../../core/aspect";
 import { applyOps } from "../../../core/ops";
 import { BUILTIN_STYLES } from "../../../core/presets";
 import { Project } from "../../../core/schema";
@@ -58,6 +59,19 @@ describe("字幕动画快捷选项", () => {
       <StylePicker project={current} id="s1" ref_={ref_} sample="字幕" />,
     );
     expect(html).toContain('class="style-chip on" disabled=""');
+  });
+
+  it("默认列出字幕类别的全部样式，不再折叠到更多入口", () => {
+    const current = project();
+    const ref_ = findItem(current, "s1");
+    if (!ref_) throw new Error("测试字幕缺失");
+    const html = renderToStaticMarkup(
+      <StylePicker project={current} id="s1" ref_={ref_} sample="字幕" />,
+    );
+    for (const name of Object.keys(builtinStyles(current.canvas))) {
+      if (name.startsWith("caption-")) expect(html).toContain(name);
+    }
+    expect(html).not.toContain("更多样式");
   });
 
   it("写入三个规定的完整动画参数", () => {
@@ -232,9 +246,10 @@ describe("字幕动画快捷选项", () => {
         section="style"
       />,
     );
-    expect(html).toContain("整体透明度");
-    expect(html).toContain("斜体");
-    expect(html).toContain("删除线");
+    expect(html).toContain("混合");
+    expect(html).toContain("不透明度");
+    expect(html).toContain("未支持");
+    expect(html).not.toContain("没有对应字段");
     expect(html).toContain("disabled");
   });
 

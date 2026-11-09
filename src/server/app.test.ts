@@ -1,9 +1,10 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ServerEvent } from "../core/api";
 import { MwError } from "../core/errors";
+import * as actions from "../node/actions";
 import { applyToProject, commentOnProject, initProject } from "../node/store";
 import { createApp } from "./app";
 import { createBus, watchProject } from "./events";
@@ -30,6 +31,7 @@ beforeEach(async () => {
   await initProject(dir);
 });
 afterEach(async () => {
+  vi.restoreAllMocks();
   await rm(root, { recursive: true, force: true });
 });
 
@@ -59,6 +61,37 @@ function setup(run?: Parameters<typeof createExportJobs>[2]) {
 }
 
 describe("本地服务接口", () => {
+  it("顶栏素材导入校验参数并沿用业务层的版本与写入规则", async () => {
+    const importer = vi.spyOn(actions, "importAsset").mockResolvedValue({
+      ok: true,
+      revision: 1,
+      changed: ["a2"],
+      warnings: [],
+      dryRun: false,
+      asset: "a2",
+      probe: { kind: "image", durationMs: 0, hasAudio: false },
+      created: [],
+    });
+    const { req } = setup();
+    const invalid = await req("/api/import", { body: { file: "  ", baseRevision: 0 } });
+    expect(invalid.status).toBe(422);
+    expect(importer).not.toHaveBeenCalled();
+    const imported = await req("/api/import", {
+      body: { file: " /tmp/封面.png ", baseRevision: 0 },
+    });
+    expect(imported.status).toBe(200);
+    expect(await imported.json()).toMatchObject({ ok: true, asset: "a2", revision: 1 });
+    expect(importer).toHaveBeenCalledWith(dir, "/tmp/封面.png", {
+      baseRevision: 0,
+      source: "ui",
+      actor: "工作台",
+    });
+    importer.mockRejectedValueOnce(new MwError("CONFLICT", "工程已经更新，请刷新"));
+    const conflict = await req("/api/import", { body: { file: "/tmp/封面.png", baseRevision: 0 } });
+    expect(conflict.status).toBe(409);
+    expect(await conflict.json()).toMatchObject({ ok: false, code: "CONFLICT" });
+  });
+
   it("多工程 API 必须显式指定工程 ID，写入不会落到另一个工程", async () => {
     const projects = join(root, "projects");
     const firstDir = join(projects, "工程一.mwproj");

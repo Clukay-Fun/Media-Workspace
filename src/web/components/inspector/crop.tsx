@@ -2,6 +2,7 @@ import { cropForAspect, FULL_CROP } from "../../../core/crop";
 import type { CropRect, Project } from "../../../core/schema";
 import { useStore } from "../../store";
 import { cropAspects, cropSource, startCrop } from "../crop-editor";
+import { Icon } from "../icons";
 import { Field } from "./common";
 
 /** 裁切：常用比例一键套用（按当前裁切的中心），细调去预览里拖框（问题 20） */
@@ -33,11 +34,38 @@ export function CropField({
   const presets = cropAspects(project.canvas);
   const current = w / h;
   return (
-    <Field label="裁切" note={crop ? `保留 ${w} × ${h}` : "整张画面"}>
-      <div className="segmented mw-crop-presets" role="radiogroup" aria-label="按比例裁切">
-        {presets.map((a) => {
-          if (a.value === null) {
-            const on = editingState?.aspect === null;
+    <section className="field design-crop">
+      <div className="design-section-head">
+        <h3>裁切</h3>
+        <div>
+          <button
+            type="button"
+            className="icon-btn"
+            disabled={locked || editing}
+            aria-label="在画面上调整"
+            title="在画面上调整"
+            onClick={() => startCrop(id)}
+          >
+            <Icon name="safe" size={19} />
+          </button>
+          <button
+            type="button"
+            className="icon-btn"
+            disabled={locked || editing || !crop}
+            aria-label="去掉裁切"
+            title="去掉裁切"
+            onClick={() => submit(null, "已去掉裁切")}
+          >
+            <Icon name="reopen" size={19} />
+          </button>
+        </div>
+      </div>
+      <div className="design-crop-grid" role="radiogroup" aria-label="按比例裁切">
+        {presets
+          .filter((a) => a.value !== null)
+          .map((a) => {
+            const value = a.value!;
+            const on = Boolean(crop) && a.label !== "画布" && Math.abs(current - value) < 0.01;
             return (
               <button
                 key={a.label}
@@ -46,57 +74,24 @@ export function CropField({
                 aria-checked={on}
                 className={on ? "on" : undefined}
                 disabled={locked || editing}
-                title="不锁比例，在画面上拖。拖动先不写入，完成后才提交一次"
-                onClick={() => startCrop(id)}
+                title={a.label === "画布" ? "按画布比例裁切" : a.label}
+                onClick={() =>
+                  submit(
+                    cropForAspect(source, value, { x: c.x + c.width / 2, y: c.y + c.height / 2 }),
+                    `已按 ${a.label} 裁切`,
+                  )
+                }
               >
-                {a.label}
+                <span className="design-crop-stage">
+                  <i
+                    style={{ width: Math.min(55, 46 * value), height: Math.min(46, 55 / value) }}
+                  />
+                </span>
+                <span>{a.label}</span>
               </button>
             );
-          }
-          const value = a.value;
-          const on = Boolean(crop) && Math.abs(current - value) < 0.01;
-          return (
-            <button
-              key={a.label}
-              type="button"
-              role="radio"
-              aria-checked={on}
-              className={on ? "on" : undefined}
-              disabled={locked || editing}
-              title={a.label === "画布" ? "按画布比例裁，主轨选它就能铺满画面" : undefined}
-              onClick={() =>
-                submit(
-                  cropForAspect(source, value, { x: c.x + c.width / 2, y: c.y + c.height / 2 }),
-                  `已按 ${a.label} 裁切`,
-                )
-              }
-            >
-              {a.label}
-            </button>
-          );
-        })}
+          })}
       </div>
-      <div className="insp-row insp-below">
-        <button
-          type="button"
-          className="mini-btn"
-          disabled={locked || editing}
-          onClick={() => startCrop(id)}
-        >
-          {editing ? "正在画面上调整…" : "在画面上调整"}
-        </button>
-        {crop && (
-          <button
-            type="button"
-            className="mini-btn"
-            disabled={locked || editing}
-            title="重置裁切"
-            onClick={() => submit(null, "已去掉裁切")}
-          >
-            去掉裁切
-          </button>
-        )}
-      </div>
-    </Field>
+    </section>
   );
 }

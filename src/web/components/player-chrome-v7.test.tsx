@@ -1,6 +1,11 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { frameAtRatio, markerLeftPercent, PlayerChromeV7 } from "./player-chrome-v7";
+import {
+  frameAtRatio,
+  markerLeftPercent,
+  markerNotePosition,
+  PlayerChromeV7,
+} from "./player-chrome-v7";
 
 describe("播放器 V7 进度", () => {
   it("把点击比例换成最后一帧以内的帧号", () => {
@@ -15,6 +20,17 @@ describe("播放器 V7 进度", () => {
     expect(markerLeftPercent(0, 30, 301)).toBe(0);
     expect(markerLeftPercent(1000, 30, 301)).toBe(10);
     expect(markerLeftPercent(99_000, 30, 301)).toBe(100);
+  });
+
+  it("批注弹层靠近标记并限制在播放器边界内", () => {
+    const bounds = { width: 320, height: 120, minTop: -180 };
+    const popup = { width: 180, height: 72 };
+    expect(markerNotePosition({ x: 10, y: 48 }, bounds, popup).left).toBe(8);
+    expect(markerNotePosition({ x: 310, y: 48 }, bounds, popup).left).toBe(132);
+    const nearBottom = markerNotePosition({ x: 160, y: 118 }, bounds, popup);
+    expect(nearBottom.top).toBeLessThan(118);
+    expect(nearBottom.top).toBeGreaterThanOrEqual(bounds.minTop);
+    expect(nearBottom.top + popup.height).toBeLessThanOrEqual(bounds.height - 8);
   });
 });
 
@@ -42,6 +58,8 @@ describe("播放器 V7 底栏", () => {
     expect(html).toContain("1080×1920");
     expect(html).toContain("开头需要确认");
     expect(html).toContain("添加批注");
+    expect(html).toContain('class="mw-player-icon comment-entry"');
+    expect(html).not.toContain('class="mw-player-icon pin"');
     expect(html).not.toContain("这条已经处理");
     expect(html).not.toContain("以前对敲换过汇");
     expect(html).toContain('aria-pressed="false"');

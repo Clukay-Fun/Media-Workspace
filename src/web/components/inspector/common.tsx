@@ -114,10 +114,7 @@ export function Tabs<T extends string>({
   );
 }
 
-/**
- * 一个元素适合用哪些样式：同类元素（字幕 / 标题 / 卡片）已经在用的，加上名字前缀相同的（caption-、title-、card-）。
- * 其余样式收在「更多样式」里，免得给字幕列出标题条、卡片的样式
- */
+/** 一个元素只列自己的类别样式：字幕、标题和卡片互不混在一起。 */
 function relevantStyles(project: Project, ref_: ItemRef): Set<string> {
   const isCaption = ref_.track.kind === "caption";
   const template = "template" in ref_.item ? String(ref_.item.template) : "";
@@ -149,7 +146,6 @@ export function StylePicker({
   ref_: ItemRef;
   sample: string;
 }) {
-  const [more, setMore] = useState(false);
   const [q, setQ] = useState("");
   const isCaption = ref_.track.kind === "caption";
   const template = "template" in ref_.item ? String(ref_.item.template) : "";
@@ -159,7 +155,6 @@ export function StylePicker({
   // 元素没写样式时用轨道的样式（字幕轨）
   const styleId = own ?? ("style" in ref_.track ? (ref_.track.style ?? null) : null);
   useEffect(() => {
-    setMore(false);
     setQ("");
   }, [id]);
   const setStyle = (style: string) => {
@@ -182,10 +177,7 @@ export function StylePicker({
   const query = q.trim().toLowerCase();
   const inCategory = (n: string) => fit.has(n) || n === styleId;
   // 搜索也要受元素类别限制：字幕栏不能搜出标题 / 卡片样式
-  const shown = names.filter((n) =>
-    query ? inCategory(n) && n.toLowerCase().includes(query) : more || inCategory(n),
-  );
-  const hidden = names.length - names.filter((n) => fit.has(n) || n === styleId).length;
+  const shown = names.filter((n) => inCategory(n) && (!query || n.toLowerCase().includes(query)));
   return (
     <div className="inspector-local-view style-picker-view">
       <Field label="样式">
@@ -225,11 +217,6 @@ export function StylePicker({
           })}
         </div>
         {shown.length === 0 && <p className="hint style-empty">没有匹配的样式</p>}
-        {hidden > 0 && (
-          <button type="button" className="link more-styles" onClick={() => setMore(!more)}>
-            {more ? "收起" : `更多样式（${hidden}）`}
-          </button>
-        )}
       </Field>
     </div>
   );

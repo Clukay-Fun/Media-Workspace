@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { TextBlock } from "../../../composition/TextBlock";
 import { builtinStyles } from "../../../core/aspect";
 import { FONT_FAMILIES } from "../../../core/fonts";
@@ -11,19 +11,9 @@ import { stylePresentation, styleTemplateId } from "../../lib/style-presentation
 import { itemFrames } from "../../lib/timeline";
 import { useStore } from "../../store";
 import { Icon } from "../icons";
-import {
-  allCaptionStyleOps,
-  captionStyleTargets,
-  DISABLED_STYLE_CONTROLS,
-  underlineEditable,
-} from "./caption-batch";
+import { allCaptionStyleOps, captionStyleTargets, underlineEditable } from "./caption-batch";
 import { editStyle, Field, isImeComposing } from "./common";
-import {
-  FONT_LICENSE_NOTE,
-  type FontCatalogEntry,
-  fontChoices,
-  fontPickerLine,
-} from "./font-choice";
+import { type FontCatalogEntry, fontChoices } from "./font-choice";
 import { allTitleStyleOps, titleStyleTargets } from "./overlay-fields";
 
 type TextStyleSection = "edit" | "style" | "motion";
@@ -37,6 +27,7 @@ type TextStyleEditorProps = {
   elementLabel: string;
   /** 字幕四页里的一页。不传时保持原来的内部分页。 */
   section?: TextStyleSection;
+  content?: ReactNode;
   /** 不传就用 store 里的字体目录。测试可以直接把目录传进来。 */
   catalog?: readonly FontCatalogEntry[];
 };
@@ -255,6 +246,7 @@ export function TextStyleEditor({
   showHighlight = false,
   elementLabel,
   section,
+  content,
   catalog,
 }: TextStyleEditorProps) {
   const [page, setPage] = useState<"home" | "text" | "layout" | "animation" | "advanced">("home");
@@ -276,6 +268,7 @@ export function TextStyleEditor({
     (a, b) => a - b,
   );
   const animIn = style.animation.in;
+  const [motionPhase, setMotionPhase] = useState<"in" | "out">("in");
   const [fontQuery, setFontQuery] = useState("");
   const storeCatalog = useStore((s) => s.fontCatalog);
   const fontCatalog = catalog ?? storeCatalog;
@@ -407,39 +400,158 @@ export function TextStyleEditor({
     });
   };
 
+  if (section === "motion") {
+    const active = style.animation[motionPhase];
+    const specialized =
+      motionPhase === "in"
+        ? CAPTION_MOTION_CHOICES.find((choice) => {
+            const animation = choice.animation;
+            const incoming = animation?.in as Partial<Anim> | undefined;
+            return (
+              animation?.unit !== undefined &&
+              incoming?.preset === active?.preset &&
+              incoming?.durationMs === active?.durationMs &&
+              animation.unit === style.animation.unit &&
+              animation.inSlot === style.animation.inSlot &&
+              JSON.stringify(animation.stagger) === JSON.stringify(style.animation.stagger)
+            );
+          })?.id
+        : undefined;
+    return (
+      <div className="text-style-editor design-motion-editor">
+        <div className="design-motion-tabs" role="tablist" aria-label="动效阶段">
+          {(
+            [
+              ["in", "入场"],
+              ["out", "出场"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={motionPhase === value}
+              className={motionPhase === value ? "on" : undefined}
+              onClick={() => setMotionPhase(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="design-motion-grid">
+          {CAPTION_MOTION_CHOICES.filter(
+            (choice) =>
+              motionPhase === "in" || !["word-fade", "speech", "line-fade"].includes(choice.id),
+          ).map((choice) => {
+            const patch = motionChoicePatch(choice.id);
+            const animation = patch?.animation;
+            const preset =
+              animation?.in && typeof animation.in === "object" && "preset" in animation.in
+                ? animation.in.preset
+                : null;
+            const selected = specialized
+              ? choice.id === specialized
+              : (choice.id === "none" && !active) ||
+                (choice.id !== "none" &&
+                  preset === active?.preset &&
+                  !["word-fade", "speech", "line-fade"].includes(choice.id));
+            return (
+              <button
+                key={choice.id}
+                type="button"
+                disabled={locked || !choice.enabled}
+                className={selected ? "on" : undefined}
+                aria-pressed={selected}
+                title={!choice.enabled ? "暂不支持" : choice.label}
+                onClick={() => {
+                  if (!animation) return;
+                  update(
+                    motionPhase === "in" ? { animation } : { animation: { out: animation.in } },
+                  );
+                }}
+              >
+                <span className={choice.id === "none" ? "design-motion-none" : undefined}>
+                  {choice.id === "none" ? <Icon name="close" size={24} /> : "Aa"}
+                </span>
+                <small>
+                  {motionPhase === "out"
+                    ? choice.label
+                        .replace("淡入", "淡出")
+                        .replace("滑入", "滑出")
+                        .replace("入场", "出场")
+                    : choice.label}
+                </small>
+              </button>
+            );
+          })}
+        </div>
+        <NumberControl
+          label="动画时长（毫秒）"
+          value={active?.durationMs ?? 300}
+          min={1}
+          max={10000}
+          step={50}
+          slider
+          disabled={locked || !active}
+          onCommit={(durationMs) => update({ animation: { [motionPhase]: { durationMs } } })}
+        />
+        {isCaption && !(ref_.item as Caption).charStartMs?.length && (
+          <p className="hint">按句长估算</p>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="text-style-editor">
-      <Field label="修改范围">
-        <select
-          className="select"
-          value={target}
-          disabled={locked}
-          aria-label="样式修改范围"
-          onChange={(e) => setTarget(e.target.value as StyleScope | "all" | "titles")}
-        >
-          <option value="item">仅当前{elementLabel}</option>
-          <option value="shared">应用到所有用这个样式的</option>
-          {isCaption && (
-            <option value="all">
-              全部字幕（{captionTargets.count} 句，跳过锁定 {captionTargets.skipped}）
-            </option>
-          )}
-          {isOverlay && (
-            <option value="titles">
-              全部标题（{titleTargets.count} 个，跳过锁定 {titleTargets.skipped}）
-            </option>
-          )}
-        </select>
-        <p className="hint">
-          {target === "all"
-            ? `一次提交 ${captionTargets.count} 句，锁定轨道上的 ${captionTargets.skipped} 句不动。这不是共用样式。`
-            : target === "titles"
-              ? `一次提交 ${titleTargets.count} 个标题，锁定的不动，不会改字幕样式。`
-              : target === "item"
-                ? `后续调整只影响当前${elementLabel}`
-                : "后续调整会同步到使用当前样式的所有元素"}
-        </p>
-      </Field>
+      {section ? (
+        <Field label="修改范围">
+          <div className="design-scope-options" role="radiogroup" aria-label="样式修改范围">
+            {(
+              [
+                ["item", `仅当前${elementLabel}`],
+                ["shared", `同样式${elementLabel}`],
+                ...(isCaption ? [["all", "全部字幕"]] : isOverlay ? [["titles", "全部标题"]] : []),
+              ] as const
+            ).map(([value, label]) => (
+              <label key={value}>
+                <input
+                  type="radio"
+                  name={`style-scope-${id}-${section}`}
+                  checked={target === value}
+                  disabled={locked}
+                  onChange={() => setTarget(value as StyleScope | "all" | "titles")}
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+        </Field>
+      ) : (
+        <Field label="修改范围">
+          <select
+            className="select"
+            value={target}
+            disabled={locked}
+            aria-label="样式修改范围"
+            onChange={(e) => setTarget(e.target.value as StyleScope | "all" | "titles")}
+          >
+            <option value="item">仅当前{elementLabel}</option>
+            <option value="shared">应用到所有用这个样式的</option>
+            {isCaption && (
+              <option value="all">
+                全部字幕（{captionTargets.count} 句，跳过锁定 {captionTargets.skipped}）
+              </option>
+            )}
+            {isOverlay && (
+              <option value="titles">
+                全部标题（{titleTargets.count} 个，跳过锁定 {titleTargets.skipped}）
+              </option>
+            )}
+          </select>
+        </Field>
+      )}
+      {content}
 
       {!section && page !== "home" && (
         <div className="text-style-subhead">
@@ -513,41 +625,49 @@ export function TextStyleEditor({
       )}
 
       {(section === "edit" || (!section && page === "text")) && (
-        <Field label="字体" note={`${visibleFonts.length} 个`}>
-          <label className="search">
-            <input
-              type="search"
-              value={fontQuery}
-              placeholder="搜索字体名称或分组"
-              aria-label="搜索字体"
-              onChange={(e) => setFontQuery(e.currentTarget.value)}
-            />
-          </label>
-          <div className="font-list">
-            {visibleFonts.map((font) => (
-              <button
-                key={`${font.source}:${font.value}`}
-                type="button"
-                className={style.font.family === font.value ? "font-option on" : "font-option"}
-                disabled={locked}
-                aria-pressed={style.font.family === font.value}
-                onClick={() => chooseFont(font.value)}
-              >
-                <span>{font.family}</span>
-                <small>
-                  {fontPickerLine({
-                    source: font.source,
-                    weights: font.weights,
-                    available: font.available,
-                    exportable: font.exportable,
-                    status: font.status,
-                  })}
-                </small>
-              </button>
-            ))}
-          </div>
-          {visibleFonts.length === 0 && <p className="hint style-empty">没有匹配的字体</p>}
-          <p className="hint">{FONT_LICENSE_NOTE}</p>
+        <Field label="字体" note={section ? undefined : `${visibleFonts.length} 个`}>
+          {section ? (
+            <select
+              className="select"
+              aria-label="字体"
+              value={style.font.family}
+              disabled={locked}
+              onChange={(e) => chooseFont(e.currentTarget.value)}
+            >
+              {fonts.map((font) => (
+                <option key={`${font.source}:${font.value}`} value={font.value}>
+                  {font.family}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <>
+              <label className="search">
+                <input
+                  type="search"
+                  value={fontQuery}
+                  placeholder="搜索字体名称或分组"
+                  aria-label="搜索字体"
+                  onChange={(e) => setFontQuery(e.currentTarget.value)}
+                />
+              </label>
+              <div className="font-list">
+                {visibleFonts.map((font) => (
+                  <button
+                    key={`${font.source}:${font.value}`}
+                    type="button"
+                    className={style.font.family === font.value ? "font-option on" : "font-option"}
+                    disabled={locked}
+                    aria-pressed={style.font.family === font.value}
+                    onClick={() => chooseFont(font.value)}
+                  >
+                    <span>{font.family}</span>
+                  </button>
+                ))}
+              </div>
+              {visibleFonts.length === 0 && <p className="hint style-empty">没有匹配的字体</p>}
+            </>
+          )}
         </Field>
       )}
 
@@ -555,6 +675,7 @@ export function TextStyleEditor({
         <div className="insp-grid">
           <NumberControl
             label="字号"
+            slider={section === "edit"}
             value={style.font.size}
             min={1}
             max={400}
@@ -591,15 +712,58 @@ export function TextStyleEditor({
             </select>
           </label>
           {section === "edit" && (
-            <button
-              type="button"
-              className={style.font.weight >= 600 ? "mini-btn on" : "mini-btn"}
-              disabled={locked}
-              aria-pressed={style.font.weight >= 600}
-              onClick={() => update({ font: { weight: style.font.weight >= 600 ? 400 : 700 } })}
-            >
-              粗体
-            </button>
+            <div className="design-format-row">
+              <span>样式</span>
+              <div>
+                <button
+                  type="button"
+                  aria-label="粗体"
+                  className={style.font.weight >= 600 ? "mini-btn on" : "mini-btn"}
+                  disabled={locked}
+                  aria-pressed={style.font.weight >= 600}
+                  onClick={() => update({ font: { weight: style.font.weight >= 600 ? 400 : 700 } })}
+                >
+                  B
+                </button>
+                <button
+                  type="button"
+                  className="mini-btn"
+                  aria-label="下划线"
+                  disabled={locked || !underlineEditable(style)}
+                  title={underlineEditable(style) ? "下划线" : "当前样式未支持下划线"}
+                  onClick={() =>
+                    style.highlight &&
+                    update({
+                      highlight: {
+                        underline: style.highlight.underline
+                          ? null
+                          : { color: style.highlight.fill, thickness: 0.08 },
+                      },
+                    })
+                  }
+                >
+                  <u>U</u>
+                </button>
+                <button
+                  type="button"
+                  className="mini-btn"
+                  disabled
+                  title="暂不支持斜体"
+                  aria-label="斜体"
+                >
+                  <i>I</i>
+                </button>
+                <button
+                  type="button"
+                  className="mini-btn"
+                  disabled
+                  title="暂不支持删除线"
+                  aria-label="删除线"
+                >
+                  <s>S</s>
+                </button>
+              </div>
+            </div>
           )}
         </div>
       )}
@@ -612,7 +776,7 @@ export function TextStyleEditor({
             disabled={locked}
             onCommit={(fill) => update({ fill })}
           />
-          {showHighlight && (
+          {showHighlight && !section && (
             <ColorControl
               label="高亮色"
               value={style.highlight?.fill ?? "#FFD400"}
@@ -624,27 +788,31 @@ export function TextStyleEditor({
       )}
 
       {(section === "edit" || (!section && page === "layout")) && (
-        <Field label="位置与排列">
+        <Field label={section ? "对齐方式" : "位置与排列"}>
           <div className="insp-grid">
-            <NumberControl
-              label="X"
-              value={style.layout.x}
-              disabled={locked}
-              onCommit={(x) => update({ layout: { x } })}
-            />
-            <NumberControl
-              label="Y"
-              value={style.layout.y}
-              disabled={locked}
-              onCommit={(y) => update({ layout: { y } })}
-            />
-            <NumberControl
-              label="最大宽度"
-              value={style.layout.maxWidth}
-              min={1}
-              disabled={locked}
-              onCommit={(maxWidth) => update({ layout: { maxWidth } })}
-            />
+            {!section && (
+              <>
+                <NumberControl
+                  label="X"
+                  value={style.layout.x}
+                  disabled={locked}
+                  onCommit={(x) => update({ layout: { x } })}
+                />
+                <NumberControl
+                  label="Y"
+                  value={style.layout.y}
+                  disabled={locked}
+                  onCommit={(y) => update({ layout: { y } })}
+                />
+                <NumberControl
+                  label="最大宽度"
+                  value={style.layout.maxWidth}
+                  min={1}
+                  disabled={locked}
+                  onCommit={(maxWidth) => update({ layout: { maxWidth } })}
+                />
+              </>
+            )}
             <label className="insp-control">
               <span>对齐</span>
               <select
@@ -662,7 +830,7 @@ export function TextStyleEditor({
         </Field>
       )}
 
-      {(section === "motion" || (!section && page === "animation")) && (
+      {!section && page === "animation" && (
         <Field label="入场动画">
           <select
             className="select"
@@ -676,29 +844,6 @@ export function TextStyleEditor({
               </option>
             ))}
           </select>
-          {isCaption && section === "motion" && !(ref_.item as Caption).charStartMs?.length && (
-            <p className="hint">按句长估算</p>
-          )}
-          {section === "motion" && (
-            <div className="preset-row">
-              {CAPTION_MOTION_CHOICES.map((choice) => (
-                <button
-                  key={choice.id}
-                  type="button"
-                  className="preset-chip"
-                  disabled={locked || !choice.enabled}
-                  onClick={() => {
-                    const patch = motionChoicePatch(choice.id);
-                    if (!patch) return;
-                    update(patch);
-                  }}
-                >
-                  <b>{choice.label}</b>
-                  {!choice.enabled && <span>未支持</span>}
-                </button>
-              ))}
-            </div>
-          )}
           {isCaption && !section && (
             <>
               <p className="hint">快捷选项只改动画参数，不会更改字体、颜色、位置或高亮。</p>
@@ -721,7 +866,7 @@ export function TextStyleEditor({
         </Field>
       )}
 
-      {(section === "motion" || (!section && page === "animation")) && (
+      {!section && page === "animation" && (
         <div className="insp-grid">
           <label className="insp-control">
             <span>出现单位</span>
@@ -766,41 +911,22 @@ export function TextStyleEditor({
         ) : (
           <div className="advanced-effect-editor">
             {section === "style" && (
-              <Field label="没有对应字段">
-                <ul className="mw-inspector-unsupported">
-                  {DISABLED_STYLE_CONTROLS.map((item) => (
-                    <li key={item.id}>
-                      <button type="button" disabled title={item.reason}>
-                        <span>{item.label}</span>
-                        <span className="field-note">{item.reason}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                <button
-                  type="button"
-                  className="mini-btn"
-                  disabled={locked || !underlineEditable(style)}
-                  onClick={() => {
-                    if (!underlineEditable(style) || !style.highlight) return;
-                    update({
-                      highlight: {
-                        underline: style.highlight.underline
-                          ? null
-                          : { color: style.highlight.fill, thickness: 0.08 },
-                      },
-                    });
-                  }}
-                >
-                  下划线
-                  {!underlineEditable(style) && <span className="field-note">未支持</span>}
-                </button>
-              </Field>
+              <OptionalEffect label="混合" enabled={false} disabled unavailable onToggle={() => {}}>
+                <NumberControl
+                  label="不透明度"
+                  value={100}
+                  min={0}
+                  max={100}
+                  disabled
+                  onCommit={() => {}}
+                />
+              </OptionalEffect>
             )}
+
             {(section === "style" || advancedEffect === "stroke") && (
               <OptionalEffect
                 label="描边"
-                showHeading={false}
+                showHeading={section === "style"}
                 enabled={style.stroke !== null}
                 disabled={locked}
                 onToggle={(enabled) =>
@@ -832,7 +958,7 @@ export function TextStyleEditor({
             {(section === "style" || advancedEffect === "shadow") && (
               <OptionalEffect
                 label="阴影"
-                showHeading={false}
+                showHeading={section === "style"}
                 enabled={style.shadow !== null}
                 disabled={locked}
                 onToggle={(enabled) =>
@@ -876,7 +1002,7 @@ export function TextStyleEditor({
             {(section === "style" || advancedEffect === "box") && (
               <OptionalEffect
                 label="背景框"
-                showHeading={false}
+                showHeading={section === "style"}
                 enabled={style.box !== null}
                 disabled={locked}
                 onToggle={(enabled) =>
@@ -926,7 +1052,7 @@ export function TextStyleEditor({
             {(section === "style" || advancedEffect === "glow") && (
               <OptionalEffect
                 label="发光"
-                showHeading={false}
+                showHeading={section === "style"}
                 enabled={style.glow !== null}
                 disabled={locked}
                 onToggle={(enabled) =>
@@ -955,10 +1081,10 @@ export function TextStyleEditor({
               </OptionalEffect>
             )}
 
-            {(section === "style" || advancedEffect === "gradient") && (
+            {!section && advancedEffect === "gradient" && (
               <OptionalEffect
                 label="渐变"
-                showHeading={false}
+                showHeading={section === "style"}
                 enabled={style.gradient !== null}
                 disabled={locked}
                 onToggle={(enabled) =>
@@ -1022,6 +1148,7 @@ function OptionalEffect({
   showHeading = true,
   enabled,
   disabled,
+  unavailable = false,
   onToggle,
   children,
 }: {
@@ -1029,22 +1156,55 @@ function OptionalEffect({
   showHeading?: boolean;
   enabled: boolean;
   disabled: boolean;
+  unavailable?: boolean;
   onToggle: (enabled: boolean) => void;
   children: React.ReactNode;
 }) {
+  const [collapsed, setCollapsed] = useState(false);
   return (
-    <section className="field">
-      {showHeading && <h3>{label}</h3>}
-      <label className="insp-row insp-toggle">
-        <input
-          type="checkbox"
-          checked={enabled}
-          disabled={disabled}
-          onChange={(e) => onToggle(e.currentTarget.checked)}
-        />
-        启用
-      </label>
-      {enabled && <div className="insp-grid insp-effect">{children}</div>}
+    <section className="field design-effect">
+      <div className="design-effect-head">
+        <label className="insp-row insp-toggle">
+          <input
+            type="checkbox"
+            checked={enabled}
+            disabled={disabled}
+            onChange={(e) => onToggle(e.currentTarget.checked)}
+          />
+          <strong>{showHeading ? label : "启用"}</strong>
+          {disabled && <span className="field-note">{unavailable ? "未支持" : "已锁定"}</span>}
+        </label>
+        {showHeading && (
+          <>
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label={`重置${label}`}
+              disabled={disabled}
+              title={`重置${label}`}
+              onClick={() => onToggle(true)}
+            >
+              <Icon name="reopen" size={15} />
+            </button>
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label={`${collapsed ? "展开" : "折叠"}${label}`}
+              aria-expanded={!collapsed}
+              onClick={() => setCollapsed(!collapsed)}
+            >
+              <Icon
+                name="chevronDown"
+                size={13}
+                style={{ transform: collapsed ? undefined : "rotate(180deg)" }}
+              />
+            </button>
+          </>
+        )}
+      </div>
+      {!collapsed && (enabled || disabled) && (
+        <div className="insp-grid insp-effect">{children}</div>
+      )}
     </section>
   );
 }
@@ -1055,6 +1215,7 @@ function NumberControl({
   min,
   max,
   step = 1,
+  slider = false,
   disabled,
   onCommit,
 }: {
@@ -1063,6 +1224,7 @@ function NumberControl({
   min?: number;
   max?: number;
   step?: number;
+  slider?: boolean;
   disabled: boolean;
   onCommit: (value: number) => void;
 }) {
@@ -1095,39 +1257,57 @@ function NumberControl({
   return (
     <label className="insp-control">
       <span>{label}</span>
-      <input
-        className="select"
-        type="number"
-        value={draft}
-        min={min}
-        max={max}
-        step={step}
-        disabled={disabled}
-        onFocus={() => {
-          cancelOnBlur.current = false;
-        }}
-        onChange={(e) => setDraft(e.currentTarget.value)}
-        onBlur={() => {
-          if (cancelOnBlur.current) {
+      <div className={slider ? "design-number-slider" : "design-number-only"}>
+        {slider && (
+          <input
+            type="range"
+            min={min ?? 0}
+            max={max ?? 100}
+            step={step}
+            disabled={disabled}
+            aria-label={`${label}滑块`}
+            value={Number(draft) || 0}
+            onChange={(e) => setDraft(e.currentTarget.value)}
+            onPointerUp={commit}
+            onKeyUp={commit}
+            onBlur={commit}
+          />
+        )}
+        <input
+          className="select"
+          type="number"
+          aria-label={label}
+          value={draft}
+          min={min}
+          max={max}
+          step={step}
+          disabled={disabled}
+          onFocus={() => {
             cancelOnBlur.current = false;
-            return;
-          }
-          commit();
-        }}
-        onKeyDown={(e) => {
-          if (isImeComposing(e)) return;
-          if (e.key === "Enter") {
-            e.preventDefault();
+          }}
+          onChange={(e) => setDraft(e.currentTarget.value)}
+          onBlur={() => {
+            if (cancelOnBlur.current) {
+              cancelOnBlur.current = false;
+              return;
+            }
             commit();
-            e.currentTarget.blur();
-          }
-          if (e.key === "Escape") {
-            cancelOnBlur.current = true;
-            setDraft(String(committed.current));
-            e.currentTarget.blur();
-          }
-        }}
-      />
+          }}
+          onKeyDown={(e) => {
+            if (isImeComposing(e)) return;
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit();
+              e.currentTarget.blur();
+            }
+            if (e.key === "Escape") {
+              cancelOnBlur.current = true;
+              setDraft(String(committed.current));
+              e.currentTarget.blur();
+            }
+          }}
+        />
+      </div>
     </label>
   );
 }

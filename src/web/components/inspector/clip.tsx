@@ -1,49 +1,33 @@
 import { useEffect, useRef } from "react";
 import type { FloatClip, MainClip } from "../../../core/schema";
-import { transitionPairFor } from "../../lib/transitions";
 import { useStore } from "../../store";
-import { TransitionEditor } from "../transition-editor";
-import { VisualAnims } from "./anims";
-import { Field, InspectorHead, type InspectorProps } from "./common";
+import { Icon } from "../icons";
+import { Field, type InspectorProps } from "./common";
 import { CropField } from "./crop";
-import { KeyframesInspector } from "./keyframes";
 import { commitGainDb, commitSpeed, gainSliderValue, speedDurationLabel } from "./media-fields";
 import { useNumberDraft } from "./number-draft";
-import { PipInspector } from "./pip";
 
 /** 选中视频 / 音频片段：主轨片段、画中画、音频轨上的片段 */
 export function ClipInspector(props: InspectorProps) {
   const { project, id, ref_ } = props;
   const { track, item } = ref_;
   const clip = "outMs" in item ? (item as MainClip | FloatClip) : null;
-  const pip = clip && track.kind === "video" && "at" in clip ? clip : null;
-  const transitionPair =
-    track.kind === "video" && track.main ? transitionPairFor(project, id) : null;
-  const cut = "cutBefore" in item ? (item.cutBefore as string | undefined) : undefined;
   return (
     <div className="selection mw-inspector-video">
-      <InspectorHead {...props} />
-      {cut && (
-        <p className="cut-note">
-          <span className="cut-tag static">{cut}</span>
-          这一段前面剪掉了一截，理由是 AI 粗剪时写的
-          {!track.locked && (
-            <button
-              type="button"
-              className="mini-btn"
-              title="把剪掉的画面、声音和字幕接回来；可以撤销"
-              onClick={() => void useStore.getState().restoreCut(id)}
-            >
-              恢复这一刀
-            </button>
-          )}
-        </p>
-      )}
-      {pip && <PipInspector project={project} id={id} item={pip} locked={track.locked} />}
+      <header className="design-panel-title">
+        <h2>视频</h2>
+        <button
+          type="button"
+          className="design-panel-close"
+          aria-label="关闭属性"
+          onClick={() => useStore.getState().select(null)}
+        >
+          <Icon name="close" size={14} />
+        </button>
+      </header>
       {clip && track.kind === "video" && (
         <CropField project={project} id={id} crop={clip.crop} locked={track.locked} />
       )}
-      {pip && <VisualAnims id={id} item={pip} locked={track.locked} />}
       {clip && (
         <SpeedField
           id={id}
@@ -53,24 +37,9 @@ export function ClipInspector(props: InspectorProps) {
         />
       )}
       {clip && <VolumeField id={id} gainDb={clip.gainDb} locked={track.locked} />}
-      {transitionPair && (
-        <Field label="转场" note="本段入场">
-          <TransitionEditor pair={transitionPair} locked={track.locked} variant="inspector" />
-        </Field>
-      )}
-      {clip && track.kind === "video" && (
-        <KeyframesInspector
-          id={id}
-          fps={props.fps}
-          locked={track.locked}
-          keyframes={clip.keyframes}
-        />
-      )}
     </div>
   );
 }
-
-const SPEEDS = [1, 1.1, 1.2, 1.25];
 
 const formatSpeed = (v: number) => String(Math.round(v * 100) / 100);
 
@@ -85,7 +54,7 @@ export function PreservePitchControl() {
   );
 }
 
-/** 变速：常用倍速 + 自由输入。时长用当前看到的倍速，不把旧值夹进 0.1–10。 */
+/** 变速：刻度滑杆和自由输入。时长用当前看到的倍速，不把旧值夹进 0.1–10。 */
 function SpeedField({
   id,
   speed,
@@ -99,6 +68,7 @@ function SpeedField({
 }) {
   const num = useNumberDraft(speed);
   const lastSent = useRef<number | null>(null);
+  const sliderChanged = useRef(false);
 
   useEffect(() => {
     lastSent.current = null;
@@ -131,37 +101,61 @@ function SpeedField({
   const seconds = speedDurationLabel(sourceMs, shown);
 
   return (
-    <Field label="变速" note="新输入 0.1–10，已有数值按原样显示">
-      <div className="segmented" role="radiogroup" aria-label="常用变速">
-        {SPEEDS.map((v) => (
-          <button
-            key={v}
-            type="button"
-            role="radio"
-            aria-checked={speed === v}
-            className={speed === v ? "on" : undefined}
+    <Field label="变速">
+      <div className="design-slider-row">
+        <div className="design-scale">
+          <input
+            type="range"
+            min={0.5}
+            max={2}
+            step={0.05}
+            value={Math.min(2, Math.max(0.5, shown))}
             disabled={locked}
-            onClick={() => setSpeed(v)}
-          >
-            {v}×
-          </button>
-        ))}
+            aria-label="速度滑块"
+            onChange={(e) => {
+              sliderChanged.current = true;
+              num.change(e.target.value);
+            }}
+            onPointerUp={(e) => {
+              if (sliderChanged.current) {
+                sliderChanged.current = false;
+                commit(e.currentTarget.value);
+              }
+            }}
+            onKeyUp={(e) => {
+              if (sliderChanged.current) {
+                sliderChanged.current = false;
+                commit(e.currentTarget.value);
+              }
+            }}
+            onBlur={(e) => {
+              if (sliderChanged.current) {
+                sliderChanged.current = false;
+                commit(e.currentTarget.value);
+              }
+            }}
+          />
+          <ScaleMarks labels={["0.5×", "1×", "1.5×", "2×"]} />
+        </div>
+        <label className="design-value-input">
+          <input
+            type="number"
+            min={0.1}
+            max={10}
+            step={0.01}
+            value={num.draft}
+            disabled={locked}
+            aria-label="变速倍数"
+            title="支持 0.1–10 倍"
+            onChange={(e) => num.change(e.target.value)}
+            onBlur={(e) => commit(e.currentTarget.value)}
+            onKeyDown={num.keyDown}
+          />
+          <span>×</span>
+        </label>
       </div>
-      <div className="insp-row insp-below">
-        <input
-          className="select"
-          type="number"
-          min={0.1}
-          max={10}
-          step={0.01}
-          value={num.draft}
-          disabled={locked}
-          aria-label="变速倍数"
-          onChange={(e) => num.change(e.target.value)}
-          onBlur={(e) => commit(e.currentTarget.value)}
-          onKeyDown={num.keyDown}
-        />
-        <span className="field-note">倍 · 变速后 {seconds ?? "—"} 秒</span>
+      <div className="design-speed-extra">
+        <span>变速后 {seconds ?? "—"} 秒</span>
       </div>
       <PreservePitchControl />
     </Field>
@@ -172,6 +166,7 @@ function SpeedField({
 function VolumeField({ id, gainDb, locked }: { id: string; gainDb: number; locked: boolean }) {
   const num = useNumberDraft(gainDb);
   const lastSent = useRef<number | null>(null);
+  const sliderChanged = useRef(false);
 
   useEffect(() => {
     lastSent.current = null;
@@ -203,36 +198,84 @@ function VolumeField({ id, gainDb, locked }: { id: string; gainDb: number; locke
   const sliderValue = gainSliderValue(Number(num.draft), gainDb);
 
   return (
-    <Field label="音量" note="−60 到 +20，0 dB 是原声">
-      <div className="insp-row">
-        <input
-          type="range"
-          min={-60}
-          max={20}
-          step={1}
-          value={sliderValue}
-          disabled={locked}
-          aria-label="音量"
-          onChange={(e) => num.change(e.target.value)}
-          onPointerUp={(e) => commit(Number(e.currentTarget.value))}
-          onKeyUp={(e) => commit(Number(e.currentTarget.value))}
-          onBlur={(e) => commit(Number(e.currentTarget.value))}
-        />
-        <input
-          className="select"
-          type="number"
-          min={-60}
-          max={20}
-          step={1}
-          value={num.draft}
-          disabled={locked}
-          aria-label="音量分贝"
-          onChange={(e) => num.change(e.target.value)}
-          onBlur={(e) => commitTyped(e.currentTarget.value)}
-          onKeyDown={num.keyDown}
-        />
-        <span className="field-note">dB</span>
+    <Field label="音量">
+      <div className="design-slider-row">
+        <div className="design-scale">
+          <input
+            type="range"
+            min={-60}
+            max={12}
+            step={1}
+            value={Math.min(12, sliderValue)}
+            disabled={locked}
+            aria-label="音量"
+            onChange={(e) => {
+              sliderChanged.current = true;
+              num.change(e.target.value);
+            }}
+            onPointerUp={(e) => {
+              if (sliderChanged.current) {
+                sliderChanged.current = false;
+                commit(Number(e.currentTarget.value));
+              }
+            }}
+            onKeyUp={(e) => {
+              if (sliderChanged.current) {
+                sliderChanged.current = false;
+                commit(Number(e.currentTarget.value));
+              }
+            }}
+            onBlur={(e) => {
+              if (sliderChanged.current) {
+                sliderChanged.current = false;
+                commit(Number(e.currentTarget.value));
+              }
+            }}
+          />
+          <ScaleMarks
+            labels={["−60", "−30", "−15", "0", "+12"]}
+            positions={[0, 41.667, 62.5, 83.333, 100]}
+          />
+        </div>
+        <label className="design-value-input">
+          <input
+            type="number"
+            min={-60}
+            max={20}
+            step={1}
+            value={num.draft}
+            disabled={locked}
+            aria-label="音量分贝"
+            title="支持 −60 到 +20 dB"
+            onChange={(e) => num.change(e.target.value)}
+            onBlur={(e) => commitTyped(e.currentTarget.value)}
+            onKeyDown={num.keyDown}
+          />
+          <span>dB</span>
+        </label>
       </div>
     </Field>
+  );
+}
+
+function ScaleMarks({ labels, positions }: { labels: string[]; positions?: number[] }) {
+  return (
+    <div className="design-scale-marks" aria-hidden="true">
+      <div className="design-scale-ticks">
+        {Array.from({ length: 25 }, (_, i) => (
+          <i key={i} className={i % 4 === 0 ? "major" : undefined} />
+        ))}
+      </div>
+      <div className="design-scale-labels">
+        {labels.map((label, i) => (
+          <span
+            key={label}
+            style={{ left: `${positions?.[i] ?? (i / (labels.length - 1)) * 100}%` }}
+          >
+            {label}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }

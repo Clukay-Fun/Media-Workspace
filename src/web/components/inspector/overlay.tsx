@@ -3,16 +3,8 @@ import { builtinStyles } from "../../../core/aspect";
 import type { Overlay, Project } from "../../../core/schema";
 import { TEMPLATES } from "../../../templates";
 import { useStore } from "../../store";
-import {
-  editStyle,
-  Field,
-  InspectorHead,
-  type InspectorProps,
-  isImeComposing,
-  SlotPicker,
-  StylePicker,
-  Tabs,
-} from "./common";
+import { Icon } from "../icons";
+import { editStyle, Field, type InspectorProps, isImeComposing, StylePicker, Tabs } from "./common";
 import { overlayPropOp, TITLE_LOOKS, titleLookPatch } from "./overlay-fields";
 import { TextStyleEditor } from "./text-style-editor";
 
@@ -27,28 +19,29 @@ export function OverlayInspector(props: InspectorProps) {
   useEffect(() => setPage("edit"), [id]);
   return (
     <div className="selection mw-inspector-overlay">
-      <InspectorHead {...props} />
-      <Tabs
-        label="标题属性"
-        value={page}
-        onChange={setPage}
-        items={[
-          { id: "edit", label: "编辑" },
-          { id: "templates", label: "标题模板" },
-          { id: "style", label: "样式" },
-          { id: "motion", label: "动效" },
-        ]}
-      />
+      <div className="design-tab-head">
+        <Tabs
+          label="标题属性"
+          value={page}
+          onChange={setPage}
+          items={[
+            { id: "edit", label: "编辑" },
+            { id: "templates", label: "标题模板" },
+            { id: "style", label: "样式" },
+            { id: "motion", label: "动效" },
+          ]}
+        />
+        <button
+          type="button"
+          className="design-panel-close"
+          aria-label="关闭属性"
+          onClick={() => useStore.getState().select(null)}
+        >
+          <Icon name="close" size={14} />
+        </button>
+      </div>
       {page === "edit" && (
         <>
-          <OverlayPropEditor
-            id={id}
-            project={project}
-            template={overlay.template}
-            props={overlay.props}
-            locked={ref_.track.locked}
-          />
-          <SlotPicker id={id} ref_={ref_} />
           <TextStyleEditor
             project={project}
             id={id}
@@ -56,6 +49,18 @@ export function OverlayInspector(props: InspectorProps) {
             fallback={fallback}
             elementLabel="标题"
             section="edit"
+            content={
+              <>
+                {" "}
+                <OverlayPropEditor
+                  id={id}
+                  project={project}
+                  template={overlay.template}
+                  props={overlay.props}
+                  locked={ref_.track.locked}
+                />
+              </>
+            }
           />
         </>
       )}
@@ -103,7 +108,7 @@ function TitleLooks({
   const builtins = builtinStyles(project.canvas);
   return (
     <Field label="标题模板" note="只改文字样式，不换结构模板">
-      <div className="preset-row">
+      <div className="preset-row design-title-looks">
         {TITLE_LOOKS.map((look) => (
           <button
             key={look.id}
@@ -125,8 +130,13 @@ function TitleLooks({
               );
             }}
           >
+            <span
+              className="design-title-look-sample"
+              style={{ color: look.id === "title-bar-yellow" ? "#ffe34e" : "#fff" }}
+            >
+              标题
+            </span>
             <b>{look.label}</b>
-            {!look.enabled && <span>未登记</span>}
           </button>
         ))}
       </div>

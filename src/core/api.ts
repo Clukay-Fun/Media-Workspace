@@ -71,6 +71,12 @@ export type FontWarning = {
 
 // ---- 请求 ----
 
+export const ImportAssetRequest = z.strictObject({
+  file: z.string().trim().min(1),
+  baseRevision: z.number().int().min(0),
+});
+export type ImportAssetRequest = z.input<typeof ImportAssetRequest>;
+
 export const OpsRequest = z.strictObject({
   ops: Ops,
   baseRevision: z.number().int().nonnegative(),
@@ -173,6 +179,8 @@ export type FontCatalogResponse = {
   }[];
 };
 export type EditorResponse = { ok: true; editor: EditorState };
+export type ImportAssetResponse = OpsResponse & { asset: string; mainClip?: string };
+
 export type OpsResponse = {
   ok: true;
   revision: number;
@@ -286,6 +294,7 @@ export const ROUTES = {
   fonts: "/api/fonts",
   editor: "/api/editor",
   ops: "/api/ops",
+  importAsset: "/api/import",
   history: "/api/history",
   revision: (rev: number) => `/api/history/${rev}`,
   undo: "/api/undo",

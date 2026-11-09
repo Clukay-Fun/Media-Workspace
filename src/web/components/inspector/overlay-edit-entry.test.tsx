@@ -57,10 +57,12 @@ describe("标题和卡片的基础编辑入口", () => {
       );
 
       expect(html).toContain(content);
-      expect(html).toContain('aria-label="搜索字体"');
+      expect(html).toContain('aria-label="字体"');
       expect(html).toContain("字号");
       expect(html).toContain("填充色");
-      expect(html).toContain("位置与排列");
+      expect(html).toContain("对齐方式");
+      expect(html).not.toContain("位置与排列");
+      expect(html).toContain('aria-label="字号滑块"');
     });
   }
 });

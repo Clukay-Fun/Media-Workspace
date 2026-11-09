@@ -1,6 +1,5 @@
 import { findItem } from "../../lib/project";
 import { useStore } from "../../store";
-import { CommentCard } from "../comment-card";
 import { CaptionInspector } from "./caption";
 import { ClipInspector } from "./clip";
 import type { InspectorProps } from "./common";
@@ -15,30 +14,15 @@ export function SelectionCard() {
   const project = useStore((s) => s.project);
   const selected = useStore((s) => s.selected);
   const preview = useStore((s) => s.preview);
-  const review = useStore((s) => s.review);
   const ref = project && selected ? findItem(project, selected) : null;
   if (!project || !ref || !selected) return null;
-  const comments = (review?.comments ?? []).filter(
-    (c) => c.target === selected && c.status === "open",
-  );
   const props: InspectorProps = {
     project,
     id: selected,
     ref_: ref,
     fps: preview?.timeline.fps ?? 30,
   };
-  return (
-    <>
-      <Inspector {...props} />
-      {comments.length > 0 && (
-        <div className="comment-list">
-          {comments.map((c) => (
-            <CommentCard key={c.id} comment={c} compact />
-          ))}
-        </div>
-      )}
-    </>
-  );
+  return <Inspector {...props} />;
 }
 
 function Inspector(props: InspectorProps) {

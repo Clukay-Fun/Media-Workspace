@@ -1,6 +1,5 @@
 import {
   EditorState,
-  type FontWarning,
   type HistoryEntry,
   type LibraryStyle,
   type ServerEvent,
@@ -65,12 +64,7 @@ function demoProject(): Project {
         probe: { durationMs: 1800, width: 1080, height: 1920, fps: 30 },
       },
     },
-    styles: Object.fromEntries(
-      Object.entries(BUILTIN_STYLES).map(([k, v]) => [
-        k,
-        { ...v, font: { ...v.font, family: "PingFang SC", fallback: [] } },
-      ]),
-    ),
+    styles: { ...BUILTIN_STYLES },
     tracks: [
       {
         id: "main",
@@ -153,29 +147,6 @@ export function createMockApi(): Api {
   ];
   let review = Review.parse({});
   let editor = EditorState.parse({});
-  const mockFontWarnings = (): FontWarning[] => {
-    const project = current();
-    const affected: string[] = [];
-    for (const track of project.tracks) {
-      if (track.kind !== "caption" && track.kind !== "overlay") continue;
-      for (const item of track.items) {
-        affected.push(item.id);
-        if (affected.length >= 2) break;
-      }
-      if (affected.length >= 2) break;
-    }
-    return [
-      {
-        code: "FONT_FALLBACK",
-        requested: "PingFang SC",
-        actual: "Noto Sans SC",
-        weight: 700,
-        source: "system",
-        elements: affected,
-        message: "字体「PingFang SC」缺失，已回退到「Noto Sans SC」；布局以预览和导出为准",
-      },
-    ];
-  };
   // 示例账号版式：人物中线、头顶、下巴三条参考线
   let layout: Layout | null = Layout.parse({
     guides: [
@@ -269,7 +240,7 @@ export function createMockApi(): Api {
     preview: async () => ({
       ok: true,
       props: { timeline: compile(current()), styles: current().styles, srcs: {}, fonts: [] },
-      fontWarnings: mockFontWarnings(),
+      fontWarnings: [],
     }),
     fonts: async () => ({
       ok: true,
@@ -369,6 +340,40 @@ export function createMockApi(): Api {
       } catch (e) {
         return fail(e);
       }
+    },
+    importAsset: async (file, baseRevision) => {
+      const taken = new Set([
+        ...Object.keys(current().assets),
+        ...current().tracks.flatMap((track) => [track.id, ...track.items.map((item) => item.id)]),
+      ]);
+      let n = 1;
+      while (taken.has(`a${n}`)) n++;
+      const id = `a${n}`;
+      const ext = file.split(".").at(-1)?.toLowerCase();
+      const kind = ["mp3", "m4a", "wav", "aac", "flac"].includes(ext ?? "")
+        ? "audio"
+        : ["png", "jpg", "jpeg", "webp"].includes(ext ?? "")
+          ? "image"
+          : "video";
+      const result = await api.ops({
+        baseRevision,
+        actor: "user",
+        ops: [
+          {
+            op: "asset.add",
+            id,
+            asset: {
+              kind,
+              path: file,
+              probe: {
+                durationMs: kind === "image" ? 0 : 10000,
+                ...(kind === "audio" ? {} : { width: 1920, height: 1080 }),
+              },
+            },
+          },
+        ],
+      });
+      return { ...result, asset: id };
     },
     // 演示数据没有历史版本可翻，只接回画面，不找回字幕
     restoreCut: async (req) => {

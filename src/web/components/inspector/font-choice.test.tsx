@@ -366,7 +366,7 @@ describe("字体授权和替换", () => {
     expect(host?.querySelector('[role="dialog"]')).toBeNull();
   });
 
-  it("编辑页列出项目字体、系统字体和授权说明", () => {
+  it("编辑页字体选择器只显示字体名称", () => {
     const current = project();
     const ref_ = findItem(current, "s1");
     if (!ref_) throw new Error("测试字幕缺失");
@@ -424,11 +424,12 @@ describe("字体授权和替换", () => {
       />,
     );
     for (const choice of choices) {
-      expect(html).toContain(fontPickerLine(choice));
+      expect(html).toContain(choice.family);
     }
-    expect(html).toContain(FONT_LICENSE_NOTE);
-    expect(html).toContain("项目字体");
-    expect(html).toContain("系统字体");
-    expect(html).not.toContain("商用");
+    expect(html).not.toContain(FONT_LICENSE_NOTE);
+    expect(html).not.toContain("项目字体 ·");
+    expect(html).not.toContain("系统字体 ·");
+    expect(html).not.toContain("字重 600");
+    expect(html).not.toContain("只能回退");
   });
 });

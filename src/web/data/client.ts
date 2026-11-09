@@ -9,6 +9,7 @@ import {
   type ExportStarted,
   type FontCatalogResponse,
   type HistoryResponse,
+  type ImportAssetResponse,
   type LayoutResponse,
   type LibraryStylesResponse,
   type LintResponse,
@@ -49,6 +50,7 @@ export type Api = {
   saveLayout(layout: LayoutInput): Promise<LayoutResponse>;
   peaks(assetId: string): Promise<PeaksResponse | null>;
   ops(req: OpsRequest): Promise<OpsResponse>;
+  importAsset(file: string, baseRevision: number): Promise<ImportAssetResponse>;
   restoreCut(req: RestoreCutRequest): Promise<RestoreCutResponse>;
   undo(direction: "undo" | "redo", baseRevision: number): Promise<OpsResponse>;
   comment(req: CommentRequest): Promise<CommentResponse>;
@@ -129,6 +131,7 @@ function createHttpApi(projectId: string | null): Api {
     saveLayout: (layout) => request(ROUTES.layout, { method: "PUT", body: layout }),
     peaks: (id) => req<PeaksResponse>(ROUTES.peaks(id)).catch(() => null),
     ops: (body) => req(ROUTES.ops, { body }),
+    importAsset: (file, baseRevision) => req(ROUTES.importAsset, { body: { file, baseRevision } }),
     restoreCut: (body) => req(ROUTES.restoreCut, { body }),
     undo: (direction, baseRevision) => req(ROUTES[direction], { body: { baseRevision } }),
     comment: (body) => req(ROUTES.comments, { body }),
