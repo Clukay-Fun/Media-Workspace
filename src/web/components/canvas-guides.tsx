@@ -42,7 +42,7 @@ type Moving = { id: string; axis: "h" | "v"; pos: number; fresh: boolean };
 /** 每隔多少画布像素一个刻度、一个数字 */
 const TICK = 100;
 const LABEL = 500;
-export const RULER_BAND = 28;
+export const RULER_BAND = 14;
 
 /** 构图参考线和标尺：线随时能拖，拖出画面就删掉；从标尺上往画面里拖出一条新线 */
 export function CanvasGuides({ width, height, scale, band }: Dims & { band: number }) {

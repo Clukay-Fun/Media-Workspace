@@ -377,7 +377,7 @@ export function Stage() {
 
   return (
     <main className="stage panel mw-player-v7" aria-label={name || "预览"} ref={shell}>
-      <div className="stage-area" ref={area}>
+      <div className={editor?.rulers ? "stage-area has-rulers" : "stage-area"} ref={area}>
         <PreviewSettings width={W} height={H} />
         {inputProps && scale > 0 ? (
           <div
@@ -578,8 +578,6 @@ export function Stage() {
         frame={frame}
         fps={fps}
         total={total}
-        width={W}
-        height={H}
         playing={playing}
         loop={loop}
         comments={review?.comments ?? []}

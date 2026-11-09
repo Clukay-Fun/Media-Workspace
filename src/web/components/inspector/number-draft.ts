@@ -1,6 +1,12 @@
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { isImeComposing } from "./common";
 
+/** 数字框只比当前数字多留出控件本身需要的空间。 */
+export function numberInputWidth(value: string, controlSpace = 36): string {
+  const characters = Math.max(2, Array.from(value.trim()).length);
+  return `calc(${characters}ch + ${controlSpace}px)`;
+}
+
 /**
  * 数值输入框的草稿状态：回车 / 失焦时由调用方决定提交什么。
  * Esc 和清空都不提交，直接恢复原值。

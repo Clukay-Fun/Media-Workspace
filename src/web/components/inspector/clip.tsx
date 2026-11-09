@@ -5,7 +5,7 @@ import { Icon } from "../icons";
 import { Field, type InspectorProps } from "./common";
 import { CropField } from "./crop";
 import { commitGainDb, commitSpeed, gainSliderValue, speedDurationLabel } from "./media-fields";
-import { useNumberDraft } from "./number-draft";
+import { numberInputWidth, useNumberDraft } from "./number-draft";
 
 /** 选中视频 / 音频片段：主轨片段、画中画、音频轨上的片段 */
 export function ClipInspector(props: InspectorProps) {
@@ -140,6 +140,7 @@ function SpeedField({
         <label className="design-value-input">
           <input
             type="number"
+            style={{ width: numberInputWidth(num.draft, 2) }}
             min={0.1}
             max={10}
             step={0.01}
@@ -240,6 +241,7 @@ function VolumeField({ id, gainDb, locked }: { id: string; gainDb: number; locke
         <label className="design-value-input">
           <input
             type="number"
+            style={{ width: numberInputWidth(num.draft, 2) }}
             min={-60}
             max={20}
             step={1}

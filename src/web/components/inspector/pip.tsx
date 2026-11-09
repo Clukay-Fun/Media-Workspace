@@ -6,7 +6,7 @@ import { CORNER_LABEL, CORNERS, type Corner, cornerPlacement } from "../../lib/p
 import { msOfFrame } from "../../lib/timeline";
 import { useStore } from "../../store";
 import { Field } from "./common";
-import { useNumberDraft } from "./number-draft";
+import { numberInputWidth, useNumberDraft } from "./number-draft";
 
 /** 非主轨视频的画中画属性：四角小窗预设 + 缩放 / 圆角 / 透明度。 */
 export function PipInspector({
@@ -170,6 +170,7 @@ function PipNumber({
       <input
         className="select"
         type="number"
+        style={{ width: numberInputWidth(num.draft) }}
         min={min}
         max={max}
         step={step}

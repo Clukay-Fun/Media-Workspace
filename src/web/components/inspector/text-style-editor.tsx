@@ -14,6 +14,7 @@ import { Icon } from "../icons";
 import { allCaptionStyleOps, captionStyleTargets, underlineEditable } from "./caption-batch";
 import { editStyle, Field, isImeComposing } from "./common";
 import { type FontCatalogEntry, fontChoices } from "./font-choice";
+import { numberInputWidth } from "./number-draft";
 import { allTitleStyleOps, titleStyleTargets } from "./overlay-fields";
 
 type TextStyleSection = "edit" | "style" | "motion";
@@ -699,7 +700,7 @@ export function TextStyleEditor({
           <label className="insp-control">
             <span>字重</span>
             <select
-              className="select"
+              className="select font-weight-select"
               value={style.font.weight}
               disabled={locked}
               onChange={(e) => update({ font: { weight: Number(e.currentTarget.value) } })}
@@ -1276,6 +1277,7 @@ function NumberControl({
         <input
           className="select"
           type="number"
+          style={{ width: numberInputWidth(draft) }}
           aria-label={label}
           value={draft}
           min={min}

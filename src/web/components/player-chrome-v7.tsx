@@ -67,8 +67,6 @@ export function PlayerChromeV7({
   frame,
   fps,
   total,
-  width,
-  height,
   playing,
   loop,
   comments,
@@ -78,8 +76,6 @@ export function PlayerChromeV7({
   frame: number;
   fps: number;
   total: number;
-  width: number;
-  height: number;
   playing: boolean;
   loop: boolean;
   comments: PlayerComment[];
@@ -289,9 +285,6 @@ export function PlayerChromeV7({
           >
             <Glyph d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z" />
           </button>
-          <span className="mw-player-resolution mono" aria-label={`画布 ${width}×${height}`}>
-            {width}×{height}
-          </span>
           <button
             type="button"
             className="mw-player-icon"

@@ -7,7 +7,7 @@ import { VisualAnims } from "./anims";
 import { Field, InspectorHead, type InspectorProps, SlotPicker } from "./common";
 import { CropField } from "./crop";
 import { KeyframesInspector } from "./keyframes";
-import { useNumberDraft } from "./number-draft";
+import { numberInputWidth, useNumberDraft } from "./number-draft";
 
 /** 选中图片：位置和大小、入场 / 出场动画、出现时间 */
 export function ImageInspector(props: InspectorProps) {
@@ -128,6 +128,7 @@ function NumField({
       <input
         className="select"
         type="number"
+        style={{ width: numberInputWidth(num.draft) }}
         min={min}
         max={max}
         step={step}

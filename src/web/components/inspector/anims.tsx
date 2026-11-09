@@ -3,7 +3,7 @@ import type { FloatClip, ImageItem, MainClip } from "../../../core/schema";
 import type { Anim } from "../../../core/text-style";
 import { useStore } from "../../store";
 import { Field, Tabs } from "./common";
-import { useNumberDraft } from "./number-draft";
+import { numberInputWidth, useNumberDraft } from "./number-draft";
 
 // 图片和画中画共用的动画设置：入场、出场、循环（循环只有呼吸，v6，docs/decisions/0018）
 
@@ -178,6 +178,7 @@ function AnimDuration({
       <input
         className="select"
         type="number"
+        style={{ width: numberInputWidth(num.draft) }}
         min={50}
         max={10_000}
         step={50}

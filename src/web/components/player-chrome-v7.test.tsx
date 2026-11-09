@@ -41,8 +41,6 @@ describe("播放器 V7 底栏", () => {
         frame={30}
         fps={30}
         total={301}
-        width={1080}
-        height={1920}
         playing={false}
         loop={false}
         comments={[
@@ -55,7 +53,7 @@ describe("播放器 V7 底栏", () => {
     );
 
     expect(html).toContain("00:01.0");
-    expect(html).toContain("1080×1920");
+    expect(html).not.toContain("1080×1920");
     expect(html).toContain("开头需要确认");
     expect(html).toContain("添加批注");
     expect(html).toContain('class="mw-player-icon comment-entry"');

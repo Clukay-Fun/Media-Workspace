@@ -4327,8 +4327,8 @@ button.change-target:hover .change-name {
 }
 
 .insp-color {
-  width: 44px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   padding: 2px;
   border: 1px solid var(--line-strong);
   border-radius: 5px;
@@ -4795,6 +4795,17 @@ button.change-target:hover .change-name {
   background: #f5f4f1;
 }
 
+.review-root .mw-player-v7 .stage-area.has-rulers {
+  margin: 0 8px 0 0;
+  place-items: start;
+}
+
+.review-root .mw-player-v7 .stage-area.has-rulers .guides-frame {
+  top: 0;
+  left: 0;
+  transform: none;
+}
+
 .mw-player-v7:fullscreen {
   width: 100%;
   height: 100%;
@@ -4930,16 +4941,8 @@ button.change-target:hover .change-name {
   white-space: nowrap;
 }
 
-.mw-player-time span,
-.mw-player-resolution {
+.mw-player-time span {
   color: #90908e;
-}
-
-.mw-player-resolution {
-  overflow: hidden;
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .mw-player-note {
@@ -5521,8 +5524,8 @@ button.change-target:hover .change-name {
   background: #fafafa;
 }
 .design-inspector .text-style-editor .insp-color {
-  width: 84px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   padding: 4px;
   border: 1px solid #dadbdd;
   border-radius: 5px;
@@ -5604,7 +5607,7 @@ button.change-target:hover .change-name {
 }
 .design-number-slider > .select {
   width: 67px;
-  flex: 0 0 67px;
+  flex: 0 0 auto;
   text-align: center;
 }
 .design-number-only > .select {
@@ -5853,7 +5856,7 @@ button.change-target:hover .change-name {
 }
 .design-inspector .project-attribute-group .facts {
   display: grid;
-  grid-template-columns: 104px minmax(0, 1fr);
+  grid-template-columns: 80px minmax(0, 1fr);
   gap: 0 8px;
 }
 .design-inspector .project-attribute-group dt,
@@ -6112,6 +6115,10 @@ button.change-target:hover .change-name {
   height: 36px;
 }
 
+.review-root .mw-player-markers {
+  height: 10px;
+}
+
 .review-root .mw-player-controls {
   height: 30px;
   column-gap: 8px;
@@ -6142,14 +6149,6 @@ button.change-target:hover .change-name {
   background: #f4f3f2;
 }
 
-.review-root .mw-player-resolution {
-  flex: none;
-  padding-inline: 9px;
-  border-right: 1px solid #e9e9e6;
-  border-left: 1px solid #e9e9e6;
-  color: #62656a;
-}
-
 .review-root .mw-player-note {
   bottom: 44px;
 }
@@ -6165,7 +6164,7 @@ button.change-target:hover .change-name {
 }
 
 .review-root .preview-settings.has-rulers {
-  top: 38px;
+  top: 24px;
 }
 
 .review-root .preview-settings-trigger {
@@ -6270,7 +6269,7 @@ button.change-target:hover .change-name {
 
 .review-root .design-inspector .design-number-slider > .select {
   width: 72px;
-  flex-basis: 72px;
+  flex-basis: auto;
 }
 
 .review-root .design-inspector .design-number-slider {
@@ -6299,8 +6298,27 @@ button.change-target:hover .change-name {
   border-color: #ad94ff;
 }
 
-.review-root .design-inspector input[type="number"].select {
-  width: min(100%, 132px);
+.review-root .design-inspector input[type="number"] {
+  max-width: 100%;
+}
+
+.review-root .design-inspector .font-weight-select {
+  width: 82px;
+  max-width: 100%;
+  justify-self: start;
+}
+
+.design-slider-row {
+  grid-template-columns: minmax(0, 1fr) max-content;
+}
+
+.design-value-input {
+  width: max-content;
+  max-width: 100%;
+}
+
+.design-value-input input {
+  flex: 0 0 auto;
 }
 
 .review-root .design-inspector button:focus-visible,
@@ -6439,11 +6457,6 @@ button.change-target:hover .change-name {
   .review-root .mw-player-controls-side.end {
     gap: 5px;
   }
-
-  .review-root .mw-player-resolution {
-    padding-inline: 5px;
-    font-size: 10px;
-  }
 }
 
 /* 761–840px：两栏布局中的预览栏仍较窄，底栏时间和画布尺寸需压紧排布。 */
@@ -6459,11 +6472,6 @@ button.change-target:hover .change-name {
 
   .review-root .mw-player-time {
     font-size: 16px;
-  }
-
-  .review-root .mw-player-resolution {
-    padding-inline: 4px;
-    font-size: 10px;
   }
 }
 
