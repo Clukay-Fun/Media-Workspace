@@ -5276,3 +5276,14 @@ button.change-target:hover .change-name {
   cursor: not-allowed;
   opacity: 0.72;
 }
+
+.mw-inspector-caption .sub-tabs button.on {
+  color: #3a2a10;
+  background: #f6e2bf;
+}
+
+.mw-inspector-caption .caption-index {
+  min-width: 1.5em;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}

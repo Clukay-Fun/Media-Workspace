@@ -3,9 +3,9 @@ import { highlightAt, highlightMask } from "../../../core/animate";
 import type { Caption, Highlight } from "../../../core/schema";
 import { findItem } from "../../lib/project";
 import { blockSeekFrame } from "../../lib/seek";
-import { timecode } from "../../lib/timeline";
 import { useStore } from "../../store";
 import { Icon } from "../icons";
+import { captionListEntries, captionListTimecode, filterCaptionEntries } from "./caption-batch";
 
 /**
  * 全部字幕：行点击只选择，明确的“定位”按钮跳到文字已显示处。
@@ -17,16 +17,28 @@ export function CaptionList() {
   const selected = useStore((s) => s.selected);
   const frame = useStore((s) => s.frame);
   const [editing, setEditing] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
   const current = useRef<HTMLDivElement>(null);
   useEffect(() => {
     current.current?.scrollIntoView({ block: "nearest" });
   }, [selected]);
   if (!tl || !project) return null;
-  // 中间被剪开的字幕会分成几段显示，列表里只列一次
-  const captions = tl.captions.filter((c) => c.part === 0).toSorted((a, b) => a.from - b.from);
+  // 中间被剪开的字幕会分成几段显示，列表里只列一次。时间用编译后的 from。
+  const captions = captionListEntries(tl.captions);
+  const visible = filterCaptionEntries(captions, query);
   return (
     <div className="caption-list">
-      {captions.map((c) => {
+      <label className="search">
+        <input
+          type="search"
+          value={query}
+          placeholder="搜索字幕"
+          aria-label="搜索字幕"
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </label>
+      {visible.map((c) => {
+        const index = captions.findIndex((entry) => entry.id === c.id) + 1;
         const ref_ = findItem(project, c.id);
         const cap = ref_?.item as Caption | undefined;
         const text = cap?.text ?? c.text;
@@ -47,16 +59,19 @@ export function CaptionList() {
               type="button"
               className="caption-row-main"
               onClick={() => {
-                useStore.getState().select(c.id, { reveal: false });
+                const { select, seek } = useStore.getState();
+                select(c.id, { reveal: false });
+                seek(blockSeekFrame(c.from, c.from + c.durationInFrames, "caption"));
               }}
             >
-              <span className="mono">{timecode(c.from, tl.fps)}</span>
+              <span className="caption-index">{index}</span>
+              <span className="mono">{captionListTimecode(c, tl.fps)}</span>
               <MarkedText text={text} highlights={highlights} />
             </button>
             <button
               type="button"
               className="caption-locate"
-              aria-label={`定位到 ${timecode(c.from, tl.fps)} ${text}`}
+              aria-label={`定位到 ${captionListTimecode(c, tl.fps)} ${text}`}
               title="定位到这句字幕"
               onClick={() => {
                 const { select, seek } = useStore.getState();

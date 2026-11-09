@@ -10,6 +10,7 @@ import { StylePicker } from "./common";
 import {
   animationOptionsFor,
   CAPTION_ANIMATION_PRESETS,
+  motionChoicePatch,
   TextStyleEditor,
 } from "./text-style-editor";
 
@@ -182,6 +183,59 @@ describe("字幕动画快捷选项", () => {
         }
       }
     }
+  });
+
+  it("动效预设写入规定参数，未实现的不产生补丁", () => {
+    expect(motionChoicePatch("word-fade")?.animation).toEqual(
+      CAPTION_ANIMATION_PRESETS[0]?.animation,
+    );
+    expect(motionChoicePatch("speech")?.animation).toEqual(CAPTION_ANIMATION_PRESETS[1]?.animation);
+    expect(motionChoicePatch("line-fade")?.animation).toEqual(
+      CAPTION_ANIMATION_PRESETS[2]?.animation,
+    );
+    expect(motionChoicePatch("none")).toEqual({ animation: { in: null } });
+    expect(motionChoicePatch("spin")).toBeNull();
+    expect(motionChoicePatch("path")).toBeNull();
+  });
+
+  it("动效页显示按句长估算，未实现的预设禁用", () => {
+    const current = project();
+    const ref_ = findItem(current, "s1");
+    if (!ref_) throw new Error("测试字幕缺失");
+    const html = renderToStaticMarkup(
+      <TextStyleEditor
+        project={current}
+        id="s1"
+        ref_={ref_}
+        fallback="caption-word-yellow"
+        elementLabel="字幕"
+        section="motion"
+      />,
+    );
+    expect(html).toContain("按句长估算");
+    expect(html).toContain("逐词淡入");
+    expect(html).toContain("旋转入场");
+    expect(html).toContain("disabled");
+  });
+
+  it("样式页的无字段控件是禁用的", () => {
+    const current = project();
+    const ref_ = findItem(current, "s1");
+    if (!ref_) throw new Error("测试字幕缺失");
+    const html = renderToStaticMarkup(
+      <TextStyleEditor
+        project={current}
+        id="s1"
+        ref_={ref_}
+        fallback="caption-word-yellow"
+        elementLabel="字幕"
+        section="style"
+      />,
+    );
+    expect(html).toContain("整体透明度");
+    expect(html).toContain("斜体");
+    expect(html).toContain("删除线");
+    expect(html).toContain("disabled");
   });
 
   it("不再提供 color-sweep 新选项，但已有值仍显示为停用项", () => {

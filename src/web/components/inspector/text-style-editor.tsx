@@ -12,7 +12,15 @@ import { stylePresentation, styleTemplateId } from "../../lib/style-presentation
 import { itemFrames } from "../../lib/timeline";
 import { useStore } from "../../store";
 import { Icon } from "../icons";
+import {
+  allCaptionStyleOps,
+  captionStyleTargets,
+  DISABLED_STYLE_CONTROLS,
+  underlineEditable,
+} from "./caption-batch";
 import { editStyle, Field, isImeComposing } from "./common";
+
+type TextStyleSection = "edit" | "style" | "motion";
 
 type TextStyleEditorProps = {
   project: Project;
@@ -21,6 +29,8 @@ type TextStyleEditorProps = {
   fallback: string;
   showHighlight?: boolean;
   elementLabel: string;
+  /** 字幕四页里的一页。不传时保持原来的内部分页。 */
+  section?: TextStyleSection;
 };
 
 const ANIMATIONS: { value: Anim["preset"] | "none"; label: string; disabled?: boolean }[] = [
@@ -69,6 +79,72 @@ export const CAPTION_ANIMATION_PRESETS: CaptionAnimationPreset[] = [
     },
   },
 ];
+
+export const CAPTION_MOTION_CHOICES: {
+  id: string;
+  label: string;
+  enabled: boolean;
+  animation: Record<string, unknown> | null;
+}[] = [
+  { id: "none", label: "无", enabled: true, animation: { in: null } },
+  {
+    id: "word-fade",
+    label: "逐词淡入",
+    enabled: true,
+    animation: CAPTION_ANIMATION_PRESETS[0]?.animation ?? null,
+  },
+  {
+    id: "speech",
+    label: "跟随语音",
+    enabled: true,
+    animation: CAPTION_ANIMATION_PRESETS[1]?.animation ?? null,
+  },
+  {
+    id: "line-fade",
+    label: "整行淡入",
+    enabled: true,
+    animation: CAPTION_ANIMATION_PRESETS[2]?.animation ?? null,
+  },
+  {
+    id: "fade",
+    label: "淡入",
+    enabled: true,
+    animation: { in: { preset: "fade", durationMs: 300, easing: "ease-out" } },
+  },
+  {
+    id: "slide",
+    label: "滑入",
+    enabled: true,
+    animation: { in: { preset: "slide", durationMs: 300, easing: "ease-out" } },
+  },
+  {
+    id: "blur",
+    label: "模糊",
+    enabled: true,
+    animation: { in: { preset: "blur-in", durationMs: 300, easing: "ease-out" } },
+  },
+  {
+    id: "zoom",
+    label: "缩放",
+    enabled: true,
+    animation: { in: { preset: "zoom-in", durationMs: 300, easing: "ease-out" } },
+  },
+  {
+    id: "bounce",
+    label: "弹跳",
+    enabled: true,
+    animation: { in: { preset: "bounce", durationMs: 300, easing: "ease-out" } },
+  },
+  { id: "spin", label: "旋转入场", enabled: false, animation: null },
+  { id: "path", label: "路径动画", enabled: false, animation: null },
+];
+
+/** 未实现的动效返回 null，调用方不得提交。 */
+export function motionChoicePatch(id: string): { animation: Record<string, unknown> } | null {
+  const choice = CAPTION_MOTION_CHOICES.find((item) => item.id === id);
+  if (!choice?.enabled || !choice.animation) return null;
+  return { animation: choice.animation };
+}
 
 export function animationOptionsFor(currentPreset: Anim["preset"] | null) {
   if (currentPreset !== "color-sweep") return ANIMATIONS;
@@ -170,6 +246,7 @@ export function TextStyleEditor({
   fallback,
   showHighlight = false,
   elementLabel,
+  section,
 }: TextStyleEditorProps) {
   const [page, setPage] = useState<"home" | "text" | "layout" | "animation" | "advanced">("home");
   const [advancedEffect, setAdvancedEffect] = useState<AdvancedEffect | null>(null);
@@ -181,7 +258,8 @@ export function TextStyleEditor({
     builtins[fallback] ??
     builtins["caption-word-yellow"]!;
   const locked = ref_.track.locked;
-  const [scope, setScope] = useState<StyleScope>("item");
+  const [target, setTarget] = useState<StyleScope | "all">("item");
+  const captionTargets = captionStyleTargets(project);
   const family = FONT_FAMILIES[style.font.family] ?? FONT_FAMILIES["alibaba-puhuiti-3"]!;
   const weights = [...new Set([...Object.keys(family.faces).map(Number), style.font.weight])].sort(
     (a, b) => a - b,
@@ -259,11 +337,35 @@ export function TextStyleEditor({
   });
 
   useEffect(() => {
-    setScope("item");
+    setTarget("item");
     setPage("home");
     setAdvancedEffect(null);
     setFontQuery("");
-  }, [id]);
+  }, [id, section]);
+
+  const commitStyle = (patch: Record<string, unknown>, label?: string) => {
+    if (target === "all") {
+      const st = useStore.getState();
+      if (!st.project) return;
+      try {
+        const planned = allCaptionStyleOps(st.project, patch, fallback);
+        if (planned.ops.length === 0) {
+          st.toast(`没有可改的字幕，跳过锁定 ${planned.skipped} 句`);
+          return;
+        }
+        void st.submit(
+          planned.ops,
+          label ?? `已改 ${planned.count} 句字幕，跳过锁定 ${planned.skipped} 句`,
+        );
+      } catch (e) {
+        st.toast(e instanceof Error ? e.message : String(e), "error");
+      }
+      return;
+    }
+    editStyle(id, patch, target, fallback, label);
+  };
+
+  const update = (patch: Record<string, unknown>) => commitStyle(patch);
 
   const chooseFont = (value: string) => {
     const next = fonts.find((font) => font.value === value);
@@ -282,16 +384,8 @@ export function TextStyleEditor({
   const applyPreset = (presetId: string, label: string) => {
     const preset = builtins[presetId];
     if (!preset) return;
-    editStyle(
-      id,
-      preset as unknown as Record<string, unknown>,
-      scope,
-      fallback,
-      `已套用「${label}」`,
-    );
+    commitStyle(preset as unknown as Record<string, unknown>, `已套用「${label}」`);
   };
-
-  const update = (patch: Record<string, unknown>) => editStyle(id, patch, scope, fallback);
 
   const saveAsTemplate = async () => {
     const st = useStore.getState();
@@ -340,22 +434,29 @@ export function TextStyleEditor({
       <Field label="修改范围">
         <select
           className="select"
-          value={scope}
+          value={target}
           disabled={locked}
           aria-label="样式修改范围"
-          onChange={(e) => setScope(e.target.value as StyleScope)}
+          onChange={(e) => setTarget(e.target.value as StyleScope | "all")}
         >
           <option value="item">仅当前{elementLabel}</option>
           <option value="shared">应用到所有用这个样式的</option>
+          {isCaption && (
+            <option value="all">
+              全部字幕（{captionTargets.count} 句，跳过锁定 {captionTargets.skipped}）
+            </option>
+          )}
         </select>
         <p className="hint">
-          {scope === "item"
-            ? `后续调整只影响当前${elementLabel}`
-            : "后续调整会同步到使用当前样式的所有元素"}
+          {target === "all"
+            ? `一次提交 ${captionTargets.count} 句，锁定轨道上的 ${captionTargets.skipped} 句不动。这不是共用样式。`
+            : target === "item"
+              ? `后续调整只影响当前${elementLabel}`
+              : "后续调整会同步到使用当前样式的所有元素"}
         </p>
       </Field>
 
-      {page !== "home" && (
+      {!section && page !== "home" && (
         <div className="text-style-subhead">
           <button
             type="button"
@@ -375,7 +476,7 @@ export function TextStyleEditor({
         </div>
       )}
 
-      {page === "home" && (
+      {!section && page === "home" && (
         <>
           <TextPreview
             text={previewText}
@@ -426,7 +527,7 @@ export function TextStyleEditor({
         </>
       )}
 
-      {page === "text" && (
+      {(section === "edit" || (!section && page === "text")) && (
         <Field label="字体" note={`${visibleFonts.length} 个`}>
           <label className="search">
             <input
@@ -458,7 +559,7 @@ export function TextStyleEditor({
         </Field>
       )}
 
-      {page === "text" && (
+      {(section === "edit" || (!section && page === "text")) && (
         <div className="insp-grid">
           <NumberControl
             label="字号"
@@ -467,6 +568,20 @@ export function TextStyleEditor({
             max={400}
             disabled={locked}
             onCommit={(size) => update({ font: { size } })}
+          />
+          <NumberControl
+            label="字间距"
+            value={style.font.letterSpacing}
+            disabled={locked}
+            onCommit={(letterSpacing) => update({ font: { letterSpacing } })}
+          />
+          <NumberControl
+            label="行间距"
+            value={style.font.lineHeight}
+            min={0.5}
+            step={0.05}
+            disabled={locked}
+            onCommit={(lineHeight) => update({ font: { lineHeight } })}
           />
           <label className="insp-control">
             <span>字重</span>
@@ -483,10 +598,21 @@ export function TextStyleEditor({
               ))}
             </select>
           </label>
+          {section === "edit" && (
+            <button
+              type="button"
+              className={style.font.weight >= 600 ? "mini-btn on" : "mini-btn"}
+              disabled={locked}
+              aria-pressed={style.font.weight >= 600}
+              onClick={() => update({ font: { weight: style.font.weight >= 600 ? 400 : 700 } })}
+            >
+              粗体
+            </button>
+          )}
         </div>
       )}
 
-      {page === "text" && (
+      {(section === "edit" || (!section && page === "text")) && (
         <div className="insp-grid">
           <ColorControl
             label="填充色"
@@ -505,7 +631,7 @@ export function TextStyleEditor({
         </div>
       )}
 
-      {page === "layout" && (
+      {(section === "edit" || (!section && page === "layout")) && (
         <Field label="位置与排列">
           <div className="insp-grid">
             <NumberControl
@@ -544,7 +670,7 @@ export function TextStyleEditor({
         </Field>
       )}
 
-      {page === "animation" && (
+      {(section === "motion" || (!section && page === "animation")) && (
         <Field label="入场动画">
           <select
             className="select"
@@ -558,7 +684,30 @@ export function TextStyleEditor({
               </option>
             ))}
           </select>
-          {isCaption && (
+          {isCaption && section === "motion" && !(ref_.item as Caption).charStartMs?.length && (
+            <p className="hint">按句长估算</p>
+          )}
+          {section === "motion" && (
+            <div className="preset-row">
+              {CAPTION_MOTION_CHOICES.map((choice) => (
+                <button
+                  key={choice.id}
+                  type="button"
+                  className="preset-chip"
+                  disabled={locked || !choice.enabled}
+                  onClick={() => {
+                    const patch = motionChoicePatch(choice.id);
+                    if (!patch) return;
+                    update(patch);
+                  }}
+                >
+                  <b>{choice.label}</b>
+                  {!choice.enabled && <span>未支持</span>}
+                </button>
+              ))}
+            </div>
+          )}
+          {isCaption && !section && (
             <>
               <p className="hint">快捷选项只改动画参数，不会更改字体、颜色、位置或高亮。</p>
               <div className="preset-row">
@@ -580,7 +729,7 @@ export function TextStyleEditor({
         </Field>
       )}
 
-      {page === "animation" && (
+      {(section === "motion" || (!section && page === "animation")) && (
         <div className="insp-grid">
           <label className="insp-control">
             <span>出现单位</span>
@@ -609,8 +758,8 @@ export function TextStyleEditor({
         </div>
       )}
 
-      {page === "advanced" &&
-        (advancedEffect === null ? (
+      {(section === "style" || (!section && page === "advanced")) &&
+        (section !== "style" && advancedEffect === null ? (
           <div className="text-style-nav" aria-label="高级外观设置">
             {ADVANCED_EFFECTS.map((effect) => (
               <button key={effect.id} type="button" onClick={() => setAdvancedEffect(effect.id)}>
@@ -624,7 +773,39 @@ export function TextStyleEditor({
           </div>
         ) : (
           <div className="advanced-effect-editor">
-            {advancedEffect === "stroke" && (
+            {section === "style" && (
+              <Field label="没有对应字段">
+                <ul className="mw-inspector-unsupported">
+                  {DISABLED_STYLE_CONTROLS.map((item) => (
+                    <li key={item.id}>
+                      <button type="button" disabled title={item.reason}>
+                        <span>{item.label}</span>
+                        <span className="field-note">{item.reason}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  className="mini-btn"
+                  disabled={locked || !underlineEditable(style)}
+                  onClick={() => {
+                    if (!underlineEditable(style) || !style.highlight) return;
+                    update({
+                      highlight: {
+                        underline: style.highlight.underline
+                          ? null
+                          : { color: style.highlight.fill, thickness: 0.08 },
+                      },
+                    });
+                  }}
+                >
+                  下划线
+                  {!underlineEditable(style) && <span className="field-note">未支持</span>}
+                </button>
+              </Field>
+            )}
+            {(section === "style" || advancedEffect === "stroke") && (
               <OptionalEffect
                 label="描边"
                 showHeading={false}
@@ -656,7 +837,7 @@ export function TextStyleEditor({
               </OptionalEffect>
             )}
 
-            {advancedEffect === "shadow" && (
+            {(section === "style" || advancedEffect === "shadow") && (
               <OptionalEffect
                 label="阴影"
                 showHeading={false}
@@ -700,7 +881,7 @@ export function TextStyleEditor({
               </OptionalEffect>
             )}
 
-            {advancedEffect === "box" && (
+            {(section === "style" || advancedEffect === "box") && (
               <OptionalEffect
                 label="背景框"
                 showHeading={false}
@@ -750,7 +931,7 @@ export function TextStyleEditor({
               </OptionalEffect>
             )}
 
-            {advancedEffect === "glow" && (
+            {(section === "style" || advancedEffect === "glow") && (
               <OptionalEffect
                 label="发光"
                 showHeading={false}
@@ -782,7 +963,7 @@ export function TextStyleEditor({
               </OptionalEffect>
             )}
 
-            {advancedEffect === "gradient" && (
+            {(section === "style" || advancedEffect === "gradient") && (
               <OptionalEffect
                 label="渐变"
                 showHeading={false}

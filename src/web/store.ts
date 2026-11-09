@@ -22,7 +22,7 @@ import { msOfFrame } from "./lib/timeline";
 
 /** 右栏三页：属性（选中元素能点的选项；没选中时是工程概览和章节）、批注、AI 改动 */
 export type SideTab = "props" | "comments" | "changes";
-export type CaptionTab = "edit" | "style" | "list";
+export type CaptionTab = "edit" | "style" | "list" | "motion";
 /** 预览里调整裁切：拖动中的框（素材 0–1 坐标）和锁定的像素宽高比（null 为自由） */
 export type CropEditing = { id: string; crop: CropRect; aspect: number | null };
 

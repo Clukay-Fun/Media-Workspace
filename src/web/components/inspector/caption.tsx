@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Caption } from "../../../core/schema";
 import { useStore } from "../../store";
+import { CAPTION_INSPECTOR_TABS } from "./caption-batch";
 import { CaptionList } from "./caption-list";
 import { InspectorHead, type InspectorProps, isImeComposing, StylePicker, Tabs } from "./common";
 import { TextStyleEditor } from "./text-style-editor";
@@ -9,20 +10,16 @@ import { TextStyleEditor } from "./text-style-editor";
 export function CaptionInspector(props: InspectorProps) {
   const { project, id, ref_ } = props;
   const tab = useStore((s) => s.captionTab);
-  const count = useStore((s) => s.preview?.timeline.captions.filter((c) => c.part === 0).length);
   return (
-    <div className="selection">
+    <div className="selection mw-inspector-caption">
       <InspectorHead {...props} />
       <Tabs
         label="字幕属性"
         value={tab}
         onChange={useStore.getState().setCaptionTab}
-        items={[
-          { id: "edit", label: "这句字幕" },
-          { id: "style", label: "套用样式" },
-          { id: "list", label: count ? `全部字幕 ${count}` : "全部字幕" },
-        ]}
+        items={CAPTION_INSPECTOR_TABS.map((item) => ({ id: item.id, label: item.label }))}
       />
+      {tab === "list" && <CaptionList />}
       {tab === "edit" && (
         <>
           <CaptionEditor caption={ref_.item as Caption} locked={ref_.track.locked} />
@@ -33,11 +30,35 @@ export function CaptionInspector(props: InspectorProps) {
             fallback="caption-word-yellow"
             showHighlight
             elementLabel="字幕"
+            section="edit"
           />
         </>
       )}
-      {tab === "style" && <StylePicker project={project} id={id} ref_={ref_} sample="字幕" />}
-      {tab === "list" && <CaptionList />}
+      {tab === "style" && (
+        <>
+          <StylePicker project={project} id={id} ref_={ref_} sample="字幕" />
+          <TextStyleEditor
+            project={project}
+            id={id}
+            ref_={ref_}
+            fallback="caption-word-yellow"
+            showHighlight
+            elementLabel="字幕"
+            section="style"
+          />
+        </>
+      )}
+      {tab === "motion" && (
+        <TextStyleEditor
+          project={project}
+          id={id}
+          ref_={ref_}
+          fallback="caption-word-yellow"
+          showHighlight
+          elementLabel="字幕"
+          section="motion"
+        />
+      )}
     </div>
   );
 }
@@ -48,9 +69,14 @@ function CaptionEditor({ caption, locked }: { caption: Caption; locked: boolean 
   const save = () => {
     const t = text.trim();
     if (!t || t === caption.text) return setText(caption.text);
+    const retimed =
+      Boolean(caption.charStartMs?.length) && [...t].length !== [...caption.text].length;
     void useStore
       .getState()
-      .submit([{ op: "caption.update", id: caption.id, set: { text: t } }], "字幕已修改");
+      .submit(
+        [{ op: "caption.update", id: caption.id, set: { text: t } }],
+        retimed ? "字幕已修改。字数变了，逐字时间可能对不上，需要重新对齐" : "字幕已修改",
+      );
   };
   return (
     <section className="field">
