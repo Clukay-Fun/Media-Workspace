@@ -1,5 +1,11 @@
+// @vitest-environment happy-dom
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+import { act, type ReactNode } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { FontWarning } from "../../../core/api";
 import { FONT_FAMILIES } from "../../../core/fonts";
 import { applyOps } from "../../../core/ops";
@@ -7,7 +13,8 @@ import { BUILTIN_STYLES } from "../../../core/presets";
 import { Project } from "../../../core/schema";
 import { PROJECT_FORMAT_VERSION } from "../../../core/version";
 import { findItem } from "../../lib/project";
-import { FontWarningDialog } from "../font-warning-modal";
+import { useStore } from "../../store";
+import { FontWarningDialog, FontWarningModal } from "../font-warning-modal";
 import {
   affectedFontLine,
   dismissFontWarningPatch,
@@ -21,6 +28,40 @@ import {
   licenseStatusLabel,
 } from "./font-choice";
 import { TextStyleEditor } from "./text-style-editor";
+
+let root: Root | null = null;
+let host: HTMLDivElement | null = null;
+
+async function mount(node: ReactNode) {
+  host = document.createElement("div");
+  document.body.appendChild(host);
+  root = createRoot(host);
+  await act(async () => {
+    root?.render(node);
+  });
+}
+
+async function unmount() {
+  if (root) {
+    await act(async () => {
+      root?.unmount();
+    });
+  }
+  host?.remove();
+  root = null;
+  host = null;
+  useStore.setState({
+    project: null,
+    projectId: null,
+    dir: null,
+    name: "",
+    editor: null,
+    fontWarnings: [],
+    fontCatalog: [],
+  });
+}
+
+afterEach(unmount);
 
 const project = () =>
   Project.parse({
@@ -64,6 +105,41 @@ const project = () =>
       },
     ],
   });
+
+const missingFontWarning = (): FontWarning => ({
+  code: "FONT_MISSING",
+  requested: "PingFang SC",
+  actual: "Noto Sans SC",
+  weight: 400,
+  source: "missing",
+  elements: ["s1", "o1"],
+  message: "找不到 PingFang SC",
+  license: { status: "未知", source: "docs/font-licenses.md" },
+});
+
+async function showProjectWarning(projectId: string) {
+  await act(async () => {
+    useStore.setState({
+      project: project(),
+      projectId,
+      name: projectId,
+      dir: `/projects/${projectId}`,
+      editor: null,
+      fontWarnings: [missingFontWarning()],
+      fontCatalog: [],
+    });
+  });
+}
+
+async function clickLater() {
+  const button = [...(host?.querySelectorAll("button") ?? [])].find(
+    (entry) => entry.textContent?.trim() === "稍后处理",
+  );
+  if (!button) throw new Error("找不到稍后处理按钮");
+  await act(async () => {
+    button.click();
+  });
+}
 
 describe("字体授权和替换", () => {
   it("授权只保留四档，其余写成未知", () => {
@@ -185,16 +261,7 @@ describe("字体授权和替换", () => {
 
   it("弹窗写出字体、受影响字幕和标题模板、实际回退，以及三个动作", () => {
     const current = project();
-    const warning: FontWarning = {
-      code: "FONT_MISSING",
-      requested: "PingFang SC",
-      actual: "Noto Sans SC",
-      weight: 400,
-      source: "missing",
-      elements: ["s1", "o1"],
-      message: "找不到 PingFang SC",
-      license: { status: "未知", source: "docs/font-licenses.md" },
-    };
+    const warning = missingFontWarning();
     const html = renderToStaticMarkup(
       <FontWarningDialog
         project={current}
@@ -221,6 +288,82 @@ describe("字体授权和替换", () => {
     expect(html).not.toContain("继续使用回退");
     expect(html).not.toContain("替换字体");
     expect(html).not.toContain("非法律意见");
+  });
+
+  it("替换列表只显示预览可用且可导出的字体", () => {
+    const catalog: FontCatalogEntry[] = [
+      {
+        id: "preview-only",
+        family: "Preview Only",
+        source: "system",
+        available: true,
+        exportable: false,
+        weight: 400,
+        license: { status: "已确认" },
+      },
+      {
+        id: "not-installed",
+        family: "Not Installed",
+        source: "system",
+        available: false,
+        exportable: true,
+        weight: 400,
+        license: { status: "已确认" },
+      },
+      {
+        id: "noto-400",
+        family: "Noto Sans SC",
+        source: "system",
+        available: true,
+        exportable: false,
+        weight: 400,
+        license: { status: "已确认" },
+      },
+      {
+        id: "noto-700",
+        family: "Noto Sans SC",
+        source: "system",
+        available: true,
+        exportable: true,
+        weight: 700,
+        license: { status: "已确认" },
+      },
+    ];
+    const html = renderToStaticMarkup(
+      <FontWarningDialog
+        project={project()}
+        warning={missingFontWarning()}
+        catalog={catalog}
+        dismissed={[]}
+        onIgnore={() => undefined}
+        onUpdateEditor={() => undefined}
+        onSubmit={async () => true}
+      />,
+    );
+
+    expect(html).toContain("仅显示预览可用且可导出的字体");
+    expect(html).toContain("选择可导出字体");
+    expect(html).not.toContain("Preview Only");
+    expect(html).not.toContain("Not Installed");
+    expect(html).toContain("Noto Sans SC · 可导出 · 已确认");
+  });
+
+  it("稍后处理同一字体 warning 时只忽略当前工程", async () => {
+    await showProjectWarning("project-a");
+    await mount(<FontWarningModal />);
+    expect(host?.querySelector('[role="dialog"]')).not.toBeNull();
+
+    await clickLater();
+    expect(host?.querySelector('[role="dialog"]')).toBeNull();
+
+    await showProjectWarning("project-b");
+    expect(host?.querySelector('[role="dialog"]')).not.toBeNull();
+
+    await clickLater();
+    expect(host?.querySelector('[role="dialog"]')).toBeNull();
+
+    await showProjectWarning("project-a");
+    expect(host?.querySelector('[role="dialog"]')).toBeNull();
   });
 
   it("编辑页列出项目字体、系统字体和授权说明", () => {

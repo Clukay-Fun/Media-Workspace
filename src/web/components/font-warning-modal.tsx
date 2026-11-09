@@ -12,6 +12,7 @@ import {
   fontFallbackStyle,
   fontReplacementOps,
   licenseStatusLabel,
+  projectScopedFontWarningKey,
 } from "./inspector/font-choice";
 
 function warningKey(warning: { code: string; requested: string; actual: string | null }): string {
@@ -42,7 +43,7 @@ export function FontWarningDialog({
     const seen = new Set<string>();
     return catalog.filter((font) => {
       const value = font.source === "project" ? font.id : font.family;
-      if (!font.available || seen.has(value)) return false;
+      if (!font.available || !font.exportable || seen.has(value)) return false;
       seen.add(value);
       return true;
     });
@@ -130,17 +131,18 @@ export function FontWarningDialog({
             value={replacement}
             onChange={(event) => setReplacement(event.currentTarget.value)}
           >
-            <option value="">选择可用字体</option>
+            <option value="">选择可导出字体</option>
             {options.map((font) => {
               const value = font.source === "project" ? font.id : font.family;
               return (
                 <option key={value} value={value}>
-                  {font.family} · {licenseStatusLabel(font.license.status)}
+                  {font.family} · 可导出 · {licenseStatusLabel(font.license.status)}
                 </option>
               );
             })}
           </select>
         </label>
+        <p className="font-warning-message">仅显示预览可用且可导出的字体。</p>
         <label className="font-warning-select">
           <span>修改范围</span>
           <select
@@ -183,18 +185,23 @@ export function FontWarningDialog({
 
 export function FontWarningModal() {
   const project = useStore((s) => s.project);
+  const projectId = useStore((s) => s.projectId);
+  const projectDir = useStore((s) => s.dir);
+  const projectName = useStore((s) => s.name);
   const warnings = useStore((s) => s.fontWarnings);
   const editor = useStore((s) => s.editor);
   const catalog = useStore((s) => s.fontCatalog);
   const [ignored, setIgnored] = useState<string[]>([]);
+  const projectScope = projectId ?? projectDir ?? (projectName || "当前工程");
   const dismissed = editor?.fontWarningsDismissed ?? [];
   const current = useMemo(
     () =>
       warnings.find((warning) => {
         const key = warningKey(warning);
-        return !ignored.includes(key) && !dismissed.includes(key);
+        const scopedKey = projectScopedFontWarningKey(projectScope, key);
+        return !ignored.includes(scopedKey) && !dismissed.includes(key);
       }) ?? null,
-    [dismissed, ignored, warnings],
+    [dismissed, ignored, projectScope, warnings],
   );
 
   if (!current || !project) return null;
@@ -204,7 +211,12 @@ export function FontWarningModal() {
       warning={current}
       catalog={catalog}
       dismissed={dismissed}
-      onIgnore={() => setIgnored((keys) => [...keys, warningKey(current)])}
+      onIgnore={() =>
+        setIgnored((keys) => {
+          const key = projectScopedFontWarningKey(projectScope, warningKey(current));
+          return keys.includes(key) ? keys : [...keys, key];
+        })
+      }
       onUpdateEditor={(patch) => useStore.getState().updateEditor(patch)}
       onSubmit={(ops, label) => useStore.getState().submit(ops, label)}
     />

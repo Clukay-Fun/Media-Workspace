@@ -149,6 +149,11 @@ export function dismissFontWarningPatch(
   return { fontWarningsDismissed: [...new Set([...dismissed, key])] };
 }
 
+/** 「稍后处理」是会话内状态，必须按工程隔离。 */
+export function projectScopedFontWarningKey(projectId: string, key: string): string {
+  return JSON.stringify([projectId, key]);
+}
+
 /**
  * 把字体族写成样式补丁。item 逐个走 styleEditOps，并用 applyOps 滚动，避免后一项还看见旧样式。
  * shared 只改第一项正在用的共享样式。规划失败就抛出，调用方不能提交半截 ops。
