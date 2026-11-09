@@ -1,5 +1,5 @@
 import type React from "react";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Comment } from "../../core/review";
 import { frameOfMs, msOfFrame, timecode } from "../lib/timeline";
 import { useStore } from "../store";
@@ -23,6 +23,72 @@ export function markerLeftPercent(atMs: number, fps: number, durationInFrames: n
   return Math.min(100, Math.max(0, (frame / last) * 100));
 }
 
+const MARKER_SPACING_PX = 48;
+
+/** 批注时间过近时在进度条上错开标记，点击仍定位到批注的准确时间。 */
+export function markerOffsetsPx(
+  markers: Array<{ id: string; atMs: number }>,
+  fps: number,
+  durationInFrames: number,
+  trackWidth: number,
+): Map<string, number> {
+  const offsets = new Map<string, number>();
+  if (markers.length < 2 || !(trackWidth > 0)) return offsets;
+
+  const entries = markers
+    .map((marker, order) => ({
+      ...marker,
+      order,
+      x: (markerLeftPercent(marker.atMs, fps, durationInFrames) / 100) * trackWidth,
+    }))
+    .sort((a, b) => a.x - b.x || a.order - b.order);
+
+  const spread = (group: typeof entries): number[] => {
+    const center = group.reduce((sum, entry) => sum + entry.x, 0) / group.length;
+    const spacing = Math.min(MARKER_SPACING_PX, trackWidth / Math.max(1, group.length - 1));
+    const positions = group.map((_, index) => center + (index - (group.length - 1) / 2) * spacing);
+    const first = positions[0] ?? center;
+    const last = positions[positions.length - 1] ?? center;
+    let shift = first < 0 ? -first : 0;
+    if (last + shift > trackWidth) shift = trackWidth - last;
+    return positions.map((position) => position + shift);
+  };
+
+  const groups: (typeof entries)[] = [];
+  for (const entry of entries) {
+    const current = groups[groups.length - 1];
+    if (!current || entry.x - current[current.length - 1]!.x >= MARKER_SPACING_PX) {
+      groups.push([entry]);
+    } else {
+      current.push(entry);
+    }
+  }
+
+  let merged = true;
+  while (merged) {
+    merged = false;
+    for (let index = 1; index < groups.length; index += 1) {
+      const previous = groups[index - 1]!;
+      const current = groups[index]!;
+      const previousPositions = spread(previous);
+      const currentPositions = spread(current);
+      const previousLast = previousPositions[previousPositions.length - 1] ?? 0;
+      if ((currentPositions[0] ?? 0) - previousLast < MARKER_SPACING_PX) {
+        previous.push(...current);
+        groups.splice(index, 1);
+        merged = true;
+        break;
+      }
+    }
+  }
+
+  for (const group of groups) {
+    const positions = spread(group);
+    group.forEach((entry, index) => offsets.set(entry.id, (positions[index] ?? entry.x) - entry.x));
+  }
+  return offsets;
+}
+
 /** 把批注弹层放到所点标记附近，并限制在播放器外框内。 */
 export function markerNotePosition(
   anchor: { x: number; y: number },
@@ -32,7 +98,7 @@ export function markerNotePosition(
   const maxLeft = Math.max(8, bounds.width - popup.width - 8);
   const left = Math.max(8, Math.min(maxLeft, anchor.x - popup.width / 2));
   const maxTop = Math.max(bounds.minTop, bounds.height - popup.height - 8);
-  const above = anchor.y - popup.height - 8;
+  const above = anchor.y - popup.height - 20;
   const below = anchor.y + 8;
   const preferred = above >= bounds.minTop || below > maxTop ? above : below;
   return { left, top: Math.max(bounds.minTop, Math.min(maxTop, preferred)) };
@@ -89,14 +155,36 @@ export function PlayerChromeV7({
   const [markerAnchor, setMarkerAnchor] = useState<{ x: number; y: number } | null>(null);
   const [notePosition, setNotePosition] = useState<{ left: number; top: number } | null>(null);
   const [menu, setMenu] = useState<{ frame: number; x: number; y: number } | null>(null);
+  const [trackWidth, setTrackWidth] = useState(0);
   const chrome = useRef<HTMLElement>(null);
+  const trackWrap = useRef<HTMLDivElement>(null);
   const detailNote = useRef<HTMLDivElement>(null);
   const commentEntry = useRef<HTMLButtonElement>(null);
   const commentInput = useRef<HTMLTextAreaElement>(null);
-  const markers = comments.filter(isTimedOpen);
+  const markers = useMemo(() => comments.filter(isTimedOpen), [comments]);
   const opened = markers.find((comment) => comment.id === openId);
   const last = Math.max(1, total - 1);
   const played = Math.min(100, Math.max(0, (Math.min(frame, last) / last) * 100));
+  const markerOffsets = useMemo(
+    () => markerOffsetsPx(markers, fps, total, trackWidth),
+    [markers, fps, total, trackWidth],
+  );
+
+  useLayoutEffect(() => {
+    const element = trackWrap.current;
+    if (!element) return;
+    const updateWidth = () => setTrackWidth(Math.round(element.getBoundingClientRect().width));
+    updateWidth();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateWidth);
+      return () => window.removeEventListener("resize", updateWidth);
+    }
+
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   useLayoutEffect(() => {
     if (composer) commentInput.current?.focus();
@@ -191,7 +279,7 @@ export function PlayerChromeV7({
 
   return (
     <footer className="mw-player-chrome" aria-label="播放器控制" ref={chrome}>
-      <div className="mw-player-track-wrap">
+      <div className="mw-player-track-wrap" ref={trackWrap}>
         <div
           className="mw-player-track"
           role="slider"
@@ -216,7 +304,9 @@ export function PlayerChromeV7({
               key={comment.id}
               type="button"
               className={comment.id === openId ? "mw-player-marker is-on" : "mw-player-marker"}
-              style={{ left: `${markerLeftPercent(comment.atMs, fps, total)}%` }}
+              style={{
+                left: `calc(${markerLeftPercent(comment.atMs, fps, total)}% + ${markerOffsets.get(comment.id) ?? 0}px)`,
+              }}
               title={comment.text}
               aria-label={`批注 ${comment.id} ${timecode(frameOfMs(comment.atMs, fps), fps)}`}
               onClick={(event) => {
@@ -237,7 +327,11 @@ export function PlayerChromeV7({
                     : null,
                 );
               }}
-            />
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z" />
+              </svg>
+            </button>
           ))}
         </div>
       </div>

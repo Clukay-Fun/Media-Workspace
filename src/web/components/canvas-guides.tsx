@@ -45,7 +45,14 @@ const LABEL = 500;
 export const RULER_BAND = 14;
 
 /** 构图参考线和标尺：线随时能拖，拖出画面就删掉；从标尺上往画面里拖出一条新线 */
-export function CanvasGuides({ width, height, scale, band }: Dims & { band: number }) {
+export function CanvasGuides({
+  width,
+  height,
+  scale,
+  band,
+  canvasLeft,
+  canvasTop,
+}: Dims & { band: number; canvasLeft: number; canvasTop: number }) {
   const editor = useStore((s) => s.editor);
   const [moving, setMoving] = useState<Moving | null>(null);
   const layer = useRef<HTMLDivElement>(null);
@@ -54,7 +61,9 @@ export function CanvasGuides({ width, height, scale, band }: Dims & { band: numb
     const r = layer.current?.getBoundingClientRect();
     if (!r || scale <= 0) return 0;
     return Math.round(
-      axis === "h" ? (e.clientY - r.top - band) / scale : (e.clientX - r.left - band) / scale,
+      axis === "h"
+        ? (e.clientY - r.top - canvasTop) / scale
+        : (e.clientX - r.left - canvasLeft) / scale,
     );
   };
 
@@ -80,8 +89,8 @@ export function CanvasGuides({ width, height, scale, band }: Dims & { band: numb
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
     };
-    // posAt 只依赖 scale；moving 换了一条线时重新挂
-  }, [moving?.id, scale, width, height]);
+    // 拖动期间使用当前画布位置和比例；尺寸变化时重新挂监听
+  }, [moving?.id, scale, width, height, canvasLeft, canvasTop]);
 
   if (!editor) return null;
   const { guides, rulers } = editor;
@@ -109,11 +118,7 @@ export function CanvasGuides({ width, height, scale, band }: Dims & { band: numb
     Array.from({ length: Math.floor(len / LABEL) + 1 }, (_, i) => i * LABEL);
 
   return (
-    <div
-      ref={layer}
-      className={moving ? "canvas-guides moving" : "canvas-guides"}
-      style={{ "--ruler-band": `${band}px` } as React.CSSProperties}
-    >
+    <div ref={layer} className={moving ? "canvas-guides moving" : "canvas-guides"}>
       {lines.map((g) => {
         const out = g.pos < 0 || g.pos > (g.axis === "h" ? height : width);
         return (
@@ -125,7 +130,15 @@ export function CanvasGuides({ width, height, scale, band }: Dims & { band: numb
               guides.locked ? "locked" : "",
               out ? "removing" : "",
             ].join(" ")}
-            style={g.axis === "h" ? { top: band + g.pos * scale } : { left: band + g.pos * scale }}
+            style={
+              g.axis === "h"
+                ? { left: canvasLeft, top: canvasTop + g.pos * scale, width: width * scale }
+                : {
+                    left: canvasLeft + g.pos * scale,
+                    top: canvasTop,
+                    height: height * scale,
+                  }
+            }
             title={guides.locked ? "参考线已锁定" : "拖动调整；拖出画面删除"}
             onPointerDown={grab(g)}
           >
@@ -137,24 +150,34 @@ export function CanvasGuides({ width, height, scale, band }: Dims & { band: numb
         <>
           <div
             className="ruler top"
-            style={{ left: band, height: band, backgroundSize: `${TICK * scale}px 100%` }}
+            style={{
+              left: 0,
+              height: band,
+              backgroundSize: `${TICK * scale}px 100%`,
+              backgroundPosition: `${canvasLeft}px 100%`,
+            }}
             title="往下拖出水平参考线"
             onPointerDown={pull("h")}
           >
             {ticks(width).map((x) => (
-              <span key={x} style={{ left: x * scale }}>
+              <span key={x} style={{ left: canvasLeft + x * scale }}>
                 {x}
               </span>
             ))}
           </div>
           <div
             className="ruler left"
-            style={{ top: band, width: band, backgroundSize: `100% ${TICK * scale}px` }}
+            style={{
+              top: 0,
+              width: band,
+              backgroundSize: `100% ${TICK * scale}px`,
+              backgroundPosition: `100% ${canvasTop}px`,
+            }}
             title="往右拖出垂直参考线"
             onPointerDown={pull("v")}
           >
             {ticks(height).map((y) => (
-              <span key={y} style={{ top: y * scale }}>
+              <span key={y} style={{ top: canvasTop + y * scale }}>
                 {y}
               </span>
             ))}

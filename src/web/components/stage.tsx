@@ -114,6 +114,10 @@ export function Stage() {
     size.w && size.h
       ? Math.min(Math.max(0, size.w - rulerBand) / W, Math.max(0, size.h - rulerBand) / H)
       : 0;
+  const frameWidth = W * scale + rulerBand;
+  const frameHeight = H * scale + rulerBand;
+  const canvasLeft = (size.w - W * scale) / 2;
+  const canvasTop = (size.h - frameHeight) / 2 + rulerBand;
   // Player 的帧号同步回界面；界面跳转时再推给 Player（播放中的帧变化不回推，避免互相触发）
   useEffect(() => {
     const p = player.current;
@@ -360,7 +364,11 @@ export function Stage() {
       c.status === "open" && c.point && c.atMs !== undefined && Math.abs(c.atMs - nowMs) < 1500,
   );
   const flashing = flash && Date.now() - flash.at < 2400 ? flash : null;
-  const selectedHasIssue = selBox && (lint?.issues ?? []).some((issue) => issue.id === selBox.id);
+  const selectedHasIssue = Boolean(
+    selBox &&
+      selBox.kind !== "overlay" &&
+      (lint?.issues ?? []).some((issue) => issue.id === selBox.id),
+  );
   const selectedTagLabel =
     selBox?.kind === "image" || selBox?.kind === "video" ? KIND[selBox.kind] : "";
   const showSelectedTag = Boolean(
@@ -382,7 +390,11 @@ export function Stage() {
         {inputProps && scale > 0 ? (
           <div
             className="preview-frame"
-            style={{ width: W * scale + rulerBand, height: H * scale + rulerBand }}
+            style={{
+              width: frameWidth,
+              height: frameHeight,
+              transform: rulerBand ? `translateX(${-rulerBand / 2}px)` : undefined,
+            }}
           >
             <div
               className="canvas"
@@ -504,11 +516,15 @@ export function Stage() {
           </div>
         )}
         {inputProps && scale > 0 && (
-          <div
-            className="guides-frame"
-            style={{ width: W * scale + rulerBand, height: H * scale + rulerBand }}
-          >
-            <CanvasGuides width={W} height={H} scale={scale} band={rulerBand} />
+          <div className="guides-frame">
+            <CanvasGuides
+              width={W}
+              height={H}
+              scale={scale}
+              band={rulerBand}
+              canvasLeft={canvasLeft}
+              canvasTop={canvasTop}
+            />
           </div>
         )}
         <CropToolbar />

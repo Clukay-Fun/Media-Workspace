@@ -1378,11 +1378,9 @@ textarea:focus-visible {
 
 .guides-frame {
   position: absolute;
-  top: 50%;
-  left: 50%;
+  inset: 0;
   z-index: 3;
   pointer-events: none;
-  transform: translate(-50%, -50%);
 }
 
 .canvas.skeleton {
@@ -1584,8 +1582,6 @@ textarea:focus-visible {
 }
 
 .user-guide.h {
-  left: var(--ruler-band, 0px);
-  right: 0;
   height: 9px;
   margin-top: -4px;
   background: linear-gradient(var(--guide), var(--guide)) center / 100% 1px no-repeat;
@@ -1593,8 +1589,6 @@ textarea:focus-visible {
 }
 
 .user-guide.v {
-  top: var(--ruler-band, 0px);
-  bottom: 0;
   width: 9px;
   margin-left: -4px;
   background: linear-gradient(var(--guide), var(--guide)) center / 1px 100% no-repeat;
@@ -1648,7 +1642,7 @@ textarea:focus-visible {
 }
 
 .ruler.left {
-  top: var(--ruler-band, 0px);
+  top: 0;
   bottom: 0;
   left: 0;
   background-image: linear-gradient(rgb(255 255 255 / 0.55) 1px, transparent 1px);
@@ -4797,13 +4791,6 @@ button.change-target:hover .change-name {
 
 .review-root .mw-player-v7 .stage-area.has-rulers {
   margin: 0 8px 0 0;
-  place-items: start;
-}
-
-.review-root .mw-player-v7 .stage-area.has-rulers .guides-frame {
-  top: 0;
-  left: 0;
-  transform: none;
 }
 
 .mw-player-v7:fullscreen {
@@ -4831,14 +4818,14 @@ button.change-target:hover .change-name {
 
 .mw-player-track {
   position: relative;
-  height: 22px;
+  height: 26px;
   cursor: pointer;
   touch-action: none;
 }
 
 .mw-player-track-base {
   position: absolute;
-  top: 8px;
+  top: 15px;
   right: 0;
   left: 0;
   height: 6px;
@@ -4855,7 +4842,7 @@ button.change-target:hover .change-name {
 
 .mw-player-thumb {
   position: absolute;
-  top: 4px;
+  top: 11px;
   width: 5px;
   height: 15px;
   border: 1px solid #858580;
@@ -4867,26 +4854,38 @@ button.change-target:hover .change-name {
 
 .mw-player-markers {
   position: absolute;
+  top: 0;
   right: 0;
-  bottom: 0;
   left: 0;
-  height: 18px;
+  height: 26px;
+  pointer-events: none;
 }
 
 .mw-player-marker {
   position: absolute;
-  top: 0;
-  width: 16px;
-  height: 16px;
-  border: 1px solid #fff;
+  top: -8px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 20px;
+  padding: 0;
+  border: 0;
   border-radius: 50%;
-  background: #ad94ff;
-  box-shadow: 0 0 0 1px #7652ef55;
+  background: transparent;
+  color: #ad94ff;
   transform: translateX(-50%);
+  pointer-events: auto;
 }
 
-.mw-player-marker.is-on {
-  box-shadow: 0 0 0 3px #7358ef35;
+.mw-player-marker svg {
+  display: block;
+  width: 16px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .mw-player-controls {
@@ -6150,19 +6149,15 @@ button.change-target:hover .change-name {
 }
 
 .review-root .mw-player-chrome {
-  flex-basis: 82px;
-  height: 82px;
+  flex-basis: 90px;
+  height: 90px;
   justify-content: flex-start;
   gap: 2px;
-  padding: 6px 14px 8px;
+  padding: 10px 14px;
 }
 
 .review-root .mw-player-track-wrap {
   height: 36px;
-}
-
-.review-root .mw-player-markers {
-  height: 10px;
 }
 
 .review-root .mw-player-controls {
