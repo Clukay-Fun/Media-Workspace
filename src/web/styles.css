@@ -1543,8 +1543,8 @@ textarea:focus-visible {
 .safe-area {
   position: absolute;
   pointer-events: none;
-  border: 1px dashed rgb(255 255 255 / 0.4);
-  box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.38);
+  border: 1px solid rgb(255 255 255 / 0.9);
+  filter: drop-shadow(0 0 1px rgb(0 0 0 / 0.65));
 }
 
 /* 字幕 / 操作安全区：两层白色细框，和剪辑软件的习惯一致 */
@@ -1553,14 +1553,6 @@ textarea:focus-visible {
   pointer-events: none;
   border: 1px solid rgb(255 255 255 / 0.85);
   filter: drop-shadow(0 0 1px rgb(0 0 0 / 0.6));
-}
-
-.safe-area span {
-  position: absolute;
-  top: 6px;
-  left: 8px;
-  font-size: 11px;
-  color: rgb(255 255 255 / 0.7);
 }
 
 /* 构图参考线：青色实线，可拖动。 */

@@ -1,7 +1,6 @@
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import type { EditorState } from "../../core/api";
-import { safeAreaFor } from "../../core/safe-area";
 import { useStore } from "../store";
 
 // 预览画面上的构图辅助：安全区、可拖动的参考线、标尺。只存在 editor.json 里，不进导出。
@@ -17,18 +16,24 @@ export function safeAreaMode(editor: EditorState | null): SafeAreaMode {
 export function SafeAreaOverlay({ width, height, scale }: Dims) {
   const mode = useStore((s) => safeAreaMode(s.editor));
   if (mode === "channels") {
-    const s = safeAreaFor(width, height);
+    const outerX = width * 0.05 * scale;
+    const outerY = height * 0.05 * scale;
+    const innerX = width * 0.05 * scale;
+    const innerY = height * 0.05 * scale;
     return (
       <div
         className="safe-area"
         style={{
-          left: s.left * scale,
-          top: s.top * scale,
-          right: s.right * scale,
-          bottom: s.bottom * scale,
+          left: outerX,
+          top: outerY,
+          right: outerX,
+          bottom: outerY,
         }}
       >
-        <span>视频号安全区</span>
+        <div
+          className="safe-frame"
+          style={{ left: innerX, top: innerY, right: innerX, bottom: innerY }}
+        />
       </div>
     );
   }
