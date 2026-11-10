@@ -44,15 +44,16 @@ describe("变速和音量的确认边界", () => {
     expect(commitSpeed(10)).toBe(10);
   });
 
-  it("音量在确认时取整并夹在 −60 到 +20，滑杆只钳位置", () => {
+  it("新音量在确认时取整并夹在 −20 到 +20，滑杆只钳位置", () => {
     expect(commitGainDb(3.6)).toBe(4);
     expect(commitGainDb(25)).toBe(20);
-    expect(commitGainDb(-80)).toBe(-60);
+    expect(commitGainDb(-80)).toBe(-20);
     expect(commitGainDb(0)).toBe(0);
     expect(commitGainDb(Number.NaN)).toBeNull();
     expect(commitGainDb(Number.POSITIVE_INFINITY)).toBeNull();
     expect(gainSliderValue(25, 0)).toBe(20);
     expect(gainSliderValue(Number.NaN, 7)).toBe(7);
+    expect(gainSliderValue(Number.NaN, -60)).toBe(-20);
     expect(gainSliderValue(12.4, 0)).toBe(12.4);
     expect(commitGainDb(12.4)).toBe(12);
   });

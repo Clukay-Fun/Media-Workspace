@@ -5883,6 +5883,9 @@ button.change-target:hover .change-name {
   margin-top: -16px;
   width: max-content;
 }
+.design-inspector .mw-inspector-check.volume-mute {
+  margin-top: 8px;
+}
 .design-inspector .project-attribute-group {
   margin: 0 !important;
   padding: 16px 20px;

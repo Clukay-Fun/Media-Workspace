@@ -4,7 +4,14 @@ import { useStore } from "../../store";
 import { Icon } from "../icons";
 import { Field, type InspectorProps } from "./common";
 import { CropField } from "./crop";
-import { commitGainDb, commitSpeed, gainSliderValue, speedDurationLabel } from "./media-fields";
+import {
+  commitGainDb,
+  commitSpeed,
+  GAIN_DB_MAX,
+  GAIN_DB_MIN,
+  gainSliderValue,
+  speedDurationLabel,
+} from "./media-fields";
 import { numberInputWidth, useNumberDraft } from "./number-draft";
 import { ParameterSlider } from "./parameter-slider";
 
@@ -37,7 +44,7 @@ export function ClipInspector(props: InspectorProps) {
           locked={track.locked}
         />
       )}
-      {clip && <VolumeField id={id} gainDb={clip.gainDb} locked={track.locked} />}
+      {clip && <VolumeField id={id} gainDb={clip.gainDb} track={track} />}
     </div>
   );
 }
@@ -143,7 +150,15 @@ function SpeedField({
 }
 
 /** 音量：滑杆和数值输入共用一份草稿，松手 / 回车时才提交一次 */
-function VolumeField({ id, gainDb, locked }: { id: string; gainDb: number; locked: boolean }) {
+function VolumeField({
+  id,
+  gainDb,
+  track,
+}: {
+  id: string;
+  gainDb: number;
+  track: InspectorProps["ref_"]["track"];
+}) {
   const num = useNumberDraft(gainDb);
   const lastSent = useRef<number | null>(null);
 
@@ -170,42 +185,39 @@ function VolumeField({ id, gainDb, locked }: { id: string; gainDb: number; locke
 
   const commitTyped = (raw: string) => {
     const n = num.parse(raw);
-    if (n === null) return;
+    if (n === null || n === gainDb) return;
     commit(n);
   };
 
-  const sliderValue = gainSliderValue(Number(num.draft), gainDb);
+  const sliderValue = gainSliderValue(num.draft.trim() === "" ? NaN : Number(num.draft), gainDb);
 
   return (
     <Field label="音量">
       <div className="design-slider-row">
         <div className="design-scale">
           <ParameterSlider
-            min={-60}
-            max={12}
+            min={GAIN_DB_MIN}
+            max={GAIN_DB_MAX}
             step={1}
             value={sliderValue}
-            disabled={locked}
+            disabled={track.locked}
             label="音量"
             onChange={(next) => num.change(String(next))}
             onCommit={commit}
           />
-          <ScaleMarks
-            labels={["−60", "−30", "−15", "0", "+12"]}
-            positions={[0, 41.667, 62.5, 83.333, 100]}
-          />
+          <ScaleMarks labels={["−20", "−10", "0", "+10", "+20"]} minorIntervals={6} />
         </div>
         <label className="design-value-input">
           <input
             type="number"
-            style={{ width: numberInputWidth(num.draft, 2) }}
-            min={-60}
-            max={20}
+            style={{ width: "48px" }}
+            min={GAIN_DB_MIN}
+            max={GAIN_DB_MAX}
             step={1}
             value={num.draft}
-            disabled={locked}
+            disabled={track.locked}
             aria-label="音量分贝"
-            title="支持 −60 到 +20 dB"
+            title="支持 −20 到 +20 dB"
             onChange={(e) => num.change(e.target.value)}
             onBlur={(e) => commitTyped(e.currentTarget.value)}
             onKeyDown={num.keyDown}
@@ -213,24 +225,39 @@ function VolumeField({ id, gainDb, locked }: { id: string; gainDb: number; locke
           <span>dB</span>
         </label>
       </div>
+      <label className="mw-inspector-check volume-mute">
+        <input
+          type="checkbox"
+          checked={track.muted}
+          onChange={(event) => {
+            const muted = event.currentTarget.checked;
+            void useStore
+              .getState()
+              .submit(
+                [{ op: "track.update", id: track.id, set: { muted } }],
+                muted ? "轨道已静音" : "已取消轨道静音",
+              );
+          }}
+        />
+        <span>轨道静音</span>
+      </label>
     </Field>
   );
 }
 
-function ScaleMarks({ labels, positions }: { labels: string[]; positions?: number[] }) {
+function ScaleMarks({ labels, minorIntervals }: { labels: string[]; minorIntervals?: number }) {
+  const majorEvery = minorIntervals ?? 4;
+  const intervals = minorIntervals ? (labels.length - 1) * minorIntervals : 24;
   return (
     <div className="design-scale-marks" aria-hidden="true">
       <div className="design-scale-ticks">
-        {Array.from({ length: 25 }, (_, i) => (
-          <i key={i} className={i % 4 === 0 ? "major" : undefined} />
+        {Array.from({ length: intervals + 1 }, (_, i) => (
+          <i key={i} className={i % majorEvery === 0 ? "major" : undefined} />
         ))}
       </div>
       <div className="design-scale-labels">
         {labels.map((label, i) => (
-          <span
-            key={label}
-            style={{ left: `${positions?.[i] ?? (i / (labels.length - 1)) * 100}%` }}
-          >
+          <span key={label} style={{ left: `${(i / (labels.length - 1)) * 100}%` }}>
             {label}
           </span>
         ))}

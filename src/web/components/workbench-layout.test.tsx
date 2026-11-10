@@ -291,21 +291,54 @@ describe("五份 HTML 对应的工作台外壳", () => {
     const clip = track?.items.find((item) => "type" in item && item.type === "clip");
     if (!clip || !("speed" in clip)) throw new Error("测试主视频缺失");
     clip.speed = 15;
-    clip.gainDb = 20;
+    clip.gainDb = -60;
     const submit = vi.fn().mockResolvedValue(true);
     useStore.setState({ project, selected: clip.id, submit });
     await render(<ReviewSidebar />);
     const speed = host.querySelector<HTMLInputElement>('input[aria-label="变速倍数"]');
     const gain = host.querySelector<HTMLInputElement>('input[aria-label="音量分贝"]');
     expect(speed?.value).toBe("15");
-    expect(gain?.value).toBe("20");
+    expect(gain?.value).toBe("-60");
     for (const slider of host.querySelectorAll<HTMLInputElement>('input[type="range"]')) {
       await act(async () => {
         slider.focus();
         slider.blur();
       });
     }
+    await act(async () => {
+      gain?.focus();
+      gain?.blur();
+    });
     expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("音量数字框和滑杆共用对称范围，静音只改轨道标记", async () => {
+    const project = structuredClone(useStore.getState().project!);
+    const track = project.tracks.find((item) => item.kind === "video" && item.main);
+    const clip = track?.items.find((item) => "type" in item && item.type === "clip");
+    if (!track || !clip || !("gainDb" in clip)) throw new Error("测试主视频缺失");
+    clip.gainDb = 0;
+    const submit = vi.fn().mockResolvedValue(true);
+    useStore.setState({ project, selected: clip.id, submit });
+    await render(<ReviewSidebar />);
+
+    const slider = host.querySelector<HTMLInputElement>('input[aria-label="音量"]');
+    const number = host.querySelector<HTMLInputElement>('input[aria-label="音量分贝"]');
+    expect(slider).toMatchObject({ min: "-20", max: "20", value: "0" });
+    expect(number).toMatchObject({ min: "-20", max: "20", value: "0" });
+    const marks = slider?.closest(".design-scale")?.querySelectorAll(".design-scale-labels span");
+    expect(Array.from(marks ?? [], (mark) => mark.textContent)).toEqual([
+      "−20",
+      "−10",
+      "0",
+      "+10",
+      "+20",
+    ]);
+    await act(async () => host.querySelector<HTMLInputElement>(".volume-mute input")?.click());
+    expect(submit).toHaveBeenCalledExactlyOnceWith(
+      [{ op: "track.update", id: track.id, set: { muted: true } }],
+      "轨道已静音",
+    );
   });
 
   it("轨道锁定时禁用视频参数的滑杆和数字框", async () => {

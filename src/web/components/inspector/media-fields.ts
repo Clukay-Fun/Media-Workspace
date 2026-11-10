@@ -31,19 +31,18 @@ export function commitSpeed(raw: number): number | null {
   return clamp(Math.round(raw * 100) / 100, 0.1, 10);
 }
 
-/**
- * 用户确认的音量。非有限返回 null。其余取整后收进 schema 的 −60..+20。
- * 滑杆拖动中不要调用。
- */
+export const GAIN_DB_MIN = -20;
+export const GAIN_DB_MAX = 20;
+
+/** 新输入的音量取整并收进工作台范围。滑杆拖动中不要调用。 */
 export function commitGainDb(raw: number): number | null {
   if (!Number.isFinite(raw)) return null;
-  return clamp(Math.round(raw), -60, 20);
+  return clamp(Math.round(raw), GAIN_DB_MIN, GAIN_DB_MAX);
 }
 
 /** 滑杆只钳显示位置。数字框继续显示草稿原文，包括还没确认的超范围值。 */
 export function gainSliderValue(raw: number, fallback: number): number {
-  if (!Number.isFinite(raw)) return fallback;
-  return clamp(raw, -60, 20);
+  return clamp(Number.isFinite(raw) ? raw : fallback, GAIN_DB_MIN, GAIN_DB_MAX);
 }
 
 /** 任一素材写了 cache.proxy 才算有代理缓存。没有这个字段就是没有。 */
