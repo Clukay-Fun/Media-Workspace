@@ -293,6 +293,90 @@ describe("compile：分割、剪切、转场", () => {
     expect(tl.mainEndFrame).toBe(162);
   });
 
+  it("零帧主轨不渲染，仍保留累计时间与锚点", () => {
+    const tl = compile(
+      make({
+        assets: {
+          ...base.assets,
+          a1: { kind: "video", path: "/raw.mov", probe: { durationMs: 40_000 } },
+        },
+        tracks: [
+          {
+            id: "main",
+            kind: "video",
+            main: true,
+            items: [
+              clip("c1", 2580, 32380, { speed: 1.1 }),
+              clip("tiny", 33880, 33907, { speed: 1.1 }),
+              clip("c2", 34000, 35100, {
+                speed: 1.1,
+                transitionIn: { type: "fade", durationMs: 300 },
+              }),
+            ],
+          },
+          {
+            id: "titles",
+            kind: "overlay",
+            items: [
+              {
+                id: "o1",
+                template: "title-bar",
+                at: { clip: "tiny" },
+                durationMs: 500,
+                props: { lines: ["x"] },
+              },
+            ],
+          },
+        ],
+        outro: { asset: "outro" },
+      }),
+    );
+    expect(tl.videos.map((v) => [v.id, v.from, v.durationInFrames])).toEqual([
+      ["c1", 0, 813],
+      ["c2", 813, 30],
+    ]);
+    expect(tl.videos[1]?.transitionIn?.durationInFrames).toBe(9);
+    expect(tl.overlays[0]?.from).toBe(813);
+    expect(tl.mainEndFrame).toBe(843);
+    expect(tl.outro?.from).toBe(843);
+    expect(tl.warnings).toContainEqual(
+      expect.objectContaining({
+        code: "ZERO_FRAME_CLIP",
+        message: expect.stringContaining("tiny"),
+      }),
+    );
+  });
+
+  it("开头、连续及末尾零帧不改变累计边界或片尾转场", () => {
+    const tl = compile(
+      make({
+        tracks: [
+          {
+            id: "main",
+            kind: "video",
+            main: true,
+            items: [
+              clip("first", 0, 1),
+              clip("second", 2, 3),
+              clip("visible", 10, 1010, { transitionIn: { type: "fade", durationMs: 300 } }),
+              clip("last", 1020, 1021),
+            ],
+          },
+          { id: "cap", kind: "caption", items: [caption("s1", 10, 1010)] },
+        ],
+        outro: { asset: "outro", transitionIn: { type: "fade", durationMs: 300 } },
+      }),
+    );
+    expect(tl.videos.map((v) => [v.id, v.from, v.durationInFrames, v.transitionIn])).toEqual([
+      ["visible", 0, 30, null],
+    ]);
+    expect(tl.captions[0]).toMatchObject({ from: 0, durationInFrames: 30 });
+    expect(tl.mainEndFrame).toBe(30);
+    expect(tl.outro?.from).toBe(21);
+    expect(tl.durationInFrames).toBe(74);
+    expect(tl.warnings.filter((w) => w.code === "ZERO_FRAME_CLIP")).toHaveLength(3);
+  });
+
   it("叠加层锚定字幕，toEnd 显示到主轨结束", () => {
     const tl = compile(
       make({

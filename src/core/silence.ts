@@ -1,6 +1,18 @@
 export type SilenceSpan = { startMs: number; endMs: number };
 export type SilenceRange = { startMs: number; endMs: number };
 
+/** 音频解码尾长和视频探测尾长可能相差一个小窗口。仅延伸已确认的尾部静音。 */
+export function extendSilentTail(
+  ranges: SilenceRange[],
+  audioMs: number,
+  assetMs: number | undefined,
+  captions: { startMs: number; endMs: number }[],
+): SilenceRange[] {
+  if (assetMs === undefined || assetMs <= audioMs || assetMs - audioMs > 40) return ranges;
+  if (captions.some((c) => c.startMs < assetMs && c.endMs > audioMs)) return ranges;
+  return ranges.map((r) => (r.endMs === Math.floor(audioMs) ? { ...r, endMs: assetMs } : r));
+}
+
 export type SilenceOptions = {
   /** 静音检测窗口；20ms 可过滤瞬时峰值，同时不会把停顿边界拖得太远。 */
   windowMs?: number;

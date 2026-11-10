@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { alignScript, chunkRegions, heardChars, segmentLines, speechRegions } from "./transcribe";
+import {
+  alignScript,
+  chunkRegions,
+  heardChars,
+  normalizeScript,
+  segmentLines,
+  speechRegions,
+} from "./transcribe";
 
 const RATE = 1000;
 /** 按 [开始, 结束] 毫秒造一段「有声音」的采样（1kHz，一个采样 = 1ms） */
@@ -60,6 +67,19 @@ describe("识音结果展开", () => {
 });
 
 describe("文稿校字", () => {
+  it("SRT 文稿只提取 cue 正文，不把序号和时间码当字幕", () => {
+    const input = normalizeScript(
+      "1\r\n00:00:00,500 --> 00:00:01,500\r\n和完税材料都要核实\r\n\r\n2\r\n00:00:01,600 --> 00:00:03,000\r\n申请条件或材料没有准备好。\r\n",
+    );
+    expect(input.format).toBe("srt");
+    expect(input.cues?.map((cue) => [cue.startMs, cue.endMs])).toEqual([
+      [500, 1500],
+      [1600, 3000],
+    ]);
+    expect(input.text).toBe("和完税材料都要核实。申请条件或材料没有准备好。");
+    expect(input.text).not.toMatch(/\d{2}:\d{2}|-->\s*\d/);
+  });
+
   it("同音错字按文稿改、时间用识音的，标点用文稿的", () => {
     const heard = say("今天天汽真号", 1000);
     const { spoken, diffs } = alignScript("今天天气真好。", heard);
@@ -138,5 +158,26 @@ describe("断句：一行放不下", () => {
     expect(lines.every((l) => l.split)).toBe(true);
     const short = segmentLines(say("我们出门走走", 0, { 5: "。" }), [{ startMs: 0, endMs: 1200 }]);
     expect(short.map((l) => l.split)).toEqual([false]);
+  });
+
+  it("保留完整语义短语，不切成单字或数字碎片", () => {
+    const firstText = "和完税材料都要核实";
+    const secondText = "申请条件或材料没有准备好";
+    const first = say(firstText, 0, { [firstText.length - 1]: "。" });
+    const second = say(secondText, 2000, { [secondText.length - 1]: "。" });
+    const lines = segmentLines(
+      [...first, ...second],
+      [
+        { startMs: 0, endMs: 1800 },
+        { startMs: 1950, endMs: 4200 },
+      ],
+      { maxChars: 10 },
+    );
+    expect(lines.map((line) => line.text)).toEqual([
+      "和完税材料都要核实",
+      "申请条件或材料",
+      "没有准备好",
+    ]);
+    expect(lines.every((line) => !/^\d+$/.test(line.text) && !/^.$/.test(line.text))).toBe(true);
   });
 });

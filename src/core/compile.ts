@@ -287,9 +287,18 @@ export function compile(project: Project): ResolvedTimeline {
   let prevEnd = 0;
   for (const seg of segments) {
     const { clip } = seg;
-    const trans = seg.index > 0 ? transition(clip.transitionIn) : null;
     const from = prevEnd;
     const end = f(seg.endMs);
+    clipFrames.set(clip.id, from);
+    if (end === from) {
+      warnings.push({
+        code: "ZERO_FRAME_CLIP",
+        path: `tracks.main.${clip.id}`,
+        message: `主轨片段 ${clip.id} 不占输出帧，不会显示；其转场也不会显示`,
+      });
+      continue;
+    }
+    const trans = videos.length > 0 ? transition(clip.transitionIn) : null;
     const t = full(clip.transform);
     videos.push({
       id: clip.id,
@@ -318,7 +327,6 @@ export function compile(project: Project): ResolvedTimeline {
       animLoop: clip.animLoop ?? null,
       cutBefore: clip.cutBefore ?? null,
     });
-    clipFrames.set(clip.id, from);
     prevEnd = end;
   }
   const mainEndFrame = prevEnd;

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { findItem } from "../lib/project";
 import { useStore } from "../store";
 import { SelectionCard } from "./inspector";
@@ -9,6 +10,7 @@ export function ReviewSidebar() {
   const project = useStore((s) => s.project);
   const open = useStore((s) => s.sideOpen);
   const setOpen = useStore((s) => s.setSideOpen);
+  const [applyAllCaptions, setApplyAllCaptions] = useState(false);
   const ref = project && selected ? findItem(project, selected) : null;
   const supported =
     ref &&
@@ -31,7 +33,14 @@ export function ReviewSidebar() {
         aria-label="属性"
       >
         <div className="panel-scroll" key={supported ? ref.item.id : "project"}>
-          {supported ? <SelectionCard /> : <ProjectOverview />}
+          {supported ? (
+            <SelectionCard
+              captionApplyAll={applyAllCaptions}
+              onCaptionApplyAllChange={setApplyAllCaptions}
+            />
+          ) : (
+            <ProjectOverview />
+          )}
         </div>
       </aside>
     </>

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { detectSilence, edgeCutRanges, edgeSilences, silenceCutRanges } from "./silence";
+import {
+  detectSilence,
+  edgeCutRanges,
+  edgeSilences,
+  extendSilentTail,
+  silenceCutRanges,
+} from "./silence";
 
 const tone = (seconds: number, rate = 8000) =>
   Float32Array.from(
@@ -66,6 +72,14 @@ describe("detectSilence", () => {
 });
 
 describe("头尾空白", () => {
+  it("短音视频尾差剪到素材末尾，长尾差或字幕保护则不延伸", () => {
+    const ranges = [{ startMs: 32380, endMs: 33880 }];
+    expect(extendSilentTail(ranges, 33880, 33907, [])).toEqual([{ startMs: 32380, endMs: 33907 }]);
+    expect(extendSilentTail(ranges, 33880, 34000, [])).toEqual(ranges);
+    expect(extendSilentTail(ranges, 33880, 33907, [{ startMs: 33890, endMs: 33900 }])).toEqual(
+      ranges,
+    );
+  });
   it("只留贴着开头和结尾的静音，句中停顿不动", () => {
     const spans = [
       { startMs: 0, endMs: 2800 },

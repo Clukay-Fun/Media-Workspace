@@ -18,6 +18,37 @@ import { numberInputWidth } from "./number-draft";
 import { allTitleStyleOps, titleStyleTargets } from "./overlay-fields";
 import { ParameterSlider } from "./parameter-slider";
 
+function shadowOpacity(color: string): number {
+  const match = color.match(/^#[0-9a-f]{8}$/i);
+  return match ? Math.round((Number.parseInt(color.slice(7), 16) / 255) * 100) : 100;
+}
+
+function shadowColorWithOpacity(color: string, opacity: number): string {
+  const rgb = color.match(/^#[0-9a-f]{6}/i)?.[0] ?? "#000000";
+  const alpha = Math.round((Math.max(0, Math.min(100, opacity)) / 100) * 255)
+    .toString(16)
+    .padStart(2, "0");
+  return `${rgb}${alpha}`;
+}
+
+function shadowDistance(x: number, y: number): number {
+  return Math.round(Math.hypot(x, y) * 10) / 10;
+}
+
+function shadowAngle(x: number, y: number): number {
+  return Math.round((Math.atan2(-y, x) * 180) / Math.PI);
+}
+
+function mergeStylePatch(base: unknown, patch: unknown): unknown {
+  if (!base || typeof base !== "object" || Array.isArray(base)) return patch;
+  if (!patch || typeof patch !== "object" || Array.isArray(patch)) return patch;
+  const merged: Record<string, unknown> = { ...(base as Record<string, unknown>) };
+  for (const [key, value] of Object.entries(patch as Record<string, unknown>)) {
+    merged[key] = mergeStylePatch(merged[key], value);
+  }
+  return merged;
+}
+
 type TextStyleSection = "edit" | "style" | "motion";
 
 type TextStyleEditorProps = {
@@ -32,6 +63,9 @@ type TextStyleEditorProps = {
   content?: ReactNode;
   /** 不传就用 store 里的字体目录。测试可以直接把目录传进来。 */
   catalog?: readonly FontCatalogEntry[];
+  /** 字幕跨句应用开关由 CaptionInspector 持有，切换字幕时保持不变。 */
+  captionApplyAll?: boolean;
+  onCaptionApplyAllChange?: (checked: boolean) => void;
 };
 
 const ANIMATIONS: { value: Anim["preset"] | "none"; label: string; disabled?: boolean }[] = [
@@ -250,6 +284,8 @@ export function TextStyleEditor({
   section,
   content,
   catalog,
+  captionApplyAll = false,
+  onCaptionApplyAllChange,
 }: TextStyleEditorProps) {
   const [page, setPage] = useState<"home" | "text" | "layout" | "animation" | "advanced">("home");
   const [advancedEffect, setAdvancedEffect] = useState<AdvancedEffect | null>(null);
@@ -298,24 +334,37 @@ export function TextStyleEditor({
   });
 
   useEffect(() => {
-    setTarget("item");
+    if (!isCaption) setTarget("item");
     setPage("home");
     setAdvancedEffect(null);
     setFontQuery("");
   }, [id, section]);
 
-  const commitStyle = (patch: Record<string, unknown>, label?: string) => {
-    if (target === "all" || target === "titles") {
+  const commitStyle = (
+    patch: Record<string, unknown>,
+    label?: string,
+    forceAllCaptions = false,
+  ) => {
+    const scope: StyleScope | "all" | "titles" = isCaption
+      ? captionApplyAll || forceAllCaptions
+        ? "all"
+        : "item"
+      : target;
+    const appliedPatch =
+      isCaption && scope === "all"
+        ? (mergeStylePatch(style, patch) as Record<string, unknown>)
+        : patch;
+    if (scope === "all" || scope === "titles") {
       const st = useStore.getState();
       if (!st.project) return;
       try {
         const planned =
-          target === "all"
-            ? allCaptionStyleOps(st.project, patch, fallback)
+          scope === "all"
+            ? allCaptionStyleOps(st.project, appliedPatch, fallback)
             : allTitleStyleOps(st.project, patch, fallback);
         if (planned.ops.length === 0) {
           st.toast(
-            target === "all"
+            scope === "all"
               ? `没有可改的字幕，跳过锁定 ${planned.skipped} 句`
               : `没有可改的标题，跳过锁定 ${planned.skipped} 个`,
           );
@@ -324,7 +373,7 @@ export function TextStyleEditor({
         void st.submit(
           planned.ops,
           label ??
-            (target === "all"
+            (scope === "all"
               ? `已改 ${planned.count} 句字幕，跳过锁定 ${planned.skipped} 句`
               : `已改 ${planned.count} 个标题，跳过锁定 ${planned.skipped} 个`),
         );
@@ -333,7 +382,7 @@ export function TextStyleEditor({
       }
       return;
     }
-    editStyle(id, patch, target, fallback, label);
+    editStyle(id, patch, scope as StyleScope, fallback, label);
   };
 
   const update = (patch: Record<string, unknown>) => commitStyle(patch);
@@ -504,7 +553,31 @@ export function TextStyleEditor({
 
   return (
     <div className="text-style-editor">
-      {section ? (
+      {isCaption && onCaptionApplyAllChange ? (
+        <Field label="修改范围">
+          <label className="design-scope-options">
+            <input
+              type="checkbox"
+              checked={captionApplyAll}
+              disabled={locked}
+              aria-label="应用到所有字幕"
+              onChange={(event) => {
+                const checked = event.currentTarget.checked;
+                onCaptionApplyAllChange(checked);
+                if (checked) {
+                  commitStyle(
+                    style as unknown as Record<string, unknown>,
+                    "已将当前字幕的完整样式应用到所有字幕",
+                    true,
+                  );
+                }
+              }}
+            />
+            应用到所有字幕
+          </label>
+          <p className="hint">切换字幕时保持此设置</p>
+        </Field>
+      ) : section ? (
         <Field label="修改范围">
           <div className="design-scope-options" role="radiogroup" aria-label="样式修改范围">
             {(
@@ -984,16 +1057,49 @@ export function TextStyleEditor({
                       onCommit={(blur) => update({ shadow: { blur } })}
                     />
                     <NumberControl
-                      label="X 偏移"
-                      value={style.shadow.x}
+                      label="不透明度"
+                      value={shadowOpacity(style.shadow.color)}
+                      min={0}
+                      max={100}
                       disabled={locked}
-                      onCommit={(x) => update({ shadow: { x } })}
+                      onCommit={(opacity) =>
+                        update({
+                          shadow: { color: shadowColorWithOpacity(style.shadow!.color, opacity) },
+                        })
+                      }
                     />
                     <NumberControl
-                      label="Y 偏移"
-                      value={style.shadow.y}
+                      label="距离"
+                      value={shadowDistance(style.shadow.x, style.shadow.y)}
+                      min={0}
+                      max={100}
+                      step={0.1}
                       disabled={locked}
-                      onCommit={(y) => update({ shadow: { y } })}
+                      onCommit={(distance) => {
+                        const angle =
+                          (shadowAngle(style.shadow!.x, style.shadow!.y) * Math.PI) / 180;
+                        update({
+                          shadow: { x: distance * Math.cos(angle), y: -distance * Math.sin(angle) },
+                        });
+                      }}
+                    />
+                    <NumberControl
+                      label="角度"
+                      value={shadowAngle(style.shadow.x, style.shadow.y)}
+                      min={-180}
+                      max={180}
+                      step={1}
+                      disabled={locked}
+                      onCommit={(angle) => {
+                        const radians = (angle * Math.PI) / 180;
+                        const distance = shadowDistance(style.shadow!.x, style.shadow!.y);
+                        update({
+                          shadow: {
+                            x: distance * Math.cos(radians),
+                            y: -distance * Math.sin(radians),
+                          },
+                        });
+                      }}
                     />
                   </>
                 )}
