@@ -1104,7 +1104,7 @@ export function guideInfo() {
       "人物位置一律用 frame（按账号版式的人脸位置摆放），不要自己估 transform；clamped 为 true 时告诉人脸会偏大或偏一点；看效果用 preview 截图",
       "「第 N 个观点」按章节定位：开场之后的第 N 章（没分章先 chapters.set），卡片锚在亮出观点的那句字幕上，内容只从这一章的字幕里提炼",
       "片尾：人说接上默认片尾时用 outro（不给 file 用默认片尾，默认叠化 300ms，fadeMs: 0 硬切）；没设置默认片尾会报 NOT_FOUND，请人用 mw outro-default <视频文件> 设置",
-      "封面：先在未剪静音的时间线上用 cover.update 写 atMs（1 秒以后、表情好的一帧）和 title: { template, style, props }，运行 cover 导出后再剪静音；剪后时间线会变化，需要重新导出时重新选择有效时间。封面只有主画面和封面标题",
+      "封面：先在未剪静音的时间线上用 cover.update 写 atMs（1 秒以后、表情好的一帧）和 title: { template, style, props }；atMs 是时间线时间，主轨有倍速时用原片时间除以倍速换算（例如 1.1 倍速下取原片 33.5 秒，atMs 约 30455 ms）。设置后先运行 lint，确认没有 COVER_OUT_OF_RANGE，再运行 cover 导出，之后再剪静音；剪后时间线会变化，需要重新导出时重新选择有效时间。封面只有主画面和封面标题",
       "封面标题由 AI 根据内容提炼成两行短句，每行不超过 7 个字，不能直接使用文稿原句；横条不要压住脸。可将 coverReferenceStyle 复制为工程样式并按画面调整 title-bar 的 bar 位置、高度和透明度，导出后检查文字与人脸",
       "提交后跑 lint：字太小、出安全区、字幕放不下、互相遮挡、挡脸、人物偏离账号版式（FACE_OFF_LAYOUT → 跑 frame）；level 为 hint 的只是提示，有账号版式时以版式为准；导入新视频时看一眼 subtitleCheck，原片已有字幕会重影",
     ],
