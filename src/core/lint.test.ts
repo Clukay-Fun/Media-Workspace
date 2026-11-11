@@ -50,6 +50,40 @@ const codes = (p: Project, extra: Partial<Parameters<typeof lintProject>[1]> = {
   lintProject(p, { styles, ...extra }).map((i) => `${i.code}:${i.id}`);
 
 describe("质检", () => {
+  it.each([
+    [9999, false],
+    [10000, true],
+    [10001, true],
+  ])("封面时间 %i ms 的越界检查", (atMs, outOfRange) => {
+    const p = make([]);
+    p.cover = { atMs };
+    const issue = lintProject(p, { styles }).find((i) => i.code === "COVER_OUT_OF_RANGE");
+    expect(Boolean(issue)).toBe(outOfRange);
+    if (issue) expect(issue.message).toContain(`${atMs}ms 超出主轨时长 10000ms`);
+  });
+
+  it.each([
+    [["拿到海外身份", "卖房款怎么出去"], null],
+    [["一二三四五六七八九", "甲乙丙丁戊己庚辛壬"], "甲乙丙丁戊己庚辛壬"],
+    [["第一行", "第二行", "第三行"], "第三行"],
+    [
+      ["一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十一二三四五六"],
+      "八九十一二三四五六",
+    ],
+  ])("封面标题截断估算 %j", (lines, hidden) => {
+    const p = make([]);
+    p.cover = { atMs: 1000, title: { template: "title-bar", style: "cover", props: { lines } } };
+    const cover = TextStyle.parse({
+      ...styles["title-bar-yellow"],
+      font: { ...styles["title-bar-yellow"]?.font, size: 120 },
+      layout: { ...styles["title-bar-yellow"]?.layout, maxWidth: 1040, maxLines: 2 },
+    });
+    const issue = lintProject(p, { styles: { ...styles, cover } }).find(
+      (i) => i.code === "COVER_TITLE_TRUNCATED",
+    );
+    if (hidden === null) expect(issue).toBeUndefined();
+    else expect(issue?.message).toContain(hidden);
+  });
   it("提示无法占据输出帧的主轨片段", () => {
     const p = Project.parse({
       version: PROJECT_FORMAT_VERSION,

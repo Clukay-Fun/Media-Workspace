@@ -1,10 +1,10 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type Caption, type MainClip, Project } from "../core/schema";
 import { PROJECT_FORMAT_VERSION } from "../core/version";
-import { facesProject, protectCaptionSpeechRanges, restoreCut } from "./actions";
+import { coverProject, facesProject, protectCaptionSpeechRanges, restoreCut } from "./actions";
 import { applyToProject, initProject, loadProject } from "./store";
 
 let root: string;
@@ -78,6 +78,26 @@ describe("静音剪切与字幕发音范围", () => {
       { startMs: 1500, endMs: 1600 },
       { startMs: 1700, endMs: 1900 },
     ]);
+  });
+});
+
+describe("封面时间", () => {
+  it("越界时明确报错且不渲染、不覆盖已有输出", async () => {
+    await applyToProject(dir, {
+      ops: [{ op: "cover.update", set: { atMs: 10_000 } }],
+      baseRevision: 0,
+      source: "cli",
+      actor: "test",
+    });
+    const out = join(root, "existing.png");
+    await writeFile(out, "existing cover");
+    const onLog = vi.fn();
+    await expect(coverProject(dir, { out, onLog })).rejects.toMatchObject({
+      code: "TIME_RANGE",
+      message: expect.stringContaining("10000ms"),
+    });
+    expect(await readFile(out, "utf8")).toBe("existing cover");
+    expect(onLog).not.toHaveBeenCalled();
   });
 });
 

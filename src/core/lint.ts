@@ -37,6 +37,8 @@ export type LintIssue = {
     | "STYLE_NOT_LAYOUT"
     | "SPEED_NOT_LAYOUT"
     | "ZERO_FRAME_CLIP"
+    | "COVER_OUT_OF_RANGE"
+    | "COVER_TITLE_TRUNCATED"
     | "FONT_MISSING"
     | "FONT_FALLBACK";
   /** hint = 只是提示；安全区越界不再降级为 hint */
@@ -155,6 +157,45 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
     seen.add(key);
     issues.push(i);
   };
+
+  const cover = project.cover;
+  if (cover) {
+    const durationMs = frameToMs(tl.mainEndFrame, fps);
+    if (cover.atMs >= durationMs) {
+      add({
+        code: "COVER_OUT_OF_RANGE",
+        id: "cover",
+        atMs: cover.atMs,
+        message: `封面时间 ${cover.atMs}ms 超出主轨时长 ${durationMs}ms，请选择主轨结束前的时间并重新导出封面`,
+      });
+    }
+    const title = cover.title;
+    if (title?.template === "title-bar" && Array.isArray(title.props.lines)) {
+      const style = styleOf(
+        title.style ?? null,
+        opts.overlayStyle?.(title.template) ?? "title-bar-yellow",
+      );
+      const lines = title.props.lines;
+      if (style && lines.every((line): line is string => typeof line === "string")) {
+        const text = lines.join("\n");
+        const estimated = estimateLines(text, style).lines;
+        if (estimated > style.layout.maxLines) {
+          const chars = [...text];
+          const cut = chars.findIndex(
+            (_, i) =>
+              estimateLines(chars.slice(0, i + 1).join(""), style).lines > style.layout.maxLines,
+          );
+          const hidden = chars.slice(cut).join("").replace(/^\n+/, "");
+          add({
+            code: "COVER_TITLE_TRUNCATED",
+            id: "cover",
+            atMs: cover.atMs,
+            message: `封面标题估计要排 ${estimated} 行，超过 ${style.layout.maxLines} 行，可能被截掉的文字：「${hidden}」；请缩短文字或调整样式`,
+          });
+        }
+      }
+    }
+  }
 
   for (const warning of tl.warnings) {
     if (warning.code === "ZERO_FRAME_CLIP") {
