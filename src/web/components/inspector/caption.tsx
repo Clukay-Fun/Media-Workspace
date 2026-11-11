@@ -8,8 +8,13 @@ import { type InspectorProps, isImeComposing, Tabs } from "./common";
 import { TextStyleEditor } from "./text-style-editor";
 
 /** 选中一句字幕：这一句的文字和样式、整套换样式、全部字幕三页（问题 12） */
-export function CaptionInspector(props: InspectorProps) {
-  const { project, id, ref_ } = props;
+type CaptionInspectorProps = InspectorProps & {
+  captionApplyAll?: boolean;
+  onCaptionApplyAllChange?: (checked: boolean) => void;
+};
+
+export function CaptionInspector(props: CaptionInspectorProps) {
+  const { project, id, ref_, captionApplyAll = false, onCaptionApplyAllChange } = props;
   const tab = useStore((s) => s.captionTab);
   return (
     <div className="selection mw-inspector-caption">
@@ -40,6 +45,8 @@ export function CaptionInspector(props: InspectorProps) {
             showHighlight
             elementLabel="字幕"
             section="edit"
+            captionApplyAll={captionApplyAll}
+            onCaptionApplyAllChange={onCaptionApplyAllChange}
             content={<CaptionEditor caption={ref_.item as Caption} locked={ref_.track.locked} />}
           />
         </>
@@ -54,6 +61,8 @@ export function CaptionInspector(props: InspectorProps) {
             showHighlight
             elementLabel="字幕"
             section="style"
+            captionApplyAll={captionApplyAll}
+            onCaptionApplyAllChange={onCaptionApplyAllChange}
           />
         </>
       )}
@@ -66,6 +75,8 @@ export function CaptionInspector(props: InspectorProps) {
           showHighlight
           elementLabel="字幕"
           section="motion"
+          captionApplyAll={captionApplyAll}
+          onCaptionApplyAllChange={onCaptionApplyAllChange}
         />
       )}
     </div>

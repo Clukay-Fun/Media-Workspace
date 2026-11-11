@@ -50,6 +50,28 @@ const codes = (p: Project, extra: Partial<Parameters<typeof lintProject>[1]> = {
   lintProject(p, { styles, ...extra }).map((i) => `${i.code}:${i.id}`);
 
 describe("质检", () => {
+  it("提示无法占据输出帧的主轨片段", () => {
+    const p = Project.parse({
+      version: PROJECT_FORMAT_VERSION,
+      revision: 0,
+      canvas: {},
+      assets: { a1: { kind: "video", path: "/a.mp4", probe: { durationMs: 2000 } } },
+      tracks: [
+        {
+          id: "main",
+          kind: "video",
+          main: true,
+          items: [
+            { id: "long", type: "clip", asset: "a1", inMs: 0, outMs: 1000 },
+            { id: "tiny", type: "clip", asset: "a1", inMs: 1000, outMs: 1001 },
+          ],
+        },
+      ],
+    });
+    expect(lintProject(p, { styles })).toContainEqual(
+      expect.objectContaining({ code: "ZERO_FRAME_CLIP", id: "tiny", atMs: 1000 }),
+    );
+  });
   it("估算行数：中文按一个字号宽", () => {
     expect(estimateLines("一句", caption).lines).toBe(1);
     // 12 × 84 = 1008 > 859

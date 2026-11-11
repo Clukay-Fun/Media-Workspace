@@ -16,10 +16,16 @@ import { applyOps, Op } from "../core/ops";
 import { BUILTIN_STYLES } from "../core/presets";
 import { SAFE_AREA, SAFE_AREA_LANDSCAPE, safeAreaFor } from "../core/safe-area";
 import { type Caption, isMainClip, type MainClip } from "../core/schema";
-import { detectSilence, edgeCutRanges, edgeSilences, silenceCutRanges } from "../core/silence";
+import {
+  detectSilence,
+  edgeCutRanges,
+  edgeSilences,
+  extendSilentTail,
+  silenceCutRanges,
+} from "../core/silence";
 import { AnimPresetName, charsPerLine, TextStyle } from "../core/text-style";
 import { msToFrame } from "../core/time";
-import { alignScript, type ScriptDiff, segmentLines } from "../core/transcribe";
+import { alignScript, normalizeScript, type ScriptDiff, segmentLines } from "../core/transcribe";
 import { validate } from "../core/validate";
 import { PROJECT_FORMAT_VERSION } from "../core/version";
 import { overlayAssets, overlayBounds, TEMPLATE_NAMES, TEMPLATES } from "../templates";
@@ -271,7 +277,7 @@ export async function removeSilenceProject(
             : { ...r, startMs: Math.max(r.startMs, lastCap) },
         )
       : protectCaptionSpeechRanges(silenceCutRanges(silences, keepMs, totalMs), caps);
-    const ranges = candidateRanges
+    const ranges = extendSilentTail(candidateRanges, totalMs, asset.probe?.durationMs, caps)
       .map((range) => ({
         startMs: Math.max(0, Math.ceil(range.startMs)),
         endMs: Math.floor(range.endMs),
@@ -824,8 +830,9 @@ export async function transcribeProject(
   const { heard, regions, text } = await transcribeFile(resolve(dir, file), { onLog: o.onLog });
   let spoken = heard;
   let diffs: ScriptDiff[] = [];
-  if (script?.trim()) {
-    ({ spoken, diffs } = alignScript(script, heard));
+  const normalized = script?.trim() ? normalizeScript(script) : null;
+  if (normalized?.text.trim()) {
+    ({ spoken, diffs } = alignScript(normalized.text, heard));
   }
   const lines = segmentLines(spoken, regions, { maxChars });
   if (lines.length === 0) throw new MwError("MEDIA", "没有识别出说话的声音", { path: a.path });
@@ -850,7 +857,7 @@ export async function transcribeProject(
     asset: assetId,
     captions: lines.length,
     maxChars,
-    usedScript: Boolean(script?.trim()),
+    usedScript: Boolean(normalized?.text.trim()),
     heard: text,
     // fixed 是识音认错、已经按文稿改的字；missing / extra 要用户看一下（漏读、多读、改口）
     diffs,

@@ -1,4 +1,5 @@
 import type { AsrToken } from "./align";
+import { parseSrt, type SrtCue } from "./srt";
 
 // 从原片识音出字幕（阶段 F，docs/decisions/0025）：
 // 1. 按响度找出说话的段落（speechRegions），长音频按停顿切成小段送去识音；
@@ -7,6 +8,26 @@ import type { AsrToken } from "./align";
 // 这里全是纯函数，识音本身在 node/asr。
 
 export type Region = { startMs: number; endMs: number };
+
+/** 文稿来源：CLI/API 允许直接传纯文本或 SRT；SRT 的序号和时间轴不能进入校字文本。 */
+export type ScriptInput = { text: string; format: "text" | "srt"; cues?: SrtCue[] };
+
+/**
+ * 识别脚本文稿格式并提取正文。
+ * SRT cue 之间用句号隔开，保留 cue 内的标点和换行语义；时间信息随 cues 返回，
+ * 供调用方需要时按原片时间进一步处理。看起来不像 SRT 的内容按纯文本兼容。
+ */
+export function normalizeScript(script: string): ScriptInput {
+  const looksLikeSrt = /(?:^|[\r\n])\s*\d{1,2}:\d{2}:\d{2}[,.]\d{1,3}\s*-->/.test(script);
+  if (!looksLikeSrt) return { text: script, format: "text" };
+  const cues = parseSrt(script);
+  const text = cues
+    .map((cue) => cue.text.replace(/\s*\r?\n\s*/g, "。"))
+    .filter((cue) => cue.trim().length > 0)
+    .join("。")
+    .replace(/。{2,}/g, "。");
+  return { text, format: "srt", cues };
+}
 
 /** 一个发音的字：c 是显示的字，startMs 是开始念的源时间；punct 是紧跟在后面的标点（来自文稿或识音） */
 export type Spoken = { c: string; startMs: number; punct: string };
@@ -231,7 +252,7 @@ export type Line = {
 const BREAK = /[，。！？；：,.!?;:…—]/;
 
 /** 连词、副词：在它前面断开读起来最顺 */
-const LINE_START = /^(和|或|与|及|以及|并且|但是|而且|还有|才|就|也|都|还|再|又|却)/;
+const LINE_START = /^(和|或|与|及|以及|并且|但是|而且|还有|才|就|也|都|还|再|又|却|没有|没|未|不)/;
 
 const segmenter = new Intl.Segmenter("zh", { granularity: "word" });
 
@@ -323,7 +344,7 @@ export function segmentLines(
     const breakCost = (k: number) => {
       const pause = Math.min(pauseAfter(a + k - 1), 600) / 600;
       const list = spoken[a + k - 1]?.punct.includes("、") ? 0.3 : 0;
-      const good = LINE_START.test([...text].slice(k).join("")) ? 0.08 : 0;
+      const good = LINE_START.test([...text].slice(k).join("")) ? 0.35 : 0;
       const weak = singles.has(k - 1) && singles.has(k) ? 0.1 : 0;
       return -pause * 0.3 + list - good + weak;
     };

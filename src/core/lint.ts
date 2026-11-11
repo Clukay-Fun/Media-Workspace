@@ -36,6 +36,7 @@ export type LintIssue = {
     | "FACE_OFF_LAYOUT"
     | "STYLE_NOT_LAYOUT"
     | "SPEED_NOT_LAYOUT"
+    | "ZERO_FRAME_CLIP"
     | "FONT_MISSING"
     | "FONT_FALLBACK";
   /** hint = 只是提示；安全区越界不再降级为 hint */
@@ -154,6 +155,19 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
     seen.add(key);
     issues.push(i);
   };
+
+  for (const warning of tl.warnings) {
+    if (warning.code === "ZERO_FRAME_CLIP") {
+      const id = warning.path.slice("tracks.main.".length);
+      const segment = layoutMainTrack(project).find((s) => s.clip.id === id);
+      add({
+        code: warning.code,
+        id,
+        atMs: Math.round(segment?.startMs ?? 0),
+        message: warning.message,
+      });
+    }
+  }
 
   // 1. 每个元素占的区域
   const placed: Placed[] = [];
