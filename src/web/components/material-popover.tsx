@@ -3,6 +3,7 @@ import { ApiFailure } from "../data/client";
 import { placeAsset } from "../lib/pip";
 import { msOfFrame } from "../lib/timeline";
 import { useStore } from "../store";
+import { AssetDeleteButton } from "./asset-delete-button";
 import { Icon } from "./icons";
 
 /** 顶栏素材入口：用本机路径导入，导入后仍由工程的 store 处理修订与历史。 */
@@ -112,6 +113,7 @@ export function MaterialPopover() {
                     放到画面
                   </button>
                 )}
+                <AssetDeleteButton id={id} name={name} />
               </div>
             );
           })}

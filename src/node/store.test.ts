@@ -60,6 +60,17 @@ async function code(p: Promise<unknown>): Promise<string> {
 }
 
 describe("store", () => {
+  it("移除素材记录后可撤销重做，原始文件保留", async () => {
+    await applyToProject(dir, req([asset], 0));
+    await applyToProject(dir, req([{ op: "asset.remove", id: "a1" }], 1));
+    expect((await loadProject(dir)).assets.a1).toBeUndefined();
+    expect(await readFile(asset.asset.path, "utf8")).toBe("fixture");
+    await undoProject(dir, { direction: "undo", baseRevision: 2, source: "ui", actor: "test" });
+    expect((await loadProject(dir)).assets.a1).toBeDefined();
+    await undoProject(dir, { direction: "redo", baseRevision: 3, source: "ui", actor: "test" });
+    expect((await loadProject(dir)).assets.a1).toBeUndefined();
+    expect(await readFile(asset.asset.path, "utf8")).toBe("fixture");
+  });
   it("apply 之后 revision 加一，上一版进 history，记录日志", async () => {
     const r = await applyToProject(dir, req([asset, addClip], 0));
     expect(r).toMatchObject({ revision: 1, changed: ["a1", "c1"] });

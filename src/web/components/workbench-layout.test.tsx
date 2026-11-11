@@ -3,6 +3,7 @@
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { applyOps, type Op } from "../../core/ops";
 import { App } from "../app";
 import { createMockApi } from "../data/mock";
 import { useStore } from "../store";
@@ -51,6 +52,40 @@ afterEach(async () => {
 });
 
 describe("五份 HTML 对应的工作台外壳", () => {
+  it("素材库可删除未引用素材，使用中的素材由核心拒绝", async () => {
+    const project = structuredClone(useStore.getState().project!);
+    project.assets.unused = { kind: "image", path: "/unused.png" };
+    const inUse = project.tracks.find((track) => track.kind === "caption")?.items[0];
+    if (!inUse || !("asset" in inUse)) throw new Error("缺少测试素材引用");
+    const errors: string[] = [];
+    const submit = vi.fn(async (ops: Op[]) => {
+      try {
+        const next = applyOps(useStore.getState().project!, ops).project;
+        useStore.setState({ project: next });
+        return true;
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : String(error));
+        return false;
+      }
+    });
+    useStore.setState({ project, leftOpen: true, submit });
+    await render(<MaterialPopover />);
+    const name = project.assets[inUse.asset]!.path.split("/").at(-1);
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>(`button[aria-label='删除素材「${name}」']`)?.click();
+    });
+    expect(errors[0]).toContain("还在使用中");
+    expect(useStore.getState().project!.assets[inUse.asset]).toBeDefined();
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('button[aria-label="删除素材「unused.png」"]')?.click();
+    });
+    expect(useStore.getState().project!.assets.unused).toBeUndefined();
+    expect(host.textContent).not.toContain("unused.png");
+    expect(submit).toHaveBeenLastCalledWith(
+      [{ op: "asset.remove", id: "unused" }],
+      "已从素材库移除「unused.png」",
+    );
+  });
   it("示例工程不凭固定数据谎报本机字体缺失", async () => {
     const preview = await createMockApi().preview();
     expect(preview.fontWarnings).toEqual([]);

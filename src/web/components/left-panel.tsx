@@ -13,6 +13,7 @@ import { findItem } from "../lib/project";
 import { stylePresentation } from "../lib/style-presentation";
 import { msOfFrame } from "../lib/timeline";
 import { type LeftTab, useStore } from "../store";
+import { AssetDeleteButton } from "./asset-delete-button";
 import { Icon } from "./icons";
 
 const TABS: { id: LeftTab; label: string }[] = [
@@ -431,6 +432,7 @@ function AssetRow({ id, project, noFaces }: { id: string; project: Project; noFa
               放到画面上
             </button>
           )}
+          <AssetDeleteButton id={id} name={name} />
         </div>
       </div>
     </div>
