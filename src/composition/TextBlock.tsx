@@ -35,13 +35,42 @@ export type TextBlockProps = {
 
 const HAN = /\p{Script=Han}/u;
 
-/** 给 11–16 字字幕确定折点，避免第二行只有一个字。 */
+// 折点规则只依赖固定词表和标点，不依赖运行环境的分词器。
+const CAPTION_WORDS = ["评论区", "贴吧", "换汇", "取得时间", "通过", "删除", "服务"];
+const CAPTION_START =
+  /^(?:以及|并且|但是|而且|还有|没有|和|或|与|及|才|就|也|都|还|再|又|却|没|未|不)/u;
+const CAPTION_PUNCT = /[，。、；：！？,.!?;:]/u;
+
+/** 给 11–16 字字幕选词边界；没有已知边界时采用固定回退位置。 */
 export function captionBreakAt(text: string, perLine: number): number | null {
   if (text.includes("\n")) return null;
-  const length = [...text].length;
+  const chars = [...text];
+  const length = chars.length;
   const first = Math.min(perLine, 10);
   if (length <= first || length > 16 || length - first > 6) return null;
-  return length - first === 1 ? first - 1 : first;
+  const fallback = Math.min(first, length - 2);
+  const min = Math.max(8, length - 6);
+  const words = [...CAPTION_WORDS];
+  const spans: [number, number][] = [];
+  for (const word of words) {
+    const wordChars = [...word];
+    for (let i = 0; i <= length - wordChars.length; i++) {
+      if (chars.slice(i, i + wordChars.length).join("") === word) {
+        spans.push([i, i + wordChars.length]);
+      }
+    }
+  }
+  for (let k = fallback; k >= min; k--) {
+    if (k * 2 === length || spans.some(([start, end]) => start < k && k < end)) continue;
+    if (
+      spans.some(([start, end]) => start === k || end === k) ||
+      CAPTION_PUNCT.test(chars[k - 1] ?? "") ||
+      CAPTION_START.test(chars.slice(k).join(""))
+    ) {
+      return k;
+    }
+  }
+  return fallback;
 }
 
 export const TextBlock: React.FC<TextBlockProps> = ({

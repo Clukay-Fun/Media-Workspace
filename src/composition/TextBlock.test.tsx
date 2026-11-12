@@ -95,6 +95,22 @@ describe("TextBlock 逐字入场时长（inSlot）", () => {
 
 describe("TextBlock 换行", () => {
   it.each([
+    ["就是因为犯罪嫌疑人通过各类", 9, "就是因为犯罪嫌疑人", "通过各类"],
+    ["我看到后一般就直接删除了", 9, "我看到后一般就直接", "删除了"],
+    ["不过我们是做合规服务的", 8, "不过我们是做合规", "服务的"],
+  ])("字幕折点避开词语：%s", (text, at, first, second) => {
+    expect(captionBreakAt(text, 10)).toBe(at);
+    expect([...text].slice(0, at).join("")).toBe(first);
+    expect([...text].slice(at).join("")).toBe(second);
+  });
+
+  it("没有已知边界时按指定位置回退，16 字只有 10+6", () => {
+    expect(captionBreakAt("甲甲甲甲甲甲甲甲甲甲甲", 10)).toBe(9);
+    expect(captionBreakAt("甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲", 10)).toBe(10);
+    expect(captionBreakAt("甲甲甲甲甲甲甲甲甲通过乙乙乙乙乙", 10)).toBe(10);
+  });
+
+  it.each([
     [10, null],
     [11, 9],
     [12, 10],
