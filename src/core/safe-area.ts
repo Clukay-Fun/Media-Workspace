@@ -6,9 +6,9 @@ export type Insets = { top: number; bottom: number; left: number; right: number 
 
 /**
  * 竖屏按 1080×1920 的边距（PLAN 5.5），其他尺寸按比例缩放。实测：顶部按钮到 y≈177、
- * 底部作者名从 y≈1574 起（留了余量）、右侧按钮离右边约 149，屏幕比 9:16 窄时左右各裁掉约 58
+ * 底部作者名从 y≈1574 起（留了余量）；竖屏右侧边界按当前规则取 x=960。
  */
-export const SAFE_AREA: Insets = { top: 170, bottom: 400, left: 60, right: 150 };
+export const SAFE_AREA: Insets = { top: 170, bottom: 400, left: 60, right: 120 };
 
 /**
  * 横屏按 1920×1080 的边距（docs/decisions/0030）：全屏横看时按钮在画面外的黑边里、进度条在画面下沿以下，

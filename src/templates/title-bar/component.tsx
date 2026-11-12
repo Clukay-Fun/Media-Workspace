@@ -35,6 +35,7 @@ export const TitleBar: React.FC<TemplateProps<TitleBarProps>> = ({
       ) : null}
       <TextBlock
         text={props.lines.join("\n")}
+        naturalWrap
         style={textStyle}
         frame={frame}
         durationInFrames={durationInFrames}

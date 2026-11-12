@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { BUILTIN_STYLES } from "../core/presets";
 import { TextStyle } from "../core/text-style";
-import { captionBreakAt, TextBlock } from "./TextBlock";
+import { TextBlock } from "./TextBlock";
 
 const base = {
   font: { family: "noto-sans-sc", size: 80 },
@@ -94,50 +94,37 @@ describe("TextBlock 逐字入场时长（inSlot）", () => {
 });
 
 describe("TextBlock 换行", () => {
-  it.each([
-    ["就是因为犯罪嫌疑人通过各类", 9, "就是因为犯罪嫌疑人", "通过各类"],
-    ["我看到后一般就直接删除了", 9, "我看到后一般就直接", "删除了"],
-    ["不过我们是做合规服务的", 8, "不过我们是做合规", "服务的"],
-  ])("字幕折点避开词语：%s", (text, at, first, second) => {
-    expect(captionBreakAt(text, 10)).toBe(at);
-    expect([...text].slice(0, at).join("")).toBe(first);
-    expect([...text].slice(at).join("")).toBe(second);
-  });
-
-  it("没有已知边界时按指定位置回退，16 字只有 10+6", () => {
-    expect(captionBreakAt("甲甲甲甲甲甲甲甲甲甲甲", 10)).toBe(9);
-    expect(captionBreakAt("甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲", 10)).toBe(10);
-    expect(captionBreakAt("甲甲甲甲甲甲甲甲甲通过乙乙乙乙乙", 10)).toBe(10);
-  });
-
-  it.each([
-    [10, null],
-    [11, 9],
-    [12, 10],
-    [13, 10],
-    [14, 10],
-    [15, 10],
-    [16, 10],
-  ])("字幕 %i 字按要求折行", (length, expected) => {
-    const text = "一二三四五六七八九十天地玄黄宇宙".slice(0, length);
-    expect(captionBreakAt(text, 10)).toBe(expected);
+  it("自然换行不插入自动断点，也不按 maxLines 裁字", () => {
     const out = renderToStaticMarkup(
       <TextBlock
-        text={text}
-        style={TextStyle.parse({ ...base, layout: { ...base.layout, maxWidth: 800 } })}
+        text="一二三四五六七八九十一二三"
+        style={TextStyle.parse({ ...base, layout: { ...base.layout, maxWidth: 320, maxLines: 1 } })}
         frame={59}
         durationInFrames={60}
         fps={30}
-        captionWrap
+        naturalWrap
       />,
     );
-    const lines = out
-      .replace(/<br\s*\/>/g, "|")
-      .replace(/<[^>]*>/g, "")
-      .split("|");
-    expect(lines.map((line) => [...line].length)).toEqual(
-      expected === null ? [length] : [expected, length - expected],
+    expect(out).toContain("font-size:80px");
+    expect(out).toContain("width:320px");
+    expect(out).not.toContain("max-height:");
+    expect(out).not.toContain("overflow:hidden");
+    expect(out).not.toContain("<br");
+    expect(out.replace(/<[^>]+>/g, "")).toBe("一二三四五六七八九十一二三");
+  });
+
+  it("自然换行保留手动换行", () => {
+    const out = renderToStaticMarkup(
+      <TextBlock
+        text={"第一行\n第二行"}
+        style={TextStyle.parse(base)}
+        frame={59}
+        durationInFrames={60}
+        fps={30}
+        naturalWrap
+      />,
     );
+    expect(out).toContain("<br");
   });
 
   it("非字幕仍采用原有均衡折行", () => {

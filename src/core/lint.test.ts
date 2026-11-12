@@ -50,6 +50,47 @@ const codes = (p: Project, extra: Partial<Parameters<typeof lintProject>[1]> = {
   lintProject(p, { styles, ...extra }).map((i) => `${i.code}:${i.id}`);
 
 describe("质检", () => {
+  it("自然折行的单行、双行安全区与真正越界", () => {
+    const fit = TextStyle.parse({
+      ...caption,
+      layout: { ...caption.layout, maxWidth: 840, x: 540 },
+    });
+    const shifted = TextStyle.parse({ ...fit, layout: { ...fit.layout, x: 600 } });
+    const testStyles = { ...styles, fit, shifted };
+    expect(
+      lintProject(make([cap("single", 0, "一".repeat(10), "fit")]), { styles: testStyles }).some(
+        (i) => i.code === "TEXT_OUTSIDE_SAFE_AREA",
+      ),
+    ).toBe(false);
+    expect(
+      lintProject(make([cap("two", 0, "一".repeat(16), "fit")]), { styles: testStyles }).some(
+        (i) => i.code === "TEXT_OUTSIDE_SAFE_AREA",
+      ),
+    ).toBe(false);
+    expect(
+      lintProject(make([cap("outside", 0, "一".repeat(10), "shifted")]), {
+        styles: testStyles,
+      }).some((i) => i.code === "TEXT_OUTSIDE_SAFE_AREA"),
+    ).toBe(true);
+  });
+
+  it("超过建议行数才提示", () => {
+    const fit = TextStyle.parse({
+      ...caption,
+      layout: { ...caption.layout, maxWidth: 840, maxLines: 2 },
+    });
+    const testStyles = { ...styles, fit };
+    expect(
+      lintProject(make([cap("ok", 0, "一".repeat(20), "fit")]), { styles: testStyles }).some(
+        (i) => i.code === "CAPTION_OVERFLOW",
+      ),
+    ).toBe(false);
+    expect(
+      lintProject(make([cap("long", 0, "一".repeat(21), "fit")]), { styles: testStyles }).some(
+        (i) => i.code === "CAPTION_OVERFLOW",
+      ),
+    ).toBe(true);
+  });
   it.each([
     [9999, false],
     [10000, true],
@@ -64,13 +105,10 @@ describe("质检", () => {
 
   it.each([
     [["拿到海外身份", "卖房款怎么出去"], null],
-    [["一二三四五六七八九", "甲乙丙丁戊己庚辛壬"], "甲乙丙丁戊己庚辛壬"],
-    [["第一行", "第二行", "第三行"], "第三行"],
-    [
-      ["一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十一二三四五六"],
-      "八九十一二三四五六",
-    ],
-  ])("封面标题截断估算 %j", (lines, hidden) => {
+    [["一二三四五六七八九", "甲乙丙丁戊己庚辛壬"], true],
+    [["第一行", "第二行", "第三行"], true],
+    [["一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十一二三四五六"], true],
+  ])("封面标题行数估算 %j", (lines, overflow) => {
     const p = make([]);
     p.cover = { atMs: 1000, title: { template: "title-bar", style: "cover", props: { lines } } };
     const cover = TextStyle.parse({
@@ -81,8 +119,8 @@ describe("质检", () => {
     const issue = lintProject(p, { styles: { ...styles, cover } }).find(
       (i) => i.code === "COVER_TITLE_TRUNCATED",
     );
-    if (hidden === null) expect(issue).toBeUndefined();
-    else expect(issue?.message).toContain(hidden);
+    if (overflow === null) expect(issue).toBeUndefined();
+    else expect(issue?.message).toContain("文字不会裁掉");
   });
   it("提示无法占据输出帧的主轨片段", () => {
     const p = Project.parse({
@@ -266,8 +304,6 @@ describe("质检", () => {
     ]);
     expect(codes(p)).toEqual([
       "CAPTION_OVERFLOW:long",
-      // 满行 859 宽居中，右边到 969.5，超过「all」安全区的右边界 910
-      "TEXT_OUTSIDE_SAFE_AREA:long",
       "TEXT_TOO_SMALL:small",
       "TEXT_OUTSIDE_SAFE_AREA:low",
     ]);

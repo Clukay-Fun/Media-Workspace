@@ -29,49 +29,11 @@ export type TextBlockProps = {
   leadFrames?: number;
   /** 识音得到的每个字开始出现的时间（毫秒，相对逐字动画开始） */
   charStartMs?: number[] | null;
-  /** 只用于主轨字幕；标题、卡片保持原有排版。 */
-  captionWrap?: boolean;
+  /** 字幕和顶部标题使用自然换行，卡片保持原有排版。 */
+  naturalWrap?: boolean;
 };
 
 const HAN = /\p{Script=Han}/u;
-
-// 折点规则只依赖固定词表和标点，不依赖运行环境的分词器。
-const CAPTION_WORDS = ["评论区", "贴吧", "换汇", "取得时间", "通过", "删除", "服务"];
-const CAPTION_START =
-  /^(?:以及|并且|但是|而且|还有|没有|和|或|与|及|才|就|也|都|还|再|又|却|没|未|不)/u;
-const CAPTION_PUNCT = /[，。、；：！？,.!?;:]/u;
-
-/** 给 11–16 字字幕选词边界；没有已知边界时采用固定回退位置。 */
-export function captionBreakAt(text: string, perLine: number): number | null {
-  if (text.includes("\n")) return null;
-  const chars = [...text];
-  const length = chars.length;
-  const first = Math.min(perLine, 10);
-  if (length <= first || length > 16 || length - first > 6) return null;
-  const fallback = Math.min(first, length - 2);
-  const min = Math.max(8, length - 6);
-  const words = [...CAPTION_WORDS];
-  const spans: [number, number][] = [];
-  for (const word of words) {
-    const wordChars = [...word];
-    for (let i = 0; i <= length - wordChars.length; i++) {
-      if (chars.slice(i, i + wordChars.length).join("") === word) {
-        spans.push([i, i + wordChars.length]);
-      }
-    }
-  }
-  for (let k = fallback; k >= min; k--) {
-    if (k * 2 === length || spans.some(([start, end]) => start < k && k < end)) continue;
-    if (
-      spans.some(([start, end]) => start === k || end === k) ||
-      CAPTION_PUNCT.test(chars[k - 1] ?? "") ||
-      CAPTION_START.test(chars.slice(k).join(""))
-    ) {
-      return k;
-    }
-  }
-  return fallback;
-}
 
 export const TextBlock: React.FC<TextBlockProps> = ({
   text,
@@ -82,7 +44,7 @@ export const TextBlock: React.FC<TextBlockProps> = ({
   fps,
   leadFrames = 0,
   charStartMs = null,
-  captionWrap = false,
+  naturalWrap = false,
 }) => {
   const ms = (frame * 1000) / fps;
   const totalMs = (durationInFrames * 1000) / fps;
@@ -178,10 +140,11 @@ export const TextBlock: React.FC<TextBlockProps> = ({
     letterSpacing: font.letterSpacing,
     whiteSpace: "pre-wrap",
     // 文本框宽度固定，超过宽度时换行而不是缩小字号；样式的 maxLines 是显示边界。
-    maxHeight: font.size * font.lineHeight * layout.maxLines,
-    overflow: "hidden",
+    ...(naturalWrap
+      ? {}
+      : { maxHeight: font.size * font.lineHeight * layout.maxLines, overflow: "hidden" }),
     // 多行时各行长短接近，避免最后一行只剩一两个字；断点只在词之间（keepTogether）
-    textWrap: captionWrap ? "wrap" : "balance",
+    textWrap: naturalWrap ? "wrap" : "balance",
     opacity: whole.opacity,
   };
 
@@ -335,7 +298,7 @@ export const TextBlock: React.FC<TextBlockProps> = ({
             </span>
           );
           // 中文按字放 inline-block，这样词中间也能换行（和剪映一致）；其他文字整词放一起，避免单词被拆开
-          const chars = HAN.test(u.text) ? [...u.text] : [u.text];
+          const chars = naturalWrap || HAN.test(u.text) ? [...u.text] : [u.text];
           return chars.map((c, j) => ({
             key: `${i}-${j}`,
             text: c,
@@ -354,7 +317,7 @@ export const TextBlock: React.FC<TextBlockProps> = ({
           }));
         }),
         charsPerLine(style),
-        captionWrap ? captionBreakAt(text, charsPerLine(style)) : null,
+        naturalWrap,
       )}
     </div>
   );
@@ -429,14 +392,31 @@ function preferBreak(atoms: Atom[], perLine: number): Atom[] {
   return best < 0 ? atoms : atoms.map((a, i) => (i === best ? { ...a, br: true } : a));
 }
 
-function keepTogether(raw: Atom[], perLine: number, breakAt: number | null): React.ReactNode[] {
-  let count = 0;
-  const forced = raw.map((atom) => {
-    const br = breakAt !== null && count === breakAt;
-    count += [...atom.text].length;
-    return br ? { ...atom, br: true } : atom;
-  });
-  const atoms = breakAt === null ? preferBreak(forced, perLine) : forced;
+function keepTogether(raw: Atom[], perLine: number, naturalWrap: boolean): React.ReactNode[] {
+  if (naturalWrap) {
+    const groups: Atom[][] = [];
+    for (const atom of raw) {
+      const last = groups.at(-1);
+      const previous = last?.at(-1);
+      const sameRun =
+        previous &&
+        ((/^[A-Za-z]$/u.test(previous.text) && /^[A-Za-z]$/u.test(atom.text)) ||
+          (/^[0-9]$/u.test(previous.text) && /^[0-9]$/u.test(atom.text)));
+      if (last && !atom.br && sameRun) last.push(atom);
+      else groups.push([atom]);
+    }
+    return groups.map((group) => (
+      <span key={group[0]?.key}>
+        {group[0]?.br ? <br /> : null}
+        {group.length > 1 ? (
+          <span style={{ whiteSpace: "nowrap" }}>{group.map((a) => a.node)}</span>
+        ) : (
+          group[0]?.node
+        )}
+      </span>
+    ));
+  }
+  const atoms = preferBreak(raw, perLine);
   const starts = wordStarts(atoms);
   const groups: Atom[][] = [];
   atoms.forEach((a, i) => {

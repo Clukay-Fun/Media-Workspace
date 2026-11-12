@@ -16,7 +16,7 @@ export function bounds(
       }
     : style;
   return {
-    text: [textBox(props.lines.join("\n"), st)],
+    text: [textBox(props.lines.join("\n"), st, true)],
     shapes: bar ? [{ x0: 0, y0: bar.top, x1: width, y1: bar.top + bar.height }] : [],
   };
 }

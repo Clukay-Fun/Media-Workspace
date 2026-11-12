@@ -209,7 +209,7 @@ const CaptionLayer: React.FC<{ c: ResolvedCaption; style: TextStyle; fps: number
     <AbsoluteFill>
       <TextBlock
         text={c.text}
-        captionWrap
+        naturalWrap
         style={style}
         highlights={c.highlights}
         frame={frame}

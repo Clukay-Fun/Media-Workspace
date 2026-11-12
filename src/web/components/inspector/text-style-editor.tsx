@@ -657,6 +657,9 @@ export function TextStyleEditor({
             canvasWidth={project.canvas.width}
             canvasHeight={project.canvas.height}
             label={elementLabel}
+            naturalWrap={
+              isCaption || ("template" in ref_.item && ref_.item.template === "title-bar")
+            }
           />
           {presets.length > 0 && (
             <Field label="常用预设" note="默认模板样式">
@@ -1535,6 +1538,7 @@ function TextPreview({
   canvasWidth,
   canvasHeight,
   label,
+  naturalWrap,
 }: {
   text: string;
   style: TextStyle;
@@ -1544,6 +1548,7 @@ function TextPreview({
   canvasWidth: number;
   canvasHeight: number;
   label: string;
+  naturalWrap: boolean;
 }) {
   const wrap = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(280);
@@ -1583,6 +1588,7 @@ function TextPreview({
         >
           <TextBlock
             text={text}
+            naturalWrap={naturalWrap}
             style={style}
             highlights={highlights}
             frame={frame}

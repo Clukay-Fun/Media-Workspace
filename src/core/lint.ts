@@ -11,6 +11,7 @@ import {
 import { containBox, contentBox, cropLayout, croppedSize, faceInCrop } from "./crop";
 import { typicalFace } from "./frame";
 import type { Layout } from "./layout";
+import { estimateNaturalLines } from "./natural-wrap";
 import { safeAreaFor } from "./safe-area";
 import type { Project } from "./schema";
 import type { TextStyle } from "./text-style";
@@ -29,6 +30,7 @@ export type LintIssue = {
     | "TEXT_TOO_SMALL"
     | "TEXT_OUTSIDE_SAFE_AREA"
     | "CAPTION_OVERFLOW"
+    | "TITLE_OVERFLOW"
     | "OVERLAP"
     | "FACE_COVERED"
     | "PERSON_COVERED"
@@ -100,10 +102,13 @@ export function estimateLines(text: string, style: TextStyle): { lines: number; 
 }
 
 /** 文字块在画面上的区域（和 TextBlock 的排版规则一致） */
-export function textBox(text: string, style: TextStyle): Box {
+export function textBox(text: string, style: TextStyle, natural = false): Box {
   const { layout, font } = style;
-  const { lines, width } = estimateLines(text, style);
-  const shown = Math.min(lines, layout.maxLines);
+  const wrapped = natural ? estimateNaturalLines(text, style) : null;
+  const legacy = wrapped ? null : estimateLines(text, style);
+  const lines = wrapped?.length ?? legacy?.lines ?? 0;
+  const width = wrapped ? Math.max(0, ...wrapped.map((line) => line.width)) : (legacy?.width ?? 0);
+  const shown = natural ? lines : Math.min(lines, layout.maxLines);
   const h = shown * font.size * font.lineHeight;
   const x0 =
     layout.align === "left"
@@ -178,19 +183,13 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
       const lines = title.props.lines;
       if (style && lines.every((line): line is string => typeof line === "string")) {
         const text = lines.join("\n");
-        const estimated = estimateLines(text, style).lines;
+        const estimated = estimateNaturalLines(text, style).length;
         if (estimated > style.layout.maxLines) {
-          const chars = [...text];
-          const cut = chars.findIndex(
-            (_, i) =>
-              estimateLines(chars.slice(0, i + 1).join(""), style).lines > style.layout.maxLines,
-          );
-          const hidden = chars.slice(cut).join("").replace(/^\n+/, "");
           add({
             code: "COVER_TITLE_TRUNCATED",
             id: "cover",
             atMs: cover.atMs,
-            message: `封面标题估计要排 ${estimated} 行，超过 ${style.layout.maxLines} 行，可能被截掉的文字：「${hidden}」；请缩短文字或调整样式`,
+            message: `封面标题估计要排 ${estimated} 行，超过建议的 ${style.layout.maxLines} 行；文字不会裁掉，请检查排版`,
           });
         }
       }
@@ -218,7 +217,7 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
     const st = styleOf(c.style, "caption-word-yellow");
     if (!st) continue;
     // 有卡片时字幕不显示（v7）：只检查没有卡片的那几段
-    const box = textBox(c.text, st);
+    const box = textBox(c.text, st, true);
     for (const s of spansOutside(c.from, c.from + c.durationInFrames, tl.cardSpans)) {
       placed.push({
         id: c.id,
@@ -231,13 +230,13 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
         shapes: [],
       });
     }
-    const { lines } = estimateLines(c.text, st);
+    const lines = estimateNaturalLines(c.text, st).length;
     if (lines > st.layout.maxLines) {
       add({
         code: "CAPTION_OVERFLOW",
         id: c.id,
         atMs: ms(c.from),
-        message: `字幕「${c.text}」估计要排 ${lines} 行，超过样式允许的 ${st.layout.maxLines} 行`,
+        message: `字幕「${c.text}」估计要排 ${lines} 行，超过建议的 ${st.layout.maxLines} 行；文字不会裁掉，请检查排版`,
       });
     }
   }
@@ -246,6 +245,21 @@ export function lintProject(project: Project, opts: LintOptions): LintIssue[] {
     const styleId = o.style ?? opts.overlayStyle?.(o.template) ?? "title-bar-yellow";
     const st = styleOf(styleId, "title-bar-yellow");
     if (!st) continue;
+    if (
+      o.template === "title-bar" &&
+      Array.isArray(o.props.lines) &&
+      o.props.lines.every((line) => typeof line === "string")
+    ) {
+      const text = o.props.lines.join("\n");
+      const lines = estimateNaturalLines(text, st).length;
+      if (lines > st.layout.maxLines)
+        add({
+          code: "TITLE_OVERFLOW",
+          id: o.id,
+          atMs: ms(o.from),
+          message: `顶部标题「${text}」估计要排 ${lines} 行，超过建议的 ${st.layout.maxLines} 行；文字不会裁掉，请检查排版`,
+        });
+    }
     const b = opts.overlayBounds?.(o, st) ?? { text: [], shapes: [] };
     placed.push({
       id: o.id,
