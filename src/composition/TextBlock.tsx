@@ -29,9 +29,20 @@ export type TextBlockProps = {
   leadFrames?: number;
   /** 识音得到的每个字开始出现的时间（毫秒，相对逐字动画开始） */
   charStartMs?: number[] | null;
+  /** 只用于主轨字幕；标题、卡片保持原有排版。 */
+  captionWrap?: boolean;
 };
 
 const HAN = /\p{Script=Han}/u;
+
+/** 给 11–16 字字幕确定折点，避免第二行只有一个字。 */
+export function captionBreakAt(text: string, perLine: number): number | null {
+  if (text.includes("\n")) return null;
+  const length = [...text].length;
+  const first = Math.min(perLine, 10);
+  if (length <= first || length > 16 || length - first > 6) return null;
+  return length - first === 1 ? first - 1 : first;
+}
 
 export const TextBlock: React.FC<TextBlockProps> = ({
   text,
@@ -42,6 +53,7 @@ export const TextBlock: React.FC<TextBlockProps> = ({
   fps,
   leadFrames = 0,
   charStartMs = null,
+  captionWrap = false,
 }) => {
   const ms = (frame * 1000) / fps;
   const totalMs = (durationInFrames * 1000) / fps;
@@ -140,7 +152,7 @@ export const TextBlock: React.FC<TextBlockProps> = ({
     maxHeight: font.size * font.lineHeight * layout.maxLines,
     overflow: "hidden",
     // 多行时各行长短接近，避免最后一行只剩一两个字；断点只在词之间（keepTogether）
-    textWrap: "balance",
+    textWrap: captionWrap ? "wrap" : "balance",
     opacity: whole.opacity,
   };
 
@@ -313,6 +325,7 @@ export const TextBlock: React.FC<TextBlockProps> = ({
           }));
         }),
         charsPerLine(style),
+        captionWrap ? captionBreakAt(text, charsPerLine(style)) : null,
       )}
     </div>
   );
@@ -387,8 +400,14 @@ function preferBreak(atoms: Atom[], perLine: number): Atom[] {
   return best < 0 ? atoms : atoms.map((a, i) => (i === best ? { ...a, br: true } : a));
 }
 
-function keepTogether(raw: Atom[], perLine: number): React.ReactNode[] {
-  const atoms = preferBreak(raw, perLine);
+function keepTogether(raw: Atom[], perLine: number, breakAt: number | null): React.ReactNode[] {
+  let count = 0;
+  const forced = raw.map((atom) => {
+    const br = breakAt !== null && count === breakAt;
+    count += [...atom.text].length;
+    return br ? { ...atom, br: true } : atom;
+  });
+  const atoms = breakAt === null ? preferBreak(forced, perLine) : forced;
   const starts = wordStarts(atoms);
   const groups: Atom[][] = [];
   atoms.forEach((a, i) => {

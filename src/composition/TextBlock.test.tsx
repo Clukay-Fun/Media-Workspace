@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { BUILTIN_STYLES } from "../core/presets";
 import { TextStyle } from "../core/text-style";
-import { TextBlock } from "./TextBlock";
+import { captionBreakAt, TextBlock } from "./TextBlock";
 
 const base = {
   font: { family: "noto-sans-sc", size: 80 },
@@ -94,6 +94,39 @@ describe("TextBlock 逐字入场时长（inSlot）", () => {
 });
 
 describe("TextBlock 换行", () => {
+  it.each([
+    [10, null],
+    [11, 9],
+    [12, 10],
+    [13, 10],
+    [14, 10],
+    [15, 10],
+    [16, 10],
+  ])("字幕 %i 字按要求折行", (length, expected) => {
+    const text = "一二三四五六七八九十天地玄黄宇宙".slice(0, length);
+    expect(captionBreakAt(text, 10)).toBe(expected);
+    const out = renderToStaticMarkup(
+      <TextBlock
+        text={text}
+        style={TextStyle.parse({ ...base, layout: { ...base.layout, maxWidth: 800 } })}
+        frame={59}
+        durationInFrames={60}
+        fps={30}
+        captionWrap
+      />,
+    );
+    const lines = out
+      .replace(/<br\s*\/>/g, "|")
+      .replace(/<[^>]*>/g, "")
+      .split("|");
+    expect(lines.map((line) => [...line].length)).toEqual(
+      expected === null ? [length] : [expected, length - expected],
+    );
+  });
+
+  it("非字幕仍采用原有均衡折行", () => {
+    expect(html({}, 30)).toContain("text-wrap:balance");
+  });
   it("保持固定宽度和字号，并按样式的 maxLines 截住文本框高度", () => {
     const out = renderToStaticMarkup(
       <TextBlock

@@ -1,4 +1,5 @@
 import type { AsrToken } from "./align";
+import { MwError } from "./errors";
 import { parseSrt, type SrtCue } from "./srt";
 
 // 从原片识音出字幕（阶段 F，docs/decisions/0025）：
@@ -256,6 +257,9 @@ const LINE_START = /^(和|或|与|及|以及|并且|但是|而且|还有|才|就
 
 const segmenter = new Intl.Segmenter("zh", { granularity: "word" });
 
+// 系统分词器会把常见的复合词拆成单字；这些词不能在字幕断点处分开。
+const KEEP_TOGETHER = ["评论区", "贴吧", "换汇", "取得时间"];
+
 /** 词边界：返回可以断开的位置（在第 k 个字之后断开，0 < k < 字数） */
 function wordBreaks(text: string): Set<number> {
   const out = new Set<number>();
@@ -263,6 +267,14 @@ function wordBreaks(text: string): Set<number> {
   for (const s of segmenter.segment(text)) {
     k += [...s.segment].length;
     out.add(k);
+  }
+  const chars = [...text];
+  for (const word of KEEP_TOGETHER) {
+    const part = [...word];
+    for (let i = 0; i <= chars.length - part.length; i++) {
+      if (chars.slice(i, i + part.length).join("") !== word) continue;
+      for (let k = i + 1; k < i + part.length; k++) out.delete(k);
+    }
   }
   return out;
 }
@@ -282,7 +294,7 @@ function singleCharWords(text: string): Set<number> {
 /**
  * 断成一行一句的字幕：有标点（来自文稿）时在断句标点处断开，停顿只用来挑切点；
  * 没有标点（只有识音）时在停顿处断开。一句超过 maxChars 时在词边界上再切，优先切在两边字数接近、
- * 前短后长、有停顿的地方（样片里用户自己断的字幕多是前一行短、后一行长）。
+ * 有停顿的地方。
  * 行尾的标点不显示，句中的顿号、问号保留在原处。regions 是说话段落，用来算停顿和每行念完的时刻。
  */
 export function segmentLines(
@@ -355,9 +367,9 @@ export function segmentLines(
         if (left === 0) {
           const cuts = [0, ...chosen, len];
           const ws = cuts.slice(1).map((c, i) => width(a + (cuts[i] ?? 0), a + c));
-          if (ws.some((w) => w > maxChars)) return;
+          if (ws.some((w) => w > maxChars || w < 3)) return;
           const total = ws.reduce((x, y) => x + y, 0);
-          // 各行和平均长度的差；前一行比后一行长时稍微扣分（参考样片：前短后长）
+          // 各条与平均长度的差，优先保持分段均衡。
           let c = ws.reduce((x, w) => x + Math.abs(w - total / n), 0) / (2 * total);
           ws.forEach((w, i) => {
             if (i > 0 && (ws[i - 1] ?? 0) > w) c += 0.06;
@@ -373,9 +385,13 @@ export function segmentLines(
       };
       pick(0, n - 1, []);
     }
-    // 没有词边界能切成放得下的几行时（一个词就超长），按字数硬切
-    const cuts: number[] =
-      best ?? Array.from({ length: Math.ceil(len / maxChars) - 1 }, (_, i) => (i + 1) * maxChars);
+    // 没有满足长度和词边界的切点时不能静默切开词语。
+    if (!best) {
+      throw new MwError("VALIDATION", `字幕「${text}」无法在词边界拆成每条 3–${maxChars} 字`, {
+        hint: "请调整文稿或字幕字数设置后重试",
+      });
+    }
+    const cuts: number[] = best;
     return [0, ...cuts].map((c, i) => [a + c, a + (cuts[i] ?? len)] as [number, number]);
   };
 

@@ -155,6 +155,23 @@ describe("断句", () => {
 });
 
 describe("断句：一行放不下", () => {
+  it("超过 16 字时按词边界拆条，每条至少 3 字且不超过 16 字", () => {
+    for (const text of [
+      "不要在评论区发换汇广告请及时核实信息",
+      "通过各类社交平台和贴吧发换汇推广贴引发风险",
+    ]) {
+      const sp = say(text, 0, { [text.length - 1]: "。" });
+      const parts = segmentLines(sp, [{ startMs: 0, endMs: 10000 }], { maxChars: 16 }).map(
+        (line) => line.text,
+      );
+      expect(parts.join("")).toBe(text);
+      expect(parts.length).toBeGreaterThan(1);
+      expect(parts.every((part) => [...part].length >= 3 && [...part].length <= 16)).toBe(true);
+      for (const word of ["评论区", "贴吧", "换汇"]) {
+        if (text.includes(word)) expect(parts.some((part) => part.includes(word))).toBe(true);
+      }
+    }
+  });
   it("切成最少的几行，标出是切开的；一行放得下的不标", () => {
     const sp = say("别等客人到了门口才发现座位或餐具没有准备好", 0, { 20: "。" });
     const lines = segmentLines(sp, [{ startMs: 0, endMs: 4000 }], { maxChars: 10 });
